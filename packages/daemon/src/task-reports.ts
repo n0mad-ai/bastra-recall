@@ -25,7 +25,6 @@ import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core/scrub";
 import { readAppRecord, writeAppRecord } from "./app-record-store.js";
 import { withPathLock } from "./path-lock.js";
 import { authenticateTask, type TaskPrincipal } from "./task-auth.js";
-import { cleanText } from "./task-store.js";
 import { MAX_BODY_BYTES } from "./http-util.js";
 import { readSettings } from "./settings-file.js";
 import { parseReportUndo, REPORT_UNDO_DEFAULT } from "./task-report-undo-window.js";
@@ -158,12 +157,22 @@ const storePath = (ctx: ReportContext) => join(dirname(ctx.path), "task-reports.
 const visible = (r: TaskReport, p: TaskPrincipal) => r.owner_domains.every((d) => p.domains.includes(d));
 const notFound = () => Object.assign(new Error("Report absent in authorized domains"), { code: "not_found" });
 
-/** Secrets redacted like task text; line breaks and tabs stay, so Markdown and code keep their shape. */
-function cleanBody(value: string): string {
-  return redactSecrets(scrubInjectedBlocks(value).text, homedir()).text.replace(/[\p{Cc}\p{Cf}]/gu, (c) =>
-    c === "\n" || c === "\t" ? c : ""
+/** A zero-width joiner between two pictographs (after an optional skin tone or emoji
+ * presentation selector) holds a combined emoji together; told by Unicode property, not a list. */
+const EMOJI_JOINER = /(?<=\p{Extended_Pictographic}[\p{Emoji_Modifier}️]?)‍(?=\p{Extended_Pictographic})/uy;
+const emojiJoiner = (text: string, at: number) => ((EMOJI_JOINER.lastIndex = at), EMOJI_JOINER.test(text));
+
+/** Secrets redacted like task text; control and format characters go except `keep` and the
+ * joiners inside combined emoji (#1563), so a family emoji stays one emoji. */
+function cleanReportText(value: string, keep: string): string {
+  return redactSecrets(scrubInjectedBlocks(value).text, homedir()).text.replace(
+    /[\p{Cc}\p{Cf}]/gu,
+    (c, at: number, text: string) => (keep.includes(c) || (c === "‍" && emojiJoiner(text, at)) ? c : "")
   );
 }
+/** Line breaks and tabs stay, so Markdown and code keep their shape. */
+const cleanBody = (value: string) => cleanReportText(value, "\n\t");
+const cleanLine = (value: string) => cleanReportText(value, "\n");
 
 function readStore(path: string): ReportStore {
   let text: string;
@@ -349,12 +358,12 @@ function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
   const input = taskReportSaveInput.parse(raw);
   const report: TaskReport = {
     id: randomUUID(),
-    title: cleanText(input.title).replace(/\s+/g, " ").trim(),
+    title: cleanLine(input.title).replace(/\s+/g, " ").trim(),
     body: cleanBody(input.body),
-    ...(input.project === undefined ? {} : { project: cleanText(input.project).trim() }),
+    ...(input.project === undefined ? {} : { project: cleanLine(input.project).trim() }),
     origin: {
-      client: cleanText(input.origin.client),
-      ...(input.origin.session === undefined ? {} : { session: cleanText(input.origin.session) }),
+      client: cleanLine(input.origin.client),
+      ...(input.origin.session === undefined ? {} : { session: cleanLine(input.origin.session) }),
     },
     actor: principal.actor_id,
     owner_domains: [...principal.domains],
@@ -451,7 +460,7 @@ function addNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
     anchor: {
       kind: input.anchor.kind,
       index: input.anchor.index,
-      excerpt: cleanText(input.anchor.excerpt).replace(/\s+/g, " ").trim(),
+      excerpt: cleanLine(input.anchor.excerpt).replace(/\s+/g, " ").trim(),
     },
     text: cleanBody(input.text),
     actor: principal.actor_id,
