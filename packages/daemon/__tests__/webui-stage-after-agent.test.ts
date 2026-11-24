@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 
 const css = (await readFile(new URL("../webui/app/css/panels.css", import.meta.url), "utf8")).replace(
   /\/\*[\s\S]*?\*\//g,
@@ -35,4 +36,37 @@ test("decision C: with reduced motion the stage does not slide, and closing it s
   const opening = rule(".app.is-beside-agent .stage", reduce);
   assert.doesNotMatch(opening, /left/);
   assert.match(opening, /animation: none/);
+});
+
+test("decision C: reversing before the stage clears the agent keeps it hidden for the closing fade", async () => {
+  const source = (await readFile(new URL("../webui/app/js/stage.js", import.meta.url), "utf8"))
+    .replace(/^import .*;$/gm, "")
+    .replace(/^export /gm, "");
+  const animations: unknown[] = [];
+  let stageLeft = 100;
+  const stage = {
+    getBoundingClientRect: () => ({ left: stageLeft }),
+    animate: (frames: unknown, duration: number) => animations.push([frames, duration]),
+  };
+  const { mountStage, keepClearOfClosingAgent } = runInNewContext(
+    `${source}\n({ mountStage, keepClearOfClosingAgent });`,
+    { h: () => stage }
+  );
+  mountStage({ append() {} });
+  const agent = {
+    getBoundingClientRect: () => ({ right: 456 }),
+    getAnimations: () => [
+      { transitionProperty: "transform" },
+      { transitionProperty: "opacity", effect: { getComputedTiming: () => ({ endTime: 183 }) } },
+    ],
+  };
+
+  keepClearOfClosingAgent(agent);
+  assert.deepEqual(JSON.parse(JSON.stringify(animations)), [
+    [[{ visibility: "hidden" }, { visibility: "hidden" }], 183],
+  ]);
+
+  stageLeft = 472;
+  keepClearOfClosingAgent(agent);
+  assert.equal(animations.length, 1, "closing after the stage has cleared the agent does not hide it");
 });
