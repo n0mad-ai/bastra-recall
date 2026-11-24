@@ -1,8 +1,8 @@
 /** Eval-only chunking and max-per-document; never imported by production. */
 import { getEncoding } from "js-tiktoken";
 const encoder = getEncoding("cl100k_base");
-export const CHUNK_TOKENS = 400;
-export const OVERLAP_TOKENS = 80;
+const CHUNK_TOKENS = 400;
+const OVERLAP_TOKENS = 80;
 export interface SourceChunk {
   text: string;
   start: number;

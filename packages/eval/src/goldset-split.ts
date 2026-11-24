@@ -35,7 +35,7 @@ export interface SplitOptions {
   stratifyBy: readonly (keyof GoldCase)[];
 }
 
-export interface StratumReport {
+interface StratumReport {
   key: string;
   total: number;
   selection: number;

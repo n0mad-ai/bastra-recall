@@ -106,7 +106,7 @@ async function embedAll(
 
 type Side = "control" | "treatment";
 
-export interface HybridArmSide {
+interface HybridArmSide {
   search: SearchIndex;
   emb: EmbeddingIndex;
   vault: Vault;

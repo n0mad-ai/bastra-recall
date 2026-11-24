@@ -32,12 +32,12 @@ export const ORIGIN_TYPES = [
 export type OriginType = (typeof ORIGIN_TYPES)[number];
 
 /** §19 expects the retrieval zone a case is expected to resolve in. */
-export const ZONES = ["core", "orbit", "outer_orbit", "asteroid_belt"] as const;
+const ZONES = ["core", "orbit", "outer_orbit", "asteroid_belt"] as const;
 export type Zone = (typeof ZONES)[number];
 
 /** C-051/C-057: the two cue axes must stay independently measurable. */
-export const CASE_KINDS = ["descriptive", "associative"] as const;
-export type CaseKind = (typeof CASE_KINDS)[number];
+const CASE_KINDS = ["descriptive", "associative"] as const;
+type CaseKind = (typeof CASE_KINDS)[number];
 
 /** The admissible language buckets — see {@link StagedQuery.lang} on `neutral`. */
 export const LANGS = ["de", "en", "mixed", "neutral"] as const;
@@ -60,8 +60,8 @@ export type Lang = (typeof LANGS)[number];
  * A case carries a group or it does not; the field is optional, so every file
  * written before it existed stays valid and counts as a normal case.
  */
-export const PROBE_GROUPS = ["body-loss", "unique-n", "gibberish-probe"] as const;
-export type ProbeGroup = (typeof PROBE_GROUPS)[number];
+const PROBE_GROUPS = ["body-loss", "unique-n", "gibberish-probe"] as const;
+type ProbeGroup = (typeof PROBE_GROUPS)[number];
 
 /**
  * Step 1 — a query with its provenance and NO gold label.

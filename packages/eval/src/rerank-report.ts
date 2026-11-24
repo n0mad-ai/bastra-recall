@@ -116,13 +116,13 @@ export function served(hits: readonly RecallHit[], k: number, floor: number): st
     .map((h) => h.id);
 }
 
-export interface CutMetrics {
+interface CutMetrics {
   baseline: number;
   reranked: number;
   paired: PairedResult;
 }
 
-export interface SliceReport {
+interface SliceReport {
   n: number;
   /** Set when n < MIN_SLICE_N: the numbers are omitted rather than shown small. */
   not_evaluable?: string;

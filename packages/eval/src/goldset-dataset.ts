@@ -19,7 +19,7 @@ import { checkGoldCases, type GoldCase } from "./goldset.js";
 const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
 
 /** The gold schema this runner grades. Another version is a different dataset. */
-export const GOLD_SCHEMA_VERSION = 1;
+const GOLD_SCHEMA_VERSION = 1;
 
 /**
  * Read the gold files and refuse anything the measurement cannot stand on.

@@ -112,7 +112,7 @@ export interface GateRow {
 const ratio = (n: number, d: number): number => (d === 0 ? 0 : Number((n / d).toFixed(4)));
 const hitAt = (rank: number, k: number): boolean => rank >= 1 && rank <= k;
 
-export interface ComponentGateReport {
+interface ComponentGateReport {
   /**
    * §18.2: "Anti-Query-Fehlinjektionen < 5 %" — the threshold IS registered.
    *
@@ -152,7 +152,7 @@ export interface ComponentGateReport {
  * ones, and the anti-query rate is measured ON the probes, which is what they
  * are for.
  */
-export function componentGates(rows: GateRow[]): ComponentGateReport {
+function componentGates(rows: GateRow[]): ComponentGateReport {
   const gated = rows.filter((r) => r.gate);
   const answerable = gated.filter((r) => !r.probe_group && !r.no_answer);
   const identifierQueries = answerable.filter((r) => r.has_identifier);
@@ -319,7 +319,7 @@ export interface NarrowingRule {
  * hit whose coverage sits between 0 and the threshold — the exact population
  * the change was about.
  */
-export const CURRENT_RULE: NarrowingRule = { minCoverage: MIN_TRIGGER_COVERAGE };
+const CURRENT_RULE: NarrowingRule = { minCoverage: MIN_TRIGGER_COVERAGE };
 
 /**
  * `decideHit`'s decision, re-derived from evidence (§10.3 variants).
@@ -413,7 +413,7 @@ export const NARROWINGS: Record<string, NarrowingRule> = {
 };
 
 /** One row of the comparison table: a variant, its seven figures, its shift. */
-export interface VariantRow {
+interface VariantRow {
   variant: string;
   anti_query_injection: number;
   anti_query_count: string;
@@ -435,7 +435,7 @@ export interface VariantRow {
  * rule and nothing else — not a re-run, not a grown vault, not a reshuffled
  * ranking.
  */
-export function variantTable(rows: GateRow[]): { table: VariantRow[]; $comment: string } {
+function variantTable(rows: GateRow[]): { table: VariantRow[]; $comment: string } {
   const names = new Set<string>();
   for (const r of rows) for (const k of Object.keys(r.gate_narrowed ?? {})) names.add(k);
 

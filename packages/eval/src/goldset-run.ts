@@ -116,7 +116,7 @@ type Recaller = (query: string, caseId: string) => Promise<RecallHit[]>;
  * baseline run measured 0/372 weak results on answerable cases and could not
  * say why — nothing recorded which of the two anchors was carrying them.
  */
-export type AnchorSource = "recall_when" | "title" | "both" | "none";
+type AnchorSource = "recall_when" | "title" | "both" | "none";
 
 /**
  * Walk the served list from the top and report the anchors of the FIRST hit

@@ -30,7 +30,7 @@ export const EVIDENCE_CLASSES = [
   "vendor_benchmark",
   "project_self_measurement",
 ] as const;
-export type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
+type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
 
 export interface ForeignFigure {
   id: string;
