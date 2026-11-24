@@ -261,6 +261,17 @@ function applyReportedTask(
     );
   if (shape() !== before) delete s.receipts;
 }
+function confirmRulebookCheck(
+  a: ReturnType<typeof actor>,
+  reviewedCatalog: string,
+  applicable: readonly string[],
+  partial: boolean
+): void {
+  if (partial) return;
+  a.checked = true;
+  a.checkedCatalog = reviewedCatalog;
+  a.ids = [...new Set(applicable)];
+}
 export async function recordRulebookCheck(
   sessionId: string | null | undefined,
   input: z.infer<typeof RulebookCheckArgs>,
@@ -299,6 +310,7 @@ export async function recordRulebookCheck(
     (overlong.length
       ? `Ignored not_applicable IDs longer than ${RULE_ID_MAX} characters: ${overlong.slice(0, 5).join(", ")}. `
       : "");
+  const reviewedCatalog = rulebookFingerprint(catalog);
   let context = "",
     round = 0,
     taskGeneration = 0,
@@ -377,9 +389,14 @@ export async function recordRulebookCheck(
       ];
       a.roundDismissed = a.roundDismissed.filter((r) => r.id !== entry.id);
     }
-    a.checked = true;
-    a.checkedCatalog = state.catalog;
-    a.ids = [...new Set(input.applicable)];
+    // Bind the receipt to the snapshot this call read. A hook can have already
+    // observed a different catalog by the time this session mutation runs.
+    confirmRulebookCheck(
+      a,
+      reviewedCatalog,
+      input.applicable,
+      [invalidDismissal, taskError, unknown.length, overlong.length].some(Boolean)
+    );
     context = state.context;
     round = state.round;
     put(s, state);

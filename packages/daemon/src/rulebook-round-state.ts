@@ -113,8 +113,9 @@ export function rulebookFingerprint(c: {
   entries: readonly { id: string; rule_hash?: string; expired_on?: string }[];
   omitted: number;
 }): string {
+  const entries = [...c.entries].sort((a, b) => a.id.localeCompare(b.id));
   return createHash("sha256")
-    .update(JSON.stringify([c.entries.map((e) => [e.id, e.rule_hash, e.expired_on]), c.omitted]))
+    .update(JSON.stringify([entries.map((e) => [e.id, e.rule_hash, e.expired_on]), c.omitted]))
     .digest("hex")
     .slice(0, 24);
 }

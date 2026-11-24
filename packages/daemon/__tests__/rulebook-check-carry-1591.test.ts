@@ -97,6 +97,28 @@ test("a new, edited or expired rule asks for a new check at once, also mid-round
   }
 });
 
+test("a check receipt applies to the catalog it read, even if a newer catalog was already delivered", async () => {
+  const sid = "carry-receipt-snapshot";
+  await checks.beginRulebookRound(payload(sid), edited);
+  const previous = await checks.recordRulebookCheck(sid, { applicable: [] }, catalog);
+  assert.equal(previous.ok, true);
+  assert.match(await checks.beginRulebookRound(payload(sid), edited), asksForCheck);
+  await checks.recordRulebookCheck(sid, { applicable: [] }, edited);
+  assert.doesNotMatch(await checks.beginRulebookRound(payload(sid), edited), asksForCheck);
+
+  // A check can also read the new catalog before the hook does.
+  await checks.recordRulebookCheck(sid, { applicable: [] }, withNewRule);
+  assert.doesNotMatch(await checks.beginRulebookRound(payload(sid), withNewRule), asksForCheck);
+});
+
+test("partial declarations do not carry an unconfirmed check", async () => {
+  const sid = "carry-partial-receipt";
+  await checks.beginRulebookRound(payload(sid), catalog);
+  const partial = await checks.recordRulebookCheck(sid, { applicable: ["unknown-fixture"] }, catalog);
+  assert.equal(partial.ok, false);
+  assert.match(await checks.beginRulebookRound(payload(sid), catalog), asksForCheck);
+});
+
 test("a context reset ends the carried check; another session and another agent never share it", async () => {
   const sid = "carry-reset";
   await checks.beginRulebookRound(payload(sid), catalog);
@@ -188,6 +210,14 @@ test("the fingerprint is the same in both catalog modes and ignores a tier that 
   assert.equal(idle.entries[0]?.rulebook, "on-demand");
   assert.equal(rulebookFingerprint(idle), rulebookFingerprint(await at("content")));
   assert.equal(rulebookFingerprint(idle), rulebookFingerprint(activeContent));
+});
+
+test("#1591: promoting a rule without editing it changes catalog order but not the fingerprint", () => {
+  const a = rule("a");
+  const b = rule("b");
+  const idle = { entries: [a, b], omitted: 0 };
+  const active = { entries: [{ ...b, rulebook: "always" as const }, a], omitted: 0 };
+  assert.equal(rulebookFingerprint(idle), rulebookFingerprint(active));
 });
 
 test("#1622: the kernel fingerprint ignores the trigger", () => {
