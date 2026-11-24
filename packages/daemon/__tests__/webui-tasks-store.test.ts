@@ -42,7 +42,9 @@ const snapshot = (tasks: unknown[]) => ({ role: "owner", tasks, intents: [], rec
  */
 async function store(tasks: unknown[] = [task()], on: Record<string, Handler> = {}) {
   const source = (
-    await Promise.all(["sections/tasks-api.js", "sections/tasks-store.js", "sections/tasks-overlays.js"].map(read))
+    await Promise.all(
+      ["session-client.js", "sections/tasks-api.js", "sections/tasks-store.js", "sections/tasks-overlays.js"].map(read)
+    )
   )
     .map(strip)
     .join("\n");

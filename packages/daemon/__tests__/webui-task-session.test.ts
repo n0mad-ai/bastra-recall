@@ -10,9 +10,11 @@ import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 
 async function shell() {
-  const [dataSrc, modelSrc] = await Promise.all([
+  const [sessionSrc, dataSrc, modelSrc, taskSrc] = await Promise.all([
+    readFile(new URL("../webui/app/js/session-client.js", import.meta.url), "utf8"),
     readFile(new URL("../webui/app/js/data.js", import.meta.url), "utf8"),
     readFile(new URL("../webui/app/js/sections/tasks-reports-model.js", import.meta.url), "utf8"),
+    readFile(new URL("../webui/app/js/sections/tasks-api.js", import.meta.url), "utf8"),
   ]);
   const sessions = new Map<string, string>(); // cookie → csrf
   let jar: string | null = null,
@@ -42,12 +44,23 @@ async function shell() {
     return json(404, {});
   }
   const document = { documentElement: { dataset: { tasksEnabled: "true" } }, hidden: false };
-  const source =
-    modelSrc.replace(/^import .*$/gm, "").replace(/^export /gm, "") +
-    "\n" +
-    dataSrc.replace(/^import .*$/gm, "").replace(/^export /gm, "") +
-    "\n({ data, loadTasks, loadReports })";
-  const m = runInNewContext(source, { fetch, document, JSON, Promise, setTimeout, Error, Array, Number });
+  const strip = (text: string) => text.replace(/^import .*$/gm, "").replace(/^export /gm, "");
+  const source = [sessionSrc, modelSrc, dataSrc].map(strip).join("\n");
+  const m = runInNewContext(
+    `${source}\nconst taskArea = (() => {\n${strip(taskSrc)}\nreturn { api };\n})();\n({ data, loadTasks, loadReports, api: taskArea.api })`,
+    {
+      fetch,
+      document,
+      JSON,
+      Promise,
+      setTimeout,
+      Error,
+      Array,
+      Number,
+      LANG: "en",
+      t: (key: string) => key,
+    }
+  );
   return { m, sessionCalls: () => sessionCalls, sessions };
 }
 
@@ -66,4 +79,18 @@ test("a replaced session (daemon restart, other module) is renewed once instead 
   s.m.data.reports = [];
   await s.m.loadReports();
   assert.equal(s.m.data.reports.length, 1);
+});
+
+test("the shell and Tasks area share the cookie and renew it together after a daemon restart", async () => {
+  const s = await shell();
+  const [result] = await Promise.all([s.m.api("list"), s.m.loadReports()]);
+  assert.deepEqual(result, { tasks: [] });
+  assert.equal(s.m.data.reports.length, 1);
+  assert.equal(s.sessionCalls(), 1);
+
+  s.sessions.clear();
+  s.m.data.reports = [];
+  await Promise.all([s.m.loadReports(), s.m.api("list")]);
+  assert.equal(s.m.data.reports.length, 1);
+  assert.equal(s.sessionCalls(), 2);
 });

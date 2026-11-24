@@ -1,6 +1,7 @@
 // Daemon data for the shell. Every answer is external input: shapes are
 // checked before use and failures leave the previous value in place.
 import { reportRows, deletedRows } from "./sections/tasks-reports-model.js";
+import { taskSession, taskRequest } from "./session-client.js";
 const listeners = new Set();
 
 export const data = {
@@ -105,44 +106,23 @@ async function fetchGraph() {
   }
 }
 
-// One session request at a time: loadTasks and loadReports start together, and
-// two cookie-less session requests would each open a session; the browser keeps
-// only the second cookie, so the first caller's CSRF token was refused and its
-// list (e.g. the reports for the ticker) stayed empty until the next 60 s poll.
-let taskCsrf = null,
-  taskSession = null;
-function taskSessionCsrf() {
-  taskSession ??= getJson("/ui/tasks/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  })
-    .then((s) => {
-      taskCsrf = typeof s.csrf === "string" ? s.csrf : null;
-      if (!taskCsrf) throw new Error("no task session");
-      return taskCsrf;
-    })
-    .finally(() => {
-      taskSession = null;
-    });
-  return taskSession;
+function shellTaskCsrf({ response, body, jsonError }) {
+  if (!response.ok) throw new Error(`/ui/tasks/session → ${response.status}`);
+  if (jsonError) throw jsonError;
+  if (typeof body.csrf !== "string" || !body.csrf) throw new Error("no task session");
+  return body.csrf;
 }
-async function taskApi(name, input = {}, retry = true) {
-  const csrf = taskCsrf ?? (await taskSessionCsrf());
-  const r = await fetch(`/ui/tasks/api/task_${name}`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", "x-bastra-task-csrf": csrf },
-    body: JSON.stringify(input),
+function taskApi(name, input = {}) {
+  return taskSession.run(shellTaskCsrf, async (csrf, { renew, invalidate }) => {
+    const r = await taskRequest(name, input, csrf);
+    if (r.status === 401 || r.status === 403) {
+      if (renew) return renew();
+      invalidate();
+      throw new Error("task session expired");
+    }
+    if (!r.ok) throw new Error(`task_${name} → ${r.status}`);
+    return r.json();
   });
-  if (r.status === 401 || r.status === 403) {
-    // Expired or replaced session (daemon restart, the Tasks area's own session request): renew once.
-    if (taskCsrf === csrf) taskCsrf = null;
-    if (retry) return taskApi(name, input, false);
-    throw new Error("task session expired");
-  }
-  if (!r.ok) throw new Error(`task_${name} → ${r.status}`);
-  return r.json();
 }
 
 export async function loadTasks() {

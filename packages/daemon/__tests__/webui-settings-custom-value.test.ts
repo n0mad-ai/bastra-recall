@@ -14,6 +14,7 @@ const strip = (src: string) =>
 
 async function field() {
   const dir = new URL("../webui/app/js/sections/", import.meta.url);
+  const session = await readFile(new URL("../session-client.js", dir), "utf8");
   const model = await readFile(new URL("settings-model.js", dir), "utf8");
   const view = await readFile(new URL("settings.js", dir), "utf8");
   const panel = await readFile(new URL("settings-panel.js", dir), "utf8");
@@ -22,7 +23,7 @@ async function field() {
   const document = { activeElement: null as unknown };
   const guide = { key: "size.guide", kind: "number", default: 500, value: 500, isSet: false, envOverride: [] };
   const ctx = runInNewContext(
-    `${strip(model)}\n${strip(view)}\n${strip(panel)}\n({ store, onStore, apply, restart, selectCtl, changeList, invalidText: typeof invalidText === "undefined" ? undefined : invalidText })`,
+    `${strip(session)}\n${strip(model)}\n${strip(view)}\n${strip(panel)}\n({ store, onStore, apply, restart, selectCtl, changeList, invalidText: typeof invalidText === "undefined" ? undefined : invalidText })`,
     {
       document,
       h,

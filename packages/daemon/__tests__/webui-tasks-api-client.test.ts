@@ -9,7 +9,13 @@ type Reply = { status?: number; body?: unknown };
 type Call = { path: string; csrf?: string; body: unknown };
 
 async function client(replies: Record<string, Reply[]>) {
-  const source = await readFile(new URL("../webui/app/js/sections/tasks-api.js", import.meta.url), "utf8");
+  const source = (
+    await Promise.all(
+      ["session-client.js", "sections/tasks-api.js"].map((path) =>
+        readFile(new URL(`../webui/app/js/${path}`, import.meta.url), "utf8")
+      )
+    )
+  ).join("\n");
   const calls: Call[] = [];
   let sessions = 0;
   const fetch = async (path: string, options: any) => {

@@ -8,6 +8,7 @@
 import { state, setState } from "../state.js";
 import { t } from "../i18n.js";
 import { setBackdrop } from "../backdrop.js";
+import { jsonRequest, settingsSession } from "../session-client.js";
 
 /** t() with a fallback when the key is missing (server label for unknown keys). */
 export function tx(key, fallback, vars) {
@@ -182,46 +183,44 @@ export function emit(what = "all") {
   for (const fn of listeners) fn(what);
 }
 
-let csrf = null;
-
-async function call(path, body) {
-  const res = await fetch(path, {
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(csrf ? { "X-Bastra-Settings-CSRF": csrf } : {}) },
-    ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }),
-  });
-  let json = null;
-  try {
-    json = await res.json();
-  } catch {
-    /* empty or non-JSON body */
-  }
-  if (!res.ok) {
-    if (res.status === 401) csrf = null;
-    throw Object.assign(new Error(json && typeof json.error === "string" ? json.error : `HTTP ${res.status}`), {
+function settingsJson(res, json) {
+  if (!res.ok)
+    throw Object.assign(new Error(typeof json?.error === "string" ? json.error : `HTTP ${res.status}`), {
       status: res.status,
-      code: json && typeof json.code === "string" ? json.code : undefined,
+      code: typeof json?.code === "string" ? json.code : undefined,
     });
-  }
   return json;
 }
 
-async function session() {
-  const s = await call("/ui/settings/session", {});
-  if (!s || typeof s.csrf !== "string") throw new Error("no settings session");
-  csrf = s.csrf;
+function settingsCsrf({ response, body }) {
+  const session = settingsJson(response, body);
+  if (typeof session?.csrf !== "string") throw new Error("no settings session");
+  return session.csrf;
 }
 
-/** Runs fn with a settings session; a lapsed session (401) is renewed once. */
-async function withSession(fn) {
-  if (!csrf) await session();
-  try {
-    return await fn();
-  } catch (err) {
-    if (err.status !== 401) throw err;
-    await session();
-    return fn();
-  }
+async function requestSettings(path, body, csrf) {
+  const res = await jsonRequest(path, body, csrf ? { "X-Bastra-Settings-CSRF": csrf } : undefined);
+  const json = await res.json().catch(() => null);
+  return { res, json };
+}
+
+/** The assistant-address route does not open a settings session. */
+async function call(path, body) {
+  const grant = settingsSession.current();
+  const { res, json } = await requestSettings(path, body, grant?.body.csrf);
+  if (res.status === 401) settingsSession.invalidate(grant);
+  return settingsJson(res, json);
+}
+
+function settingsApi(path, body) {
+  return settingsSession.run(settingsCsrf, async (csrf, { renew, invalidate }) => {
+    const { res, json } = await requestSettings(path, body, csrf);
+    if (res.status === 401) {
+      if (renew) return renew();
+      invalidate();
+    }
+    return settingsJson(res, json);
+  });
 }
 
 function accept(snapshot) {
@@ -236,7 +235,7 @@ function accept(snapshot) {
 export async function load() {
   store.error = "";
   try {
-    accept(await withSession(() => call("/ui/settings")));
+    accept(await settingsApi("/ui/settings"));
   } catch (err) {
     store.error = err.message;
   }
@@ -261,7 +260,7 @@ const NAME = "assistant.name";
 async function saveName(name) {
   if (typeof name !== "string" || !name.trim()) throw Object.assign(new Error(""), { code: "invalid_name" });
   store.address = await call("/ui/assistant-address", { name, systemConsent: true });
-  accept(await withSession(() => call("/ui/settings")));
+  accept(await settingsApi("/ui/settings"));
 }
 
 /** Address step again for the saved name (button in the name row). */
@@ -283,13 +282,13 @@ const errorText = (err) => (err.code === "invalid_name" ? t("st.addr.invalid") :
 
 function saveBatch(batch) {
   if (batch[0][0] === NAME) return saveName(batch[0][1]);
-  return withSession(() => call("/ui/settings", { changes: Object.fromEntries(batch) })).then(accept);
+  return settingsApi("/ui/settings", { changes: Object.fromEntries(batch) }).then(accept);
 }
 
 /** Installed Ollama models for the model pickers; a failure just leaves the static suggestions. */
 export async function loadModels() {
   try {
-    const r = await withSession(() => call("/ui/settings/models"));
+    const r = await settingsApi("/ui/settings/models");
     const models = Array.isArray(r?.models)
       ? r.models.filter((m) => typeof m === "string").map((m) => m.replace(/:latest$/, ""))
       : [];
@@ -344,7 +343,7 @@ export async function apply() {
 export async function revokeOauth(clientId) {
   store.error = "";
   try {
-    accept(await withSession(() => call("/ui/settings/oauth/revoke", { clientId })));
+    accept(await settingsApi("/ui/settings/oauth/revoke", { clientId }));
   } catch (err) {
     store.error = err.message;
   }
@@ -358,8 +357,8 @@ export async function restart() {
   store.error = "";
   emit("bar");
   try {
-    await withSession(() => call("/ui/settings/restart", {}));
-    csrf = null;
+    await settingsApi("/ui/settings/restart", {});
+    settingsSession.invalidate(settingsSession.current());
     // The daemon goes away and comes back; wait for health, then reload the snapshot.
     for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 1500));

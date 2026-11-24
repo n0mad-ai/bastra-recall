@@ -4,7 +4,13 @@ import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 
 async function model(fetch?: Function, globals: Record<string, unknown> = {}) {
-  const source = await readFile(new URL("../webui/app/js/sections/settings-model.js", import.meta.url), "utf8");
+  const source = (
+    await Promise.all(
+      ["session-client.js", "sections/settings-model.js"].map((path) =>
+        readFile(new URL(`../webui/app/js/${path}`, import.meta.url), "utf8")
+      )
+    )
+  ).join("\n");
   return runInNewContext(
     source
       .replace(/^import .*;$/gm, "")
@@ -264,6 +270,14 @@ test("web UI settings: unsaved changes block the daemon restart until they are a
   assert.equal(m.store.restarting, false);
   m.discard();
   await m.restart();
-  assert.ok(calls.includes("/ui/settings/restart"), "without pending changes the restart goes through");
+  assert.deepEqual(calls, [
+    "/ui/settings/session",
+    "/ui/settings/restart",
+    "/ui/health",
+    "/ui/settings/session",
+    "/ui/settings",
+    "/ui/assistant-address",
+  ]);
+  assert.equal(m.store.error, "");
   assert.equal(m.store.restarting, false);
 });

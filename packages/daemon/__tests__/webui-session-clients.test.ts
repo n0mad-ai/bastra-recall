@@ -1,21 +1,22 @@
-// Characterization of the three session/CSRF clients of the web UI (#1509), recorded on the
-// code as it is: the shell's task client (js/data.js), the Tasks area client
+// Characterization of the three session/CSRF consumers of the web UI (#1509):
+// the shell's task client (js/data.js), the Tasks area client
 // (js/sections/tasks-api.js) and the settings client (js/sections/settings-model.js).
 // Every request is recorded with method, path, credentials, headers and body, in order, for:
 // the first call without a session, an expired session renewed silently, a second rejection,
 // parallel calls (without a session and during a renewal) and a network error.
-// The clients differ on purpose here; these tests pin each one so that a shared client can only
-// replace them after the owner has decided the session-recovery behaviour.
+// Each consumer keeps its own response policy; parallel calls share a sign-in per cookie (#1675).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 
-type Reply = { status?: number; body?: unknown } | "network";
+type Reply = { status?: number; body?: unknown; wait?: Promise<void> } | "network";
 type Init = { method?: string; credentials?: string; headers?: Record<string, string>; body?: string };
 
 const read = (path: string) => readFile(new URL(`../webui/app/js/${path}`, import.meta.url), "utf8");
 const strip = (src: string) => src.replace(/^import .*;$/gm, "").replace(/^export /gm, "");
+const source = async (...paths: string[]) =>
+  (await Promise.all(["session-client.js", ...paths].map(read))).map(strip).join("\n");
 
 /** A scripted daemon: replies per path in order; a session path without a script opens session n. */
 function server(sessionPath: string, script: Record<string, Reply[]>) {
@@ -31,6 +32,7 @@ function server(sessionPath: string, script: Record<string, Reply[]>) {
     const reply =
       script[path]?.shift() ?? (path === sessionPath ? { body: { csrf: `csrf-${++sessions}` } } : { body: {} });
     if (reply === "network") throw new TypeError("Failed to fetch");
+    if (reply.wait) await reply.wait;
     const status = reply.status ?? 200;
     return { ok: status < 400, status, json: async () => reply.body };
   }
@@ -52,8 +54,7 @@ async function outcome(p: Promise<unknown>) {
 // ── shell task client (data.js taskApi) ──────────────────────────────────────
 async function shellClient(script: Record<string, Reply[]> = {}) {
   const s = server("/ui/tasks/session", script);
-  const [model, data] = await Promise.all([read("sections/tasks-reports-model.js"), read("data.js")]);
-  const m = runInNewContext(strip(model) + "\n" + strip(data) + "\n({ taskApi })", {
+  const m = runInNewContext((await source("sections/tasks-reports-model.js", "data.js")) + "\n({ taskApi })", {
     fetch: s.fetch,
     document: { documentElement: { dataset: { tasksEnabled: "true" } }, hidden: false },
     JSON,
@@ -180,7 +181,7 @@ async function tasksClient(script: Record<string, Reply[]> = {}) {
     "tk.err.offline": "offline text",
     "tk.err.conflict": "conflict text",
   };
-  const m = runInNewContext(strip(await read("sections/tasks-api.js")) + "\n({ api })", {
+  const m = runInNewContext((await source("sections/tasks-api.js")) + "\n({ api })", {
     t: (key: string) => strings[key] ?? key,
     LANG: "en",
     Intl,
@@ -240,7 +241,7 @@ test("tasks area client: a refused session answer is the offline text without a 
   assert.deepEqual(c.log, [TASKS_SESSION]);
 });
 
-test("tasks area client: parallel calls without a session each open their own session", async () => {
+test("tasks area client: parallel calls without a session share one session request", async () => {
   const c = await tasksClient({
     "/ui/tasks/api/task_list": [{ body: { tasks: [] } }],
     "/ui/tasks/api/task_get": [{ body: { id: "t1" } }],
@@ -249,15 +250,10 @@ test("tasks area client: parallel calls without a session each open their own se
     { ok: { tasks: [] } },
     { ok: { id: "t1" } },
   ]);
-  assert.deepEqual(c.log, [
-    TASKS_SESSION,
-    TASKS_SESSION,
-    tasksCall("list", "csrf-2"),
-    tasksCall("get", "csrf-2", '{"id":"t1"}'),
-  ]);
+  assert.deepEqual(c.log, [TASKS_SESSION, tasksCall("list", "csrf-1"), tasksCall("get", "csrf-1", '{"id":"t1"}')]);
 });
 
-test("tasks area client: parallel calls rejected together each renew the session", async () => {
+test("tasks area client: parallel calls rejected together share one renewal", async () => {
   const c = await tasksClient({
     "/ui/tasks/api/task_list": [{}, { status: 401, body: {} }, { body: { tasks: [1] } }],
     "/ui/tasks/api/task_get": [{ status: 401, body: {} }, { body: { id: "t1" } }],
@@ -273,10 +269,27 @@ test("tasks area client: parallel calls rejected together each renew the session
     tasksCall("list", "csrf-1"),
     tasksCall("get", "csrf-1", '{"id":"t1"}'),
     TASKS_SESSION,
-    TASKS_SESSION,
-    tasksCall("list", "csrf-3"),
-    tasksCall("get", "csrf-3", '{"id":"t1"}'),
+    tasksCall("list", "csrf-2"),
+    tasksCall("get", "csrf-2", '{"id":"t1"}'),
   ]);
+});
+
+test("tasks area client: a delayed rejection reuses the session already renewed by a peer", async () => {
+  let release!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const c = await tasksClient({
+    "/ui/tasks/api/task_list": [{}, { status: 401, body: {} }, { body: { tasks: [1] } }],
+    "/ui/tasks/api/task_get": [{ status: 401, body: {}, wait }, { body: { id: "t1" } }],
+  });
+  await c.api("list");
+  const delayed = c.api("get", { id: "t1" });
+  assert.deepEqual(await outcome(c.api("list")), { ok: { tasks: [1] } });
+  release();
+  assert.deepEqual(await outcome(delayed), { ok: { id: "t1" } });
+  assert.equal(c.log.filter((call) => call === TASKS_SESSION).length, 2);
+  assert.equal(c.log.at(-1), tasksCall("get", "csrf-2", '{"id":"t1"}'));
 });
 
 test("tasks area client: a network error is passed on unchanged and not repeated", async () => {
@@ -293,7 +306,7 @@ test("tasks area client: a network error is passed on unchanged and not repeated
 // ── settings client (sections/settings-model.js withSession + call) ─────────
 async function settingsClient(script: Record<string, Reply[]> = {}) {
   const s = server("/ui/settings/session", script);
-  const m = runInNewContext(strip(await read("sections/settings-model.js")) + "\n({ withSession, call })", {
+  const m = runInNewContext((await source("sections/settings-model.js")) + "\n({ settingsApi })", {
     state: {},
     setState: () => {},
     t: (key: string) => key,
@@ -308,7 +321,7 @@ async function settingsClient(script: Record<string, Reply[]> = {}) {
     Map,
     Promise,
   });
-  const get = (path: string) => m.withSession(() => m.call(path)) as Promise<unknown>;
+  const get = (path: string) => m.settingsApi(path) as Promise<unknown>;
   return { get, log: s.log };
 }
 
@@ -379,7 +392,7 @@ test("settings client: a refused or empty session answer is an error without the
   assert.deepEqual(empty.log, [SETTINGS_SESSION]);
 });
 
-test("settings client: parallel calls without a session each open their own session", async () => {
+test("settings client: parallel calls without a session share one session request", async () => {
   const c = await settingsClient({
     "/ui/settings": [{ body: { entries: [] } }],
     "/ui/settings/models": [{ body: { models: [] } }],
@@ -390,13 +403,12 @@ test("settings client: parallel calls without a session each open their own sess
   ]);
   assert.deepEqual(c.log, [
     SETTINGS_SESSION,
-    SETTINGS_SESSION,
-    settingsGet("/ui/settings", "csrf-2"),
-    settingsGet("/ui/settings/models", "csrf-2"),
+    settingsGet("/ui/settings", "csrf-1"),
+    settingsGet("/ui/settings/models", "csrf-1"),
   ]);
 });
 
-test("settings client: parallel calls rejected together each renew the session", async () => {
+test("settings client: parallel calls rejected together share one renewal", async () => {
   const c = await settingsClient({
     "/ui/settings": [{}, { status: 401, body: {} }, { body: { entries: [1] } }],
     "/ui/settings/models": [{ status: 401, body: {} }, { body: { models: [] } }],
@@ -412,9 +424,8 @@ test("settings client: parallel calls rejected together each renew the session",
     settingsGet("/ui/settings", "csrf-1"),
     settingsGet("/ui/settings/models", "csrf-1"),
     SETTINGS_SESSION,
-    SETTINGS_SESSION,
-    settingsGet("/ui/settings", "csrf-3"),
-    settingsGet("/ui/settings/models", "csrf-3"),
+    settingsGet("/ui/settings", "csrf-2"),
+    settingsGet("/ui/settings/models", "csrf-2"),
   ]);
 });
 

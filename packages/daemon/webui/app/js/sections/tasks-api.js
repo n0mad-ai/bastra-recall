@@ -5,42 +5,31 @@
 // Endpoints are the ones the old UI uses (webui/js/tasks.js): a local browser
 // session (POST /ui/tasks/session → csrf) and POST /ui/tasks/api/task_<op>.
 import { t, LANG } from "../i18n.js";
+import { taskSession, taskRequest } from "../session-client.js";
 
-let csrf = null;
-async function session() {
-  const r = await fetch("/ui/tasks/session", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  const b = await r.json().catch(() => ({}));
-  if (!r.ok || typeof b.csrf !== "string")
+function tasksCsrf({ response, body: b = {} }) {
+  if (!response.ok || typeof b.csrf !== "string")
     throw Object.assign(new Error(t("tk.err.offline")), { code: b.code || "offline" });
-  csrf = b.csrf;
+  return b.csrf;
 }
 
 /** POST /ui/tasks/api/task_<name>. Errors carry the daemon code and a readable message. */
-export async function api(name, input = {}, retry = true) {
-  if (!csrf) await session();
-  const r = await fetch(`/ui/tasks/api/task_${name}`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", "x-bastra-task-csrf": csrf },
-    body: JSON.stringify(input),
-  });
-  const b = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    // Daemon restart or expired cookie: renew the local session once.
-    if (retry && (r.status === 401 || r.status === 403 || b.code === "unauthorized")) {
-      csrf = null;
-      return api(name, input, false);
-    }
-    const key = `tk.err.${b.code}`,
-      msg = t(key);
-    throw Object.assign(new Error(msg === key ? t("tk.err.generic") : msg), { code: b.code });
-  }
-  return b;
+export function api(name, input = {}, retry = true) {
+  return taskSession.run(
+    tasksCsrf,
+    async (csrf, { renew }) => {
+      const r = await taskRequest(name, input, csrf);
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (renew && (r.status === 401 || r.status === 403 || b.code === "unauthorized")) return renew();
+        const key = `tk.err.${b.code}`,
+          msg = t(key);
+        throw Object.assign(new Error(msg === key ? t("tk.err.generic") : msg), { code: b.code });
+      }
+      return b;
+    },
+    retry
+  );
 }
 
 /** get → op with the current expected_revision (old UI mutate()). */
