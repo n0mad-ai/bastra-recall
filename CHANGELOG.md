@@ -296,8 +296,8 @@ until a new design replaces it; this name is independent of the product version.
   code-impact blocks, lower-ranked plan hints and draft quotes are left out
   whole when they would cross it. Warnings, the file-size note and rules wired
   to the action are never left out. The draft quote now also counts inside the
-  prompt hook's 10,000 characters. The Bash hook searches for draft quotes
-  only when it flags a command for risk review (#1460).
+  prompt hook's 10,000 characters. Hook draft quotes appear on user prompts
+  and on Bash commands flagged for risk review (#1460).
 - **On Linux, hook state no longer lives in the shared temp directory.** It
   moved to `~/.bastra/hook-state`, so another account on the same machine
   cannot occupy its directory or lock names. Stored state is found as before,

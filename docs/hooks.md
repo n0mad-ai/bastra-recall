@@ -1430,8 +1430,8 @@ session harvest with their redacted situation. Recall searches local drafts
 lexically, with no embedding or cloud request. Matches stay in `draft_hits`
 without scores and in a separate `<draft-hints>` band after memory sections.
 They are unconfirmed user quotes; verify before relying on them. Drafts never
-enter ranked/required hits. Prompt/PreTool display at most one; SessionStart/MCP
-at most two. Notes retain their budget priority. CLI listing does not refresh
+enter ranked/required hits. User prompts and Bash commands flagged for risk review
+can show one quote each. An explicit MCP recall can return two. Notes retain their budget priority. CLI listing does not refresh
 expiry: single-evidence drafts without valid use proof expire after 7 days (unmeasured), other
 open drafts after 30 days and closed tombstones after 180 days.
 
@@ -3391,8 +3391,8 @@ Situation im lokalen Harvest erfasst. Recall sucht rein lexikalisch, ohne Cloud
 oder Embedding-Aufruf. Treffer stehen separat in `draft_hits` ohne Score und im
 Band `<draft-hints>` nach den Notiz-Abschnitten. Unbestätigte Nutzerzitate vor der
 Verwendung prüfen. Sie werden nie gerankte oder verpflichtende Treffer.
-Prompt/PreTool zeigen höchstens einen, SessionStart/MCP höchstens zwei. Notizen
-haben Budgetvorrang. CLI-Listing verlängert keinen Verfall: unangezeigte Entwürfe
+Nutzernachrichten und zur Risikoprüfung markierte Bash-Befehle können je ein Zitat
+anzeigen. Ein ausdrücklicher MCP-Abruf kann zwei liefern. Notizen haben Budgetvorrang. CLI-Listing verlängert keinen Verfall: unangezeigte Entwürfe
 mit einem Beleg 7 Tage (ungemessen), sonst offen 30 Tage, Grabsteine 180 Tage.
 
 Die Suche nutzt nur abgeschlossene Speicher-Snapshots. Entwürfe werden im

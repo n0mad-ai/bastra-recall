@@ -36,7 +36,6 @@ import { buildSoulBlock, readSoulPreference } from "./soul.js";
  * path, telemetry best-effort.
  */
 import type { DraftReviewDelivery } from "./draft-review.js";
-import { appendLaneDrafts } from "./draft-search.js";
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
 import { detectProjectDetailed } from "@bastra-recall/core/topics";
@@ -249,7 +248,7 @@ export async function runSessionLane(
     soulBlock,
     gated
   );
-  const { out, injected } = await finishSessionOutput(start, fetched, ranked, standing, assembled, {
+  const { out, injected } = await finishSessionOutput(standing, assembled, {
     modelNotice,
     protectedParts: [kernel.text, standing.language, soulBlock],
   });
@@ -337,16 +336,13 @@ function openSessionStart(
 }
 
 /**
- * The model notice, the drafts and the context cap, in that order. The model
+ * The model notice and then the context cap. The model
  * notice has its own user-wide day marker; it is claimed only after the
  * response is assembled, with an immediate, silent try-lock. The cap defers
  * only whole optional sections, keeps the kernel/language complete and names
  * every deferred protocol section in the suffix.
  */
 async function finishSessionOutput(
-  start: SessionStart,
-  fetched: FetchedContext,
-  ranked: RankedHits,
   standing: StandingBlocks,
   assembled: AssembledContext,
   opts: { modelNotice: () => Promise<ModelOffer | null>; protectedParts: string[] }
@@ -358,17 +354,6 @@ async function finishSessionOutput(
     injected = String(JSON.parse(out).hookSpecificOutput.additionalContext);
     standing.update += modelNoticeOutput.block;
   }
-  out = await appendLaneDrafts(
-    out,
-    "SessionStart",
-    fetched.queries.map((q) => q.query),
-    start.payload.session_id,
-    ranked.top,
-    2,
-    false,
-    undefined,
-    start.startedAt + HOOK_TIMEOUT_MS
-  );
   if (out === "{}") return { out, injected };
   const parsed = JSON.parse(out);
   const context = parsed.hookSpecificOutput?.additionalContext;
@@ -774,7 +759,7 @@ function renderKernel(
   };
 }
 
-/** The assembled answer before the model notice, the drafts and the cap. */
+/** The assembled answer before the model notice and the cap. */
 interface AssembledContext {
   out: string;
   injected: string;

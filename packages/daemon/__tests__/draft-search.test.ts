@@ -263,7 +263,7 @@ test("lane snapshots: empty store and disabled band keep baseline bytes", () =>
     })
   ));
 
-test("Prompt, SessionStart and Write render after memory sections with lane limits", () =>
+test("#1460 F6: a user prompt gets quotes, SessionStart and Edit do not", () =>
   isolated(async () =>
     fixtureServer(async (base) => {
       await captureDrafts([
@@ -274,7 +274,7 @@ test("Prompt, SessionStart and Write render after memory sections with lane limi
         { hook_event_name: "SessionStart", session_id: "session-band", cwd: "/tmp/projects/fixture" },
         base
       );
-      assert.match(session, /draft-hints/);
+      assert.doesNotMatch(session, /draft-hints/);
       const prompt = await runPromptLane(
         {
           hook_event_name: "UserPromptSubmit",
@@ -301,7 +301,7 @@ test("Prompt, SessionStart and Write render after memory sections with lane limi
         },
         base
       );
-      assert.match(write, /draft-hints/);
+      assert.doesNotMatch(write, /draft-hints/);
     })
   ));
 
