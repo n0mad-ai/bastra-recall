@@ -9,6 +9,8 @@ export default defineConfig([
     clean: true,
     minify: true,
     nodeProtocol: true,
+    // The Deno hook embeds the Claude statusline bundle with npm resolution disabled.
+    deps: { alwaysBundle: ["@bastra-recall/core/runtime-settings"] },
   },
   {
     entry: ["src/browser.ts"],
