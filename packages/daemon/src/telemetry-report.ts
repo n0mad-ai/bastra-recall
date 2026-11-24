@@ -63,7 +63,7 @@ export {
   type SessionStartSection,
 } from "./telemetry-report-tokens.js";
 
-export const TELEMETRY_REPORT_VERSION = 1;
+const TELEMETRY_REPORT_VERSION = 1;
 
 /** Read flags for a telemetry log: a FIFO or device planted under a log name
  * must not wait forever (contributor audit). Windows has neither flag. */
@@ -188,7 +188,7 @@ export async function readEventWindow(
 
 // ─── Latenz ──────────────────────────────────────────────────────
 
-export interface LatencyRow {
+interface LatencyRow {
   lane: string;
   n: number;
   median: number;

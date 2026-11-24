@@ -31,7 +31,7 @@ type Row = Record<string, unknown>;
 
 /** The Claude Code session a row belongs to: `caller_session` where the
  *  forwarder sent one, `session_id` otherwise. */
-export function joinSessionKey(e: Row): string | null {
+function joinSessionKey(e: Row): string | null {
   if (typeof e.caller_session === "string" && e.caller_session) return e.caller_session;
   if (typeof e.session_id === "string" && e.session_id) return e.session_id;
   return null;

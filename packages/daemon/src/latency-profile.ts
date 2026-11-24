@@ -189,9 +189,9 @@ const FILE_VERSION = 3;
  * SessionStart p50 40 Zeichen (`xs`), Prompt-Lane p50 3671 (`l`). Ein Band, das
  * beide in denselben Eimer legte, würde für keine von beiden etwas aussagen.
  */
-export type LengthBucket = "xs" | "s" | "m" | "l";
+type LengthBucket = "xs" | "s" | "m" | "l";
 
-export function lengthBucket(chars: number): LengthBucket {
+function lengthBucket(chars: number): LengthBucket {
   if (!Number.isFinite(chars) || chars < 256) return "xs";
   if (chars < 1024) return "s";
   if (chars < 4096) return "m";
@@ -205,15 +205,15 @@ export function lengthBucket(chars: number): LengthBucket {
  * 19 MCP-Recalls am 20.08. einarmig. Eine Prognose, die den Unterschied nicht
  * kennt, ist für die MCP-Lane systematisch zu kurz.
  */
-export type ConcurrencyBucket = "1" | "2-3" | "4+";
+type ConcurrencyBucket = "1" | "2-3" | "4+";
 
-export function concurrencyBucket(inFlight: number): ConcurrencyBucket {
+function concurrencyBucket(inFlight: number): ConcurrencyBucket {
   if (!Number.isFinite(inFlight) || inFlight <= 1) return "1";
   if (inFlight <= 3) return "2-3";
   return "4+";
 }
 
-export function bucketKey(residency: Residency, chars: number, inFlight: number): string {
+function bucketKey(residency: Residency, chars: number, inFlight: number): string {
   return `${residency}|${lengthBucket(chars)}|${concurrencyBucket(inFlight)}`;
 }
 
@@ -267,7 +267,7 @@ export function bucketKey(residency: Residency, chars: number, inFlight: number)
  */
 export type CapReason = "profile-empty" | "lane-wall-clock" | "lane-too-short" | "floor" | "max-deadline" | "none";
 
-export interface DerivedDeadline {
+interface DerivedDeadline {
   /** Die Zahl, die gegolten HÄTTE. Ändert in diesem Auftrag nichts. `0` heißt
    *  NICHT WEITER WARTEN — der Arm läuft, es wird nur nichts mehr auf ihn
    *  gewartet (#499). Siehe `lane-too-short` in {@link CapReason}. */
@@ -286,7 +286,7 @@ export interface DerivedDeadline {
   bucket: string;
 }
 
-export interface DeriveInput {
+interface DeriveInput {
   /** `provider:model`. */
   key: string;
   residency: Residency;
@@ -307,7 +307,7 @@ export interface DeriveInput {
   laneRemainingMs: number;
 }
 
-export interface RecordInput {
+interface RecordInput {
   key: string;
   /**
    * Die Residenz, unter der diese Stichprobe ABGELEGT wird — und das ist eine
@@ -378,7 +378,7 @@ export interface LatencyProfileOptions {
   now?: () => number;
 }
 
-export function latencyProfilePath(): string {
+function latencyProfilePath(): string {
   return join(bastraDataDir(), "latency-profile.json");
 }
 

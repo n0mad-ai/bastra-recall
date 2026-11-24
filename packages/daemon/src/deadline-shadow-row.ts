@@ -50,7 +50,7 @@ export interface VectorArmReport {
  * macht überhaupt keinen Providercall, seine Dauer ist also gar keine
  * Providerdauer.
  */
-export function isLatencySample(report: VectorArmReport | null | undefined): boolean {
+function isLatencySample(report: VectorArmReport | null | undefined): boolean {
   return report?.outcome === "hits";
 }
 

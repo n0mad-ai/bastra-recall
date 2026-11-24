@@ -27,7 +27,7 @@ import { foldUsageEvent } from "./usage-fold.js";
 import { ensureVaultDir } from "@bastra-recall/core";
 
 /** Engagement kinds: someone did something with the memory. These count. */
-export type UsageKind = "surfaced" | "loaded" | "acted_on";
+type UsageKind = "surfaced" | "loaded" | "acted_on";
 
 /**
  * The measurement kind (#160): we checked whether this memory still earns its
@@ -40,7 +40,7 @@ export type UsageKind = "surfaced" | "loaded" | "acted_on";
  */
 export const MEASUREMENT_KIND = "sampled";
 
-export type UsageEventKind = UsageKind | typeof MEASUREMENT_KIND;
+type UsageEventKind = UsageKind | typeof MEASUREMENT_KIND;
 
 export interface UsageEvent {
   id: string;
@@ -300,7 +300,7 @@ const COMPACTING_FILE = "events.compacting.jsonl";
 const AGGREGATE_FILE = "aggregate.json";
 
 /** Compaction kicks in above this many pending event lines. */
-export const COMPACT_THRESHOLD = 2000;
+const COMPACT_THRESHOLD = 2000;
 
 function usageDir(vaultRoot: string): string {
   return join(vaultRoot, USAGE_DIR);

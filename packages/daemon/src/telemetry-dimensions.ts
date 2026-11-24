@@ -131,8 +131,8 @@ export interface TelemetryDimensions {
   registration_version?: number;
 }
 
-export const TELEMETRY_AGENTS = ["main", "subagent"] as const;
-export type TelemetryAgent = (typeof TELEMETRY_AGENTS)[number];
+const TELEMETRY_AGENTS = ["main", "subagent"] as const;
+type TelemetryAgent = (typeof TELEMETRY_AGENTS)[number];
 const AGENTS = new Set<string>(TELEMETRY_AGENTS);
 
 /** Kein laufendes Experiment. */
@@ -240,7 +240,7 @@ export function assignArm(experimentSession: string | null, config: ExperimentCo
  * Spalte. Hier steht die Liste einmal; {@link dimensionHints} und
  * {@link splitHints} lesen nur sie.
  */
-export const DIMENSION_HINT_KEYS = ["client", "hook_source", "agent"] as const;
+const DIMENSION_HINT_KEYS = ["client", "hook_source", "agent"] as const;
 export type DimensionHints = { [K in (typeof DIMENSION_HINT_KEYS)[number]]?: unknown };
 
 /** Die Hinweise aus einem Request-Body (oder Options-Objekt), unverändert —

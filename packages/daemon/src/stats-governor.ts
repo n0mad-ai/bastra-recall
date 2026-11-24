@@ -31,7 +31,7 @@ const INJECTING_KINDS = new Set([
   "todo_hook_call",
 ]);
 
-export interface GovernorBudgetRow {
+interface GovernorBudgetRow {
   budget: number;
   /** Sessions, in denen das Budget irgendwann gerissen wäre. */
   sessionsAffected: number;
@@ -215,7 +215,7 @@ export function shadowAcceptance(
 
 // ─── no_answer-Divergenzen (§18.2) ───────────────────────────────
 
-export interface DivergenceSignature {
+interface DivergenceSignature {
   /** Was Legacy getan hätte: `required` | `optional` | `below_floor`. */
   legacyBand: string;
   /** Was der Entscheid sagt. */
@@ -228,7 +228,7 @@ export interface DivergenceSignature {
   temporalStatus: string;
 }
 
-export interface DivergenceGroup {
+interface DivergenceGroup {
   signature: DivergenceSignature;
   /** Wie oft die Signatur auftrat — Ereignisse, nicht Memories. */
   events: number;
