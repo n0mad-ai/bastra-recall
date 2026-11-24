@@ -11,6 +11,7 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
+- Daemon background jobs log their name and wall-clock duration when a run takes at least one second. Draft shadow skips opening drafts or its vector cache when no eligible local embedding provider is configured. Thanks @zzallirog for the report and measurements (#1683).
 - Reports can be marked outdated (`task_report_mark` `outdated`, a switch in the Reports reader): an outdated report shows a muted Outdated tag, leaves the unread count, sorts last and no longer puts its parent into Question (#1678).
 - Add a mandatory post-build Knip check with a frozen per-finding budget; new or increased unused-code findings fail CI (#1534).
 - The Knip workflow check rejects job-level conditions even when they follow

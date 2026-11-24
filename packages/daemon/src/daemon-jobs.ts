@@ -78,6 +78,18 @@ export interface BackgroundJobDeps {
   power?: PowerMonitor;
 }
 
+function timedJob(name: string, run: () => void | Promise<unknown>): () => Promise<void> {
+  return async () => {
+    const started = performance.now();
+    try {
+      await run();
+    } finally {
+      const elapsed = performance.now() - started;
+      if (elapsed >= 1_000) console.error(`[bastra-recall] slow background job: ${name} (${Math.round(elapsed)} ms)`);
+    }
+  };
+}
+
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
   if (tasksEnabled() && deps.taskAccountAllowed) startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
   startVaultReconcile(deps.vault);
@@ -197,39 +209,42 @@ function startSessionHarvest(deps: BackgroundJobDeps): void {
   if (draftHintsEnabled()) startDraftVocabulary(deps.vault);
   if (draftHintsEnabled() || !envOff("BASTRA_SAVE_NOTICE")) startDraftSearchCache();
   let running = false;
-  setInterval(() => {
-    if (running || !sessionHarvestEnabled()) return;
-    running = true;
-    // The meaning check is background model work: on battery (saver on) it
-    // gives no verdict, so nothing is promoted until AC is back (#632).
-    void resolveGenerationModel()
-      .then((model) =>
-        runSessionHarvestTick({
-          ...deps,
-          draftJudge: deps.power?.saving() ? null : localDraftJudge(deps.ollama, model),
+  setInterval(
+    timedJob("session harvest", () => {
+      if (running || !sessionHarvestEnabled()) return;
+      running = true;
+      // The meaning check is background model work: on battery (saver on) it
+      // gives no verdict, so nothing is promoted until AC is back (#632).
+      return resolveGenerationModel()
+        .then((model) =>
+          runSessionHarvestTick({
+            ...deps,
+            draftJudge: deps.power?.saving() ? null : localDraftJudge(deps.ollama, model),
+          })
+        )
+        .then((result) => {
+          if (result && result.harvest.harvested > 0) {
+            const r = result.harvest;
+            console.error(
+              `[bastra-recall] session harvest: ${r.harvested} session(s), ${result.relayed} candidate(s) relayed, ${r.stored} already stored`
+            );
+          }
+          if (result && (result.shadow.embedded > 0 || result.shadow.errors > 0)) {
+            const r = result.shadow;
+            console.error(
+              `[bastra-recall] draft shadow: ${r.embedded} vector(s), ${r.pairs} pair(s), ${r.vaultMatches} note comparison(s), ${r.errors} error(s)`
+            );
+          }
         })
-      )
-      .then((result) => {
-        if (result && result.harvest.harvested > 0) {
-          const r = result.harvest;
-          console.error(
-            `[bastra-recall] session harvest: ${r.harvested} session(s), ${result.relayed} candidate(s) relayed, ${r.stored} already stored`
-          );
-        }
-        if (result && (result.shadow.embedded > 0 || result.shadow.errors > 0)) {
-          const r = result.shadow;
-          console.error(
-            `[bastra-recall] draft shadow: ${r.embedded} vector(s), ${r.pairs} pair(s), ${r.vaultMatches} note comparison(s), ${r.errors} error(s)`
-          );
-        }
-      })
-      .catch((err) =>
-        console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`)
-      )
-      .finally(() => {
-        running = false;
-      });
-  }, 5 * 60_000).unref();
+        .catch((err) =>
+          console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`)
+        )
+        .finally(() => {
+          running = false;
+        });
+    }),
+    5 * 60_000
+  ).unref();
 }
 
 // Code awareness (#574, #581): preload the graphs of enabled repositories,
@@ -274,9 +289,10 @@ function startCodeGraph(deps: BackgroundJobDeps): void {
 export function startVaultReconcile(vault: Vault): NodeJS.Timeout | null {
   const reconcileMs = envInt("BASTRA_VAULT_RECONCILE_MS", 60_000);
   if (reconcileMs <= 0) return null;
-  const timer = setInterval(() => {
-    void vault.reconcile().catch(() => {});
-  }, reconcileMs);
+  const timer = setInterval(
+    timedJob("vault reconcile", () => vault.reconcile().catch(() => {})),
+    reconcileMs
+  );
   timer.unref();
   return timer;
 }
@@ -290,8 +306,9 @@ export function startVaultReconcile(vault: Vault): NodeJS.Timeout | null {
 // orphans existed. One ps table every 15min is noise; a supervisor that
 // only supervises at boot is not one.
 function startForwarderSweep(): void {
-  setTimeout(() => reapStaleForwarderProcesses(), 5_000).unref();
-  setInterval(() => reapStaleForwarderProcesses(), 15 * 60_000).unref();
+  const sweep = timedJob("forwarder sweep", reapStaleForwarderProcesses);
+  setTimeout(sweep, 5_000).unref();
+  setInterval(sweep, 15 * 60_000).unref();
 }
 
 // #353: Teacher 1 (in-band mint) runs on its own trigger — it needs no
@@ -317,8 +334,14 @@ function startMintSchedule(deps: BackgroundJobDeps): void {
       console.error(`[bastra-recall] in-band mint failed (non-fatal): ${err}`);
     }
   };
-  setTimeout(() => void runScheduledMint("daemon-boot"), 2 * 60_000).unref();
-  setInterval(() => void runScheduledMint("daemon-interval"), 24 * 60 * 60_000).unref();
+  setTimeout(
+    timedJob("in-band mint (daemon-boot)", () => runScheduledMint("daemon-boot")),
+    2 * 60_000
+  ).unref();
+  setInterval(
+    timedJob("in-band mint (daemon-interval)", () => runScheduledMint("daemon-interval")),
+    24 * 60 * 60_000
+  ).unref();
 }
 
 // Idle watchdog — terminate after BASTRA_DAEMON_IDLE_SHUTDOWN_MS without
@@ -342,12 +365,15 @@ function startIdleWatchdog(deps: BackgroundJobDeps): void {
   const tick = Math.min(idleShutdownMs, 60_000);
   const idleLabel =
     idleShutdownMs >= 60_000 ? `${Math.round(idleShutdownMs / 60000)}min` : `${Math.round(idleShutdownMs / 1000)}s`;
-  setInterval(() => {
-    if (Date.now() - deps.getLastActivity() >= idleShutdownMs) {
-      console.error(`[bastra-recall] idle for ${idleLabel} — self-terminating (respawns on next recall)`);
-      void deps.shutdown();
-    }
-  }, tick).unref();
+  setInterval(
+    timedJob("idle watchdog", async () => {
+      if (Date.now() - deps.getLastActivity() >= idleShutdownMs) {
+        console.error(`[bastra-recall] idle for ${idleLabel} — self-terminating (respawns on next recall)`);
+        await deps.shutdown();
+      }
+    }),
+    tick
+  ).unref();
 }
 
 // #81: Ein warmer LaunchAgent-Daemon restartet nie von selbst — ein
@@ -365,15 +391,18 @@ export function startStagedRestart(
   // Leave its warm process running until explicit restart or the next login;
   // launchd KeepAlive retains its existing clean idle-restart behavior.
   if (!deps.launchAgentOwned || platform === "win32") return;
-  setInterval(() => {
-    if (deps.isStagedRestartPending() && Date.now() - deps.getLastActivity() >= 15 * 60 * 1000) {
-      deps.clearStagedRestartPending();
-      console.error(
-        "[bastra-recall] staged update applied — idle restart to load the new code (#81); launchd respawns"
-      );
-      void deps.shutdown();
-    }
-  }, 60_000).unref();
+  setInterval(
+    timedJob("staged restart", async () => {
+      if (deps.isStagedRestartPending() && Date.now() - deps.getLastActivity() >= 15 * 60 * 1000) {
+        deps.clearStagedRestartPending();
+        console.error(
+          "[bastra-recall] staged update applied — idle restart to load the new code (#81); launchd respawns"
+        );
+        await deps.shutdown();
+      }
+    }),
+    60_000
+  ).unref();
 }
 
 // Energie (#78): Embedding-Modell nach Embed-Idle aus dem Ollama-RAM
@@ -387,33 +416,36 @@ function startOllamaUnload(deps: BackgroundJobDeps): void {
   if (!ollama || ollamaUnloadMs <= 0) return;
   const bootAt = Date.now();
   let lastUnloadAt = 0;
-  setInterval(() => {
-    // Letzter erfolgreicher Provider-Call (search ODER Backfill-Batch);
-    // vor dem ersten Embed zählt der Boot (deckt das Prewarm-Load ab).
-    const lastUse = deps.embIdx()?.runtimeHealth().lastOkAt ?? bootAt;
-    // #632: on battery the model a recall loaded leaves memory soon after —
-    // the short keep-alive, without touching the provider's per-request value.
-    const unloadAfterMs = deps.power?.saving() ? Math.min(BATTERY_UNLOAD_MS, ollamaUnloadMs) : ollamaUnloadMs;
-    if (lastUse > lastUnloadAt && Date.now() - lastUse >= unloadAfterMs) {
-      lastUnloadAt = Date.now();
-      void unloadOllamaModel(ollama.baseURL, ollama.model).then((ok) => {
-        // #493: Grundwahrheit vor Schätzung — nur ein geglückter Unload sagt,
-        // dass das Modell wirklich draußen ist.
-        if (ok) deps.onModelUnloaded?.();
-        return deps.telemetry.logOllamaLifecycle({
-          action: "unload",
-          model: ollama.model,
-          ok,
-          // #495: Beim Unload gibt es nur zwei Ausgänge — er lief oder er
-          // scheiterte. Das Feld steht trotzdem, damit ein Leser nicht je
-          // nach `action` die Semantik wechseln muss.
-          outcome: ok ? "fired" : "failed",
-          last_embed_age_ms: Date.now() - lastUse,
-          embed_calls_since_boot: deps.embIdx()?.providerCallCount() ?? null,
+  setInterval(
+    timedJob("Ollama unload", async () => {
+      // Letzter erfolgreicher Provider-Call (search ODER Backfill-Batch);
+      // vor dem ersten Embed zählt der Boot (deckt das Prewarm-Load ab).
+      const lastUse = deps.embIdx()?.runtimeHealth().lastOkAt ?? bootAt;
+      // #632: on battery the model a recall loaded leaves memory soon after —
+      // the short keep-alive, without touching the provider's per-request value.
+      const unloadAfterMs = deps.power?.saving() ? Math.min(BATTERY_UNLOAD_MS, ollamaUnloadMs) : ollamaUnloadMs;
+      if (lastUse > lastUnloadAt && Date.now() - lastUse >= unloadAfterMs) {
+        lastUnloadAt = Date.now();
+        await unloadOllamaModel(ollama.baseURL, ollama.model).then((ok) => {
+          // #493: Grundwahrheit vor Schätzung — nur ein geglückter Unload sagt,
+          // dass das Modell wirklich draußen ist.
+          if (ok) deps.onModelUnloaded?.();
+          return deps.telemetry.logOllamaLifecycle({
+            action: "unload",
+            model: ollama.model,
+            ok,
+            // #495: Beim Unload gibt es nur zwei Ausgänge — er lief oder er
+            // scheiterte. Das Feld steht trotzdem, damit ein Leser nicht je
+            // nach `action` die Semantik wechseln muss.
+            outcome: ok ? "fired" : "failed",
+            last_embed_age_ms: Date.now() - lastUse,
+            embed_calls_since_boot: deps.embIdx()?.providerCallCount() ?? null,
+          });
         });
-      });
-    }
-  }, 60_000).unref();
+      }
+    }),
+    60_000
+  ).unref();
 }
 
 // Curator phase A (#155): 15-min-Tick, das echte Gate (7d-Intervall +
@@ -423,34 +455,37 @@ function startOllamaUnload(deps: BackgroundJobDeps): void {
 // eine Session sie wach hält. Acting path (dryRun:false) — der manuelle
 // POST /curator/run bleibt default-dry.
 function startCuratorTick(deps: BackgroundJobDeps): void {
-  setInterval(() => {
-    void runCuratorPass(
-      { vaultRoot: deps.vaultRoot, vault: deps.vault, setDemotions: (ids) => deps.search.setDemotions(ids) },
-      { lastActivityMs: deps.getLastActivity(), dryRun: false }
-    )
-      .then((r) => {
-        if (r.error) {
-          console.error(`[bastra-recall] curator pass failed (non-fatal): ${r.error}`);
-        } else if (r.ran) {
-          console.error(
-            `[bastra-recall] curator pass (${r.mode}): ${r.demoted.length} demoted, ${r.reactivated.length} reactivated, ${r.pendingObservation.length} watching, ${r.staleTotal} stale total`
-          );
-        }
-      })
-      .catch((err) => {
-        // Belt + suspenders: runCuratorPass is never-throw by contract, but a
-        // background tick must never be able to kill the daemon regardless.
-        console.error(`[bastra-recall] curator tick error (non-fatal): ${(err as Error)?.message ?? err}`);
-      });
-  }, 15 * 60_000).unref();
+  setInterval(
+    timedJob("curator", () =>
+      runCuratorPass(
+        { vaultRoot: deps.vaultRoot, vault: deps.vault, setDemotions: (ids) => deps.search.setDemotions(ids) },
+        { lastActivityMs: deps.getLastActivity(), dryRun: false }
+      )
+        .then((r) => {
+          if (r.error) {
+            console.error(`[bastra-recall] curator pass failed (non-fatal): ${r.error}`);
+          } else if (r.ran) {
+            console.error(
+              `[bastra-recall] curator pass (${r.mode}): ${r.demoted.length} demoted, ${r.reactivated.length} reactivated, ${r.pendingObservation.length} watching, ${r.staleTotal} stale total`
+            );
+          }
+        })
+        .catch((err) => {
+          // Belt + suspenders: runCuratorPass is never-throw by contract, but a
+          // background tick must never be able to kill the daemon regardless.
+          console.error(`[bastra-recall] curator tick error (non-fatal): ${(err as Error)?.message ?? err}`);
+        })
+    ),
+    15 * 60_000
+  ).unref();
 }
 
 // Log retention (#23): the event logs are the only thing here that grows
 // without bound. Once at startup (a forwarder-spawned daemon may not live
 // long enough for a timer to fire), then daily for long-lived ones.
 function startLogRetention(): void {
-  const prune = (): void => {
-    void pruneEventLogs()
+  const prune = timedJob("log retention", () =>
+    pruneEventLogs()
       .then((r) => {
         if (r.removed.length > 0) {
           const mb = (r.freedBytes / 1024 / 1024).toFixed(1);
@@ -461,9 +496,9 @@ function startLogRetention(): void {
       })
       .catch((err) => {
         console.error(`[bastra-recall] log retention failed (non-fatal): ${(err as Error)?.message ?? err}`);
-      });
-  };
-  prune();
+      })
+  );
+  void prune();
   setInterval(prune, 24 * 60 * 60_000).unref();
 }
 
@@ -473,9 +508,10 @@ export function startProactiveTaskJob(
   cadence = 60000
 ): { runtime: TaskRuntime; stop: () => void } {
   const runtime = startTaskRuntime(ctx);
-  const timer = setInterval(() => {
-    void runtime.tick();
-  }, cadence);
+  const timer = setInterval(
+    timedJob("proactive tasks", () => runtime.tick()),
+    cadence
+  );
   timer.unref();
   runtime.onStop(() => clearInterval(timer));
   return { runtime, stop: () => runtime.stop() };

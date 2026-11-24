@@ -241,7 +241,7 @@ test("B3 effective cloud/none choices cannot send draft text or create vector fi
     }
   }));
 
-test("B3 refuses remote Ollama even with opt-in and prunes expired vectors without an embedding call", () =>
+test("B3 refuses remote Ollama even with opt-in and prunes expired vectors on the next local pass", () =>
   isolated(async () => {
     const d = draft(firstQuote, "expiry");
     await upsertDraft(d, now);
@@ -261,12 +261,27 @@ test("B3 refuses remote Ollama even with opt-in and prunes expired vectors witho
     }
     await runDraftShadow({ provider, ollama: local, now });
     await expireDrafts({ now: now + 7 * 24 * 60 * 60 * 1000 });
-    await runDraftShadow({ provider: null, ollama: null, now: now + 7 * 24 * 60 * 60 * 1000 });
+    await runDraftShadow({ provider, ollama: local, now: now + 7 * 24 * 60 * 60 * 1000 });
     await assert.rejects(
       Promise.resolve().then(() => readAppRecord("draft-vectors", draftVectorsPath())),
       { code: "ENOENT" }
     );
     assert.equal(provider.calls.length, 1);
+  }));
+
+test("disabled draft shadow leaves existing legacy draft and vector files unopened", () =>
+  isolated(async (dir) => {
+    const drafts = JSON.stringify({ version: 1, rows: [draft(firstQuote, "disabled")] });
+    const vectors = JSON.stringify({ version: 1, provider: "ollama-fixture", dim: 2, entries: {} });
+    const draftPath = join(dir, "drafts.json");
+    const vectorPath = draftVectorsPath();
+    await writeFile(draftPath, drafts);
+    await writeFile(vectorPath, vectors);
+    const result = await runDraftShadow({ provider: null, ollama: null, now });
+    assert.deepEqual(result, { enabled: false, embedded: 0, pairs: 0, vaultMatches: 0, errors: 0 });
+    assert.equal(await readFile(draftPath, "utf8"), drafts);
+    assert.equal(await readFile(vectorPath, "utf8"), vectors);
+    await assert.rejects(stat(appRecordDatabasePath(vectorPath)), { code: "ENOENT" });
   }));
 
 test("B3 failed local provider does not interrupt the actual harvest tick", () =>

@@ -249,15 +249,12 @@ async function writeEvents(events: DraftShadowEvent[]): Promise<void> {
 export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftShadowResult> {
   const result: DraftShadowResult = { enabled: false, embedded: 0, pairs: 0, vaultMatches: 0, errors: 0 };
   const provider = localDraftProvider(opts);
-  const path = draftVectorsPath();
+  // The cache is disposable. Prune stale entries on the next local pass;
+  // explicit draft purge clears the cache independently of this job.
   if (!provider) {
-    try {
-      readAppRecord("draft-vectors", path, JSON.parse);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") result.errors++;
-      return result;
-    }
+    return result;
   }
+  const path = draftVectorsPath();
   try {
     return await withPathLock(
       path,
@@ -275,10 +272,6 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
               dirty = true;
             }
           }
-        if (!provider) {
-          if (cache && dirty) await persistCache(path, cache, opts.now);
-          return result;
-        }
         result.enabled = true;
         if (!cache || cache.provider !== provider.id || cache.dim !== provider.dim) {
           cache = {

@@ -224,7 +224,7 @@
     "[\"packages/daemon/src/draft-search.ts\",\"[\\\"function:prepareDraftSearch\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 28,
     "[\"packages/daemon/src/draft-search.ts\",\"[\\\"function:prepareDraftSearch\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"max-depth\"]": 5,
     "[\"packages/daemon/src/draft-shadow.ts\",\"[\\\"function:loadCache\\\"]\",\"complexity\"]": 22,
-    "[\"packages/daemon/src/draft-shadow.ts\",\"[\\\"function:runDraftShadow\\\",\\\"block#2\\\",\\\"call:withPathLock:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 45,
+    "[\"packages/daemon/src/draft-shadow.ts\",\"[\\\"function:runDraftShadow\\\",\\\"block#2\\\",\\\"call:withPathLock:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 42,
     "[\"packages/daemon/src/draft-stats.ts\",\"[\\\"function:aggregateDrafts\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/src/draft-store.ts\",\"[\\\"function:load\\\"]\",\"complexity\"]": 25,
     "[\"packages/daemon/src/edit-memory-handler.ts\",\"[\\\"function:editMemoryHandler\\\",\\\"variable:outcome\\\",\\\"call:mutateMemoryFile:#1\\\",\\\"property:frontmatter\\\",\\\"function:ArrowFunctionExpression#1\\\"]\",\"complexity\"]": 50,
