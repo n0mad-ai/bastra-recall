@@ -2,15 +2,17 @@
  * store already holds plus the follow-up link (`follow_up_of`) a report may carry:
  * - in_progress: the owner has notes not handed over yet (drafts);
  * - handed: every note is handed over, but an agent has not closed all of them yet;
- * - question: a follow-up report asks the owner something ([? … | …] answer options) and that
- *   follow-up is not done itself; `follow_up` names it;
+ * - question: a report in the chain of follow-ups below this one (follow-ups of follow-ups too,
+ *   #1657) asks the owner something ([? … | …] answer options) and is not done itself; `follow_up`
+ *   names the report that waits for the answer;
  * - done: there are notes and an agent closed every one (task_report_note_done);
  * - new: unread, no notes; read: read, no notes;
  * - outdated (#1678): marked outdated by the owner or an agent; wins over every other state, and an
  *   outdated follow-up asks nothing any more.
- * Only the notes the caller may see count, so an agent never learns of the owner's drafts. A
- * follow-up's own state is taken from its notes alone (no second follow-up step), so a chain of
- * follow-ups can never loop. Questions are recognised by the fixed syntax only, never by words. */
+ * Only the notes the caller may see count, so an agent never learns of the owner's drafts. Whether
+ * a follow-up still asks is taken from its notes; the walk down the chain visits every report once,
+ * so even a circle in a damaged store ends. An outdated follow-up ends its branch. Questions are
+ * recognised by the fixed syntax only, never by words. */
 
 // One scanner for the reader and this status (#1656): the web reader's own module, which the daemon
 // finds next to its code as it finds the rest of the web UI (webui.ts).
@@ -93,17 +95,33 @@ function notesStatus(notes: readonly StatusNote[]): ReportStatus | null {
   return notes.length > 0 ? "done" : null;
 }
 
-/** The newest follow-up of `report` that still waits for the owner's answer. */
+/** One parse per report object: a list asks for every report, and a chain is walked once per report. */
+const asksCache = new WeakMap<StatusReport, boolean>();
+function asks(report: StatusReport): boolean {
+  let value = asksCache.get(report);
+  if (value === undefined) asksCache.set(report, (value = asksOwner(report.body)));
+  return value;
+}
+
+/** The follow-up below `report` that still waits for the owner's answer (#1657): the newest direct
+ * one first, otherwise the first found further down the chain, newest branch first. */
 function openQuestion<R extends StatusReport>(
   report: StatusReport,
   reports: readonly R[],
-  notesOf: (r: R) => readonly StatusNote[]
+  notesOf: (r: R) => readonly StatusNote[],
+  seen = new Set([report.id])
 ): R | undefined {
-  return reports
-    .filter((r) => r.follow_up_of === report.id && r.id !== report.id && r.outdated_at === undefined)
-    .filter((r) => asksOwner(r.body))
-    .filter((r) => notesStatus(notesOf(r)) !== "done")
-    .sort((a, b) => b.created_at - a.created_at)[0];
+  const next = reports
+    .filter((r) => r.follow_up_of === report.id && !seen.has(r.id) && r.outdated_at === undefined)
+    .sort((a, b) => b.created_at - a.created_at);
+  for (const r of next) seen.add(r.id);
+  const open = next.find((r) => asks(r) && notesStatus(notesOf(r)) !== "done");
+  if (open) return open;
+  for (const r of next) {
+    const deeper = openQuestion(r, reports, notesOf, seen);
+    if (deeper) return deeper;
+  }
+  return undefined;
 }
 
 /** `status` for one report among the reports the caller sees, plus `follow_up` for a question. */

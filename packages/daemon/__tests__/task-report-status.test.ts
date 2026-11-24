@@ -77,6 +77,43 @@ test("status: every derivation rule", () => {
     );
 });
 
+test("#1657: a question stays until the whole chain of follow-ups is done", () => {
+  // A ← B (asked, answered and signed off) ← C (asks, open): the issue's trace.
+  const a = base({ notes: [done] });
+  const b = followUp({ id: "b", title: "B", notes: [done] });
+  const c = followUp({ id: "c", title: "C", created_at: 3, follow_up_of: "b" });
+  const status = (r: R, all: R[]) => reportStatus(r, all, (x) => x.notes);
+  assert.deepEqual(status(a, [a, b, c]), { status: "question", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(b, [a, b, c]), { status: "question", follow_up: { id: "c", title: "C" } });
+  const cDone = { ...c, notes: [done] };
+  assert.deepEqual(status(a, [a, b, cDone]), { status: "done" }, "the chain is done");
+  // A link without a question still carries the chain: A ← B (info only) ← C (asks).
+  const info = followUp({ id: "b", title: "B", body: "Just info." });
+  assert.deepEqual(status(a, [a, info, c]), { status: "question", follow_up: { id: "c", title: "C" } });
+  // An outdated report ends its branch.
+  assert.deepEqual(status(a, [a, { ...b, outdated_at: 9 }, c]), { status: "done" });
+  // An open direct follow-up is named before one further down.
+  const open = followUp({ id: "d", title: "D", created_at: 1 });
+  assert.deepEqual(status(a, [a, b, c, open]), { status: "question", follow_up: { id: "d", title: "D" } });
+  // Three steps down.
+  const e = followUp({ id: "e", title: "E", created_at: 4, follow_up_of: "c" });
+  assert.deepEqual(status(a, [a, b, cDone, e]), { status: "question", follow_up: { id: "e", title: "E" } });
+});
+
+test("#1657: a circle in a damaged store ends", () => {
+  const x = base({ id: "x", follow_up_of: "y", notes: [done] });
+  const y = followUp({ id: "y", title: "Y", follow_up_of: "x", notes: [done] });
+  const self = base({ id: "s", follow_up_of: "s", body: ASK });
+  assert.deepEqual(
+    reportStatus(x, [x, y], (r) => r.notes),
+    { status: "done" }
+  );
+  assert.deepEqual(
+    reportStatus(self, [self], (r) => r.notes),
+    { status: "new" }
+  );
+});
+
 test("#1678: outdated wins over every other state; an outdated follow-up asks nothing", () => {
   const old = { outdated_at: 9 };
   const rows: [string, R, R[], ReturnType<typeof reportStatus>][] = [
