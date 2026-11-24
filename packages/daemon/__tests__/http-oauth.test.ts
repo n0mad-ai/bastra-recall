@@ -11,15 +11,18 @@ import { readAppRecord, writeAppRecord, appRecordDatabasePath } from "../src/app
  * path where the loopback exemption does not apply and the public origin is
  * https.
  *
- * Runner: `tsx --test __tests__/http-oauth.test.ts`
+ * From the repository root: `node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/http-oauth.test.ts`
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { request } from "node:http";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
@@ -176,9 +179,8 @@ interface Tokens {
   token_type: string;
 }
 
-/** The whole login: register, authorize, approve, exchange. */
-async function login(port: number): Promise<{ clientId: string; tokens: Tokens }> {
-  const clientId = await register(port);
+/** Prepare the parameters for a code exchange after HTTP consent. */
+async function prepareCodeExchange(port: number, clientId: string): Promise<Record<string, string>> {
   const { verifier, challenge } = pkce();
   const approved = await approve(port, await openAuthorize(port, clientId, challenge));
   assert.equal(approved.status, 302, approved.text);
@@ -186,19 +188,22 @@ async function login(port: number): Promise<{ clientId: string; tokens: Tokens }
   assert.equal(location.origin + location.pathname, REDIRECT);
   assert.equal(location.searchParams.get("state"), "xyz");
   assert.equal(location.searchParams.get("iss"), ORIGIN);
-  const exchanged = await call(
-    port,
-    "POST",
-    "/api/v1/oauth/token",
-    form({
-      grant_type: "authorization_code",
-      code: location.searchParams.get("code")!,
-      redirect_uri: REDIRECT,
-      client_id: clientId,
-      code_verifier: verifier,
-      resource: `${ORIGIN}/api/v1/mcp`,
-    })
-  );
+  const code = location.searchParams.get("code");
+  assert.ok(code, "consent issued an authorization code");
+  return {
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: REDIRECT,
+    client_id: clientId,
+    code_verifier: verifier,
+    resource: `${ORIGIN}/api/v1/mcp`,
+  };
+}
+
+/** The whole login: register, authorize, approve, exchange. */
+async function login(port: number): Promise<{ clientId: string; tokens: Tokens }> {
+  const clientId = await register(port);
+  const exchanged = await call(port, "POST", "/api/v1/oauth/token", form(await prepareCodeExchange(port, clientId)));
   assert.equal(exchanged.status, 200, exchanged.text);
   assert.equal(exchanged.headers["cache-control"], "no-store");
   return { clientId, tokens: JSON.parse(exchanged.text) as Tokens };
@@ -731,6 +736,36 @@ test("oauth: expired and revoked tokens are rejected", async () => {
       })
     );
     assert.equal(refreshed.status, 400, "a revoked client cannot refresh");
+  });
+});
+
+test("oauth: CLI revoke blocks an approved client from exchanging its code (#1619)", async () => {
+  await withServer(async (port, storePath) => {
+    const other = await login(port);
+    const clientId = await register(port);
+    const fields = await prepareCodeExchange(port, clientId);
+    const home = dirname(storePath);
+    const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    const guard = new URL("../../../scripts/test-network-guard.mjs", import.meta.url).href;
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      ["--import", "tsx", "--import", guard, cli, "oauth", "revoke", clientId, "--json"],
+      {
+        env: {
+          HOME: home,
+          USERPROFILE: home,
+          BASTRA_OAUTH_PATH: storePath,
+          BASTRA_UPDATE_CHECK: "off",
+        },
+        timeout: 10_000,
+      }
+    );
+    assert.deepEqual(JSON.parse(stdout), { revoked: 1 });
+
+    const exchanged = await call(port, "POST", "/api/v1/oauth/token", form(fields));
+    assert.equal(exchanged.status, 400, "a revoked client cannot exchange its code");
+    assert.equal(JSON.parse(exchanged.text).error, "invalid_grant");
+    assert.equal((await mcp(port, other.tokens.access_token, INIT)).status, 200);
   });
 });
 
