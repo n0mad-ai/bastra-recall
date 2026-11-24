@@ -302,7 +302,7 @@ export interface ReviewedMissChain {
   evidence: ReviewedMissEvidence;
 }
 
-export type ReviewedMissEvidence =
+type ReviewedMissEvidence =
   | { kind: "load-memory"; memoryId: string }
   | { kind: "file-read"; path: string }
   | { kind: "bash-read"; path: string }

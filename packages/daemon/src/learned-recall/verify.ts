@@ -49,7 +49,7 @@ export interface HeldOutCase {
   inPool: boolean;
 }
 
-export interface SliceStats {
+interface SliceStats {
   /** Held-out cases in the slice (pool-level) or cases the bridge fired on. */
   cases: number;
   /** Cases where at least one expansion term was added. */

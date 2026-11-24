@@ -135,7 +135,7 @@ const BRIDGE_TEACHING_ORIGINS: ReadonlySet<QueryOrigin> = new Set<QueryOrigin>([
  *  prompt lane gates them since #703; older log rows still carry them. The
  *  prefix list is the shared one (system-turn.ts); only the bare agent-mail
  *  wrapper line is a legacy-row form kept here. */
-export function isSystemTurnText(text: string): boolean {
+function isSystemTurnText(text: string): boolean {
   return isSystemInjectedTurn(text) || text.trimStart().startsWith("Another Claude session sent a message");
 }
 
@@ -552,7 +552,7 @@ export async function writeBridgeFileAtomic(path: string, b: Bridge): Promise<vo
   await rename(tmp, path);
 }
 
-export async function readBridgeFile(path: string): Promise<Partial<Bridge> | null> {
+async function readBridgeFile(path: string): Promise<Partial<Bridge> | null> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
     return typeof parsed === "object" && parsed !== null ? (parsed as Partial<Bridge>) : null;
@@ -607,7 +607,7 @@ export async function pruneUnconfirmedBridges(
 /** #704/#129: where a retired bridge goes — <root>/bridges/archive/<lang>/<id>.json.
  *  Out of the pool (BridgePool.load reads language dirs only), not deleted:
  *  moving the file back restores it. */
-export function archivedBridgePath(rootDir: string, lang: string, id: string): string {
+function archivedBridgePath(rootDir: string, lang: string, id: string): string {
   return join(rootDir, "bridges", "archive", lang, `${id}.json`);
 }
 

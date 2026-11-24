@@ -61,7 +61,7 @@ export interface FrozenCandidatePool {
   vaultSize: number;
 }
 
-export type MembershipReason =
+type MembershipReason =
   "present" | "no-such-object" | "created-after-observation" | "not-a-memory" | "no-observation-time";
 
 export interface MembershipProof {
@@ -100,7 +100,7 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function opaqueId(value: unknown): value is string {
+function opaqueId(value: unknown): value is string {
   return typeof value === "string" && /^sha256:[a-f0-9]{16,}$/i.test(value);
 }
 

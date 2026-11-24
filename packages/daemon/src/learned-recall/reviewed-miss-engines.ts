@@ -250,7 +250,7 @@ export async function loadTelemetryPools(dir: string): Promise<Map<string, Telem
 
 // ─── vault-snapshot ──────────────────────────────────────────────
 
-export interface VaultObject {
+interface VaultObject {
   hashedPath: string;
   bornAtMs: number;
   /**

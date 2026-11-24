@@ -22,9 +22,9 @@ import {
 } from "./reviewed-miss-engines.js";
 import type { ReviewedMissClassification } from "./reviewed-miss-observation.js";
 
-export const CUE_GENERATOR = "reviewed-miss-cues/v1";
-export const CUE_MAX_CHARS = 160;
-export const CUE_MAX_TERMS = 12;
+const CUE_GENERATOR = "reviewed-miss-cues/v1";
+const CUE_MAX_CHARS = 160;
+const CUE_MAX_TERMS = 12;
 
 const PROPOSAL_CLASSES: ReadonlySet<ReviewedMissClassification> = new Set([
   "in-pool-not-selected",
@@ -32,7 +32,7 @@ const PROPOSAL_CLASSES: ReadonlySet<ReviewedMissClassification> = new Set([
   "unindexed-vault-object",
 ]);
 
-export interface CueEpisode {
+interface CueEpisode {
   cue: string;
   terms: string[];
   classification: ReviewedMissClassification;

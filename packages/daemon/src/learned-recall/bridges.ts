@@ -278,7 +278,7 @@ export function isEphemeralTerm(t: string): boolean {
  *  output claude 1000 home` fired on 520 recalls and led to nothing. */
 const MACHINE_TERMS = new Set(["toolu", "task", "notification", "home", "users", "claude"]);
 
-export function isMachineTerm(t: string): boolean {
+function isMachineTerm(t: string): boolean {
   return MACHINE_TERMS.has(t.toLowerCase());
 }
 

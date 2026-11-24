@@ -46,13 +46,13 @@ import {
 
 // ─── hook lane ───────────────────────────────────────────────────
 
-export interface HookLaneRecord extends ReviewedMissObservedCandidate {
+interface HookLaneRecord extends ReviewedMissObservedCandidate {
   lane: "hook";
   intentSource: "hook-query";
   hookHintRank: number | null;
 }
 
-export type GapKind =
+type GapKind =
   | "envelope-without-recall-id"
   | "load-without-recall-link"
   | "link-without-pool"
@@ -79,7 +79,7 @@ function loadWitness(load: TelemetryLoad): string | null {
 }
 
 /** Hook-lane loads whose recall carried no client session share this one, so support is never inflated by not knowing. */
-export const UNKNOWN_SESSION = "unknown-session";
+const UNKNOWN_SESSION = "unknown-session";
 
 export interface HookLaneResult {
   records: HookLaneRecord[];
@@ -91,7 +91,7 @@ export interface HookLaneResult {
 }
 
 /** Key of one observed load: the recall it followed and the memory it loaded. */
-export function loadKey(recallId: string, memoryId: string): string {
+function loadKey(recallId: string, memoryId: string): string {
   return recallId + "\0" + memoryId;
 }
 
@@ -391,7 +391,7 @@ const GAP_EXITS: Record<GapKind, string> = {
 };
 
 /** Distinct sessions from which a repeated silent gap counts as a den (ported from the owner's classpulse rule, DENS_MIN_SIDS = 2). */
-export const DEN_MIN_SESSIONS = 2;
+const DEN_MIN_SESSIONS = 2;
 
 /**
  * A command that recounts the gap from the raw source, printed next to the
@@ -481,7 +481,7 @@ export function countClasses(
 }
 
 /** Specimens a class needs before it is "live"; below that it is observed thin (ported from the owner's bench rule: < 3 bites = not observed, never a verdict). */
-export const OBSERVED_MIN = 3;
+const OBSERVED_MIN = 3;
 
 export function liveClasses(
   ...counts: Array<Record<ReviewedMissClassification, number>>
