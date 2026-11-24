@@ -13,6 +13,9 @@ until a new design replaces it; this name is independent of the product version.
 
 - Reports can be marked outdated (`task_report_mark` `outdated`, a switch in the Reports reader): an outdated report shows a muted Outdated tag, leaves the unread count, sorts last and no longer puts its parent into Question (#1678).
 - Add a mandatory post-build Knip check with a frozen per-finding budget; new or increased unused-code findings fail CI (#1534).
+- The Knip workflow check rejects job-level conditions even when they follow
+  the steps. The settings deadline regression runs with a FIFO in place of
+  the settings database (#1658, #1661, #1650).
 
 - `goldset-run` takes `--archive` like the other eval runners (#503).
 
@@ -781,7 +784,10 @@ until a new design replaces it; this name is independent of the product version.
 - Archive and task store: resolved 9 of 19 import-cycle edges by moving
   shared helpers (manifest timestamp, pinned-ref helpers, shim path, archive
   restore, task store path/write, TaskStoreError, task-row removal) into leaf
-  modules; no behaviour change (#1517).
+  modules. The task snapshot decoder and archive operations now have separate
+  module boundaries and all ten remaining task persistence cycle edges are
+  gone. The built decoder entry remains available to the migration evaluator
+  (#1517).
 - `runGitShim` (git snapshots) split into named steps per act;
   characterization tests pin its decisions, messages and exit codes;
   complexity 76 → 12, no behaviour change (#1527).
