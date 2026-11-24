@@ -154,10 +154,11 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
  */
 export async function clearPendingMustLoad(
   memId: string,
-  activate?: { revision: string | null; validator?: ConventionValidator },
+  activate?: { revision: string | null; validator?: ConventionValidator; expired?: true },
   loadedSessionId?: string | null
 ): Promise<void> {
   if (!memId) return;
+  if (activate?.expired) activate = undefined;
   try {
     if (activate && loadedSessionId)
       await mutateSessionState(loadedSessionId, (state) => {

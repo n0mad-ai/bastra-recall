@@ -3,7 +3,7 @@
 import { roundCorrespondence, refreshRoundValidators } from "./rulebook-check.js";
 import { withRulebookDeadline } from "./rulebook-catalog.js";
 import { loadSessionState, mutateSessionState } from "./session-state.js";
-import type { ConventionSource } from "./convention-source.js";
+import { activeConventionValidator, type ConventionSource } from "./convention-source.js";
 export async function refreshStopValidators(
   sessionId: string,
   sourceOf: (id: string) => Promise<ConventionSource>,
@@ -37,7 +37,8 @@ export async function refreshStopValidators(
               const source = sources.get(c.id);
               if (!source) continue;
               c.revision = source.revision;
-              if (source.validator && !source.hiddenFromPublic) c.validator = source.validator;
+              const validator = activeConventionValidator(source);
+              if (validator) c.validator = validator;
               else delete c.validator;
             }
           },

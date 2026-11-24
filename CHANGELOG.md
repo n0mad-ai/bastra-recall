@@ -314,9 +314,9 @@ until a new design replaces it; this name is independent of the product version.
 - **Expired rules and unanswered reminders stay visible.** Rules past their
   own `valid_until` leave the active rule kernel and appear in a separate
   decision block at session start. `list_rules` marks them `expired_on`.
-  Overdue, unanswered tasks and reminders remain eligible at session start
-  after their ordinary delivery-attempt limit. The normal pause between
-  notices still applies (#1468).
+  Overdue tasks and reminders reappear at the next session start until
+  the user responds, even after a system notification or an earlier
+  delivery attempt (#1468).
 - **Hints cannot hide text or pose as host markup.** Memory text that a hook
   shows loses invisible characters (zero-width, bidi controls, Unicode tag
   characters, control characters; joiners inside words and emoji stay), and

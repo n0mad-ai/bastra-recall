@@ -17,15 +17,36 @@ export const taskDueInput = z.strictObject({
   include_acknowledged: z.boolean().default(false),
 });
 export type DueInput = z.infer<typeof taskDueInput>;
-/**
- * The delivery cap of the notification policy. #1468/P259 (owner decision
- * 24.11.2026): an overdue item the user has not answered (acknowledged,
- * snoozed, resolved or cancelled) is presented at every session start until
- * he does — the session channel has no cap. Other channels keep it.
- */
-function attemptsExhausted(attempts: readonly { count?: number }[], max: number, channel: DueInput["channel"]) {
-  return channel !== "session" && attempts.reduce((total, a) => total + (a.count ?? 1), 0) >= max;
+type Occurrence = TaskStore["occurrences"][number];
+
+function retryDelayActive(
+  occurrence: Occurrence,
+  attempts: Occurrence["attempts"],
+  policy: TaskStore["tasks"][number]["notification_policy"],
+  opts: { now: number; passive: boolean; owner: boolean }
+): boolean {
+  const { now, passive, owner } = opts;
+  const lastAttempt = attempts.at(-1)?.at ?? 0;
+  const latest = Math.max(occurrence.acknowledgement?.at ?? 0, lastAttempt);
+  const quietMs = occurrence.acknowledgement ? 24 * 60 * 60 * 1000 : Math.max(60000, policy.retry_interval_ms);
+  if (passive && latest && now - latest < quietMs) return true;
+  if (owner) return false;
+  const attemptCount = attempts.reduce((total, attempt) => total + (attempt.count ?? 1), 0);
+  return attemptCount >= policy.max_attempts || (attempts.length > 0 && now - lastAttempt < policy.retry_interval_ms);
 }
+
+function hasPriorDelivery(
+  occurrence: Occurrence,
+  now: number,
+  passive: boolean,
+  ownerInspect: boolean,
+  unseenReview: boolean
+): boolean {
+  if (passive && occurrence.notification && occurrence.notification.failed_at === undefined) return true;
+  // An ambiguous chat announcement need not repeat on ordinary agent contact.
+  return !ownerInspect && !unseenReview && liveTaskChatClaim(occurrence.chat_delivery, now);
+}
+
 export function taskDueProjection(
   store: TaskStore,
   principal: TaskPrincipal,
@@ -37,6 +58,8 @@ export function taskDueProjection(
     .update(JSON.stringify(["task-client-v2", principal.actor_id, principal.role]))
     .digest("hex");
   const ownerInspect = principal.role === "owner" && !passive;
+  const sessionStart = passive && input.channel === "session";
+  const allowAcknowledgedRetry = passive && !sessionStart;
   const candidates =
     ownerInspect || (store.controls.enabled && !store.controls.muted)
       ? store.occurrences.filter((o) => {
@@ -65,7 +88,7 @@ export function taskDueProjection(
               critical ||
               input.include_acknowledged ||
               !o.acknowledgement ||
-              (passive && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000)) &&
+              (allowAcknowledgedRetry && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000)) &&
             task.owner_domains.every((d) => principal.domains.includes(d))
           );
         })
@@ -83,10 +106,6 @@ export function taskDueProjection(
   for (const occurrence of candidates) {
     const task = store.tasks.find((t) => t.id === occurrence.task_id)!;
     const attempts = attemptCount(occurrence.id);
-    if (passive && occurrence.notification && occurrence.notification.failed_at === undefined) {
-      retryBlocked++;
-      continue;
-    }
     const action = store.intents.filter((i) => i.task_id === task.id).at(-1);
     const actionKey =
       action &&
@@ -95,26 +114,20 @@ export function taskDueProjection(
         .digest("hex");
     const unseenReview =
       action && ["pending", "unknown"].includes(action.state) && attempts.at(-1)?.last_action_key !== actionKey;
-    // An inbox claim may already be visible even without a receipt. Never
-    // repeat an ambiguous chat announcement through the next-contact lane.
-    // Explicit owner inspection still exposes every unresolved occurrence.
-    if (!ownerInspect && !unseenReview && liveTaskChatClaim(occurrence.chat_delivery, now)) {
-      retryBlocked++;
-      continue;
-    }
-    const latest = Math.max(occurrence.acknowledgement?.at ?? 0, attempts.at(-1)?.at ?? 0);
-    const quietMs = occurrence.acknowledgement
-      ? 24 * 60 * 60 * 1000
-      : Math.max(60000, task.notification_policy.retry_interval_ms);
-    if (passive && !unseenReview && latest && now - latest < quietMs) {
+    // #1468: delivery attempts are not a user response to an overdue item.
+    const presentAtStart = sessionStart && occurrence.due_at <= now && !occurrence.acknowledgement;
+    if (!presentAtStart && hasPriorDelivery(occurrence, now, passive, ownerInspect, Boolean(unseenReview))) {
       retryBlocked++;
       continue;
     }
     if (
-      principal.role !== "owner" &&
+      !presentAtStart &&
       !unseenReview &&
-      (attemptsExhausted(attempts, task.notification_policy.max_attempts, input.channel) ||
-        (attempts.length > 0 && now - attempts.at(-1)!.at < task.notification_policy.retry_interval_ms))
+      retryDelayActive(occurrence, attempts, task.notification_policy, {
+        now,
+        passive,
+        owner: principal.role === "owner",
+      })
     ) {
       retryBlocked++;
       continue;

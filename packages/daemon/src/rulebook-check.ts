@@ -289,7 +289,7 @@ export async function recordRulebookCheck(
   let taskError: string | undefined;
   if (task !== undefined && input.agent_id) taskError = "Worker task reports cannot change the main session task.";
   if (taskError) task = undefined;
-  const ids = new Set(catalog.entries.map((e) => e.id));
+  const ids = new Set(catalog.entries.filter((e) => !e.expired_on).map((e) => e.id));
   // One unknown ID no longer discards the call: the known declarations are recorded, the unknown ones named.
   const unknown = [...new Set(input.applicable.filter((id) => !ids.has(id)))];
   if (unknown.length) input = { ...input, applicable: input.applicable.filter((id) => ids.has(id)) };
@@ -510,7 +510,7 @@ export async function rulebookCheckHandler(
       id,
       cause: !everywhere
         ? "unverified"
-        : everywhere.entries.some((e) => e.id === id)
+        : everywhere.entries.some((e) => e.id === id && !e.expired_on)
           ? "other-project"
           : "not-in-rulebook",
     })),
@@ -523,7 +523,7 @@ export async function recordRulebookLoad(
   agentId?: string | null,
   source?: import("./convention-source.js").ConventionSource
 ): Promise<void> {
-  if (!sessionId) return;
+  if (!sessionId || source?.expired) return;
   await mutateSessionState(sessionId, (s) => {
     const state = readCheckState(s),
       a = actor(state, agentId ? `agent:${agentId}` : "main");

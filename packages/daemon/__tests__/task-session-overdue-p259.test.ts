@@ -50,8 +50,9 @@ test("an unanswered overdue item outlives the delivery cap at session start only
     const shown = await due("session", now);
     assert.equal(shown.cards.length, 1, `session start ${i + 1}`);
     await recordTaskDelivery(ctx.path, principal, shown.client, shown.occurrenceIds, now, "s", "session");
-    now += 2 * 60 * 60 * 1000;
+    now += 1;
   }
+  now += 2 * 60 * 60 * 1000;
   assert.equal((await due("prompt", now)).cards.length, 0, "other channels keep the cap");
   assert.equal((await due("mcp", now)).cards.length, 0, "other channels keep the cap");
   assert.equal((await due("session", now)).cards.length, 1, "the next session start still presents it");

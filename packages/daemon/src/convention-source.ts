@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import {
   parseMemory,
+  pastValidUntil,
   memoryRevision,
   resolveRulebook,
   type Memory,
@@ -22,11 +23,16 @@ export interface ConventionSource {
   /** Authored triggers from the same source; used for own-user channel evidence. */
   recall_when?: string[];
   hiddenFromPublic?: boolean;
+  expired?: true;
   summary?: string;
   write_origin?: "user-directed" | "agent-session" | "capture-review";
   rulebookMetadata?: RulebookMetadata;
   revision: string | null;
   validator?: ConventionValidator;
+}
+
+export function activeConventionValidator(source: ConventionSource): ConventionValidator | undefined {
+  return source.hiddenFromPublic || source.expired ? undefined : source.validator;
 }
 
 function projectRulebookMetadata(fm: Frontmatter, context: RulebookLegacyContext = {}): RulebookMetadata {
@@ -52,6 +58,7 @@ export async function readConventionSource(
       if (parsed.fm.id !== memory.fm.id) return { revision, hiddenFromPublic: true };
       return {
         revision,
+        ...(pastValidUntil(parsed.fm) ? { expired: true } : {}),
         recall_when: parsed.fm.recall_when,
         rulebookMetadata: projectRulebookMetadata(parsed.fm, context),
         matchesIndex:
@@ -105,6 +112,7 @@ export function indexedConventionSource(
   return {
     revision: memory.revision ?? null,
     matchesIndex: true,
+    ...(pastValidUntil(memory.fm) ? { expired: true } : {}),
     recall_when: memory.fm.recall_when,
     hiddenFromPublic: memory.fm.sensitivity === "private",
     rulebookMetadata: projectRulebookMetadata(memory.fm, context),

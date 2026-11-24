@@ -132,7 +132,21 @@ test("expired notification is submitted once and does not become a read receipt"
   assert.match(sent[0], /expired|abgelaufen/i);
   const store = await readTaskStore(f.ctx.path);
   assert.equal(store.tasks[0].id, task.id);
-  assert.equal(store.occurrences.find((o) => o.kind === "expired")?.acknowledgement, undefined);
+  const occurrence = store.occurrences.find((o) => o.kind === "expired")!;
+  assert.equal(occurrence.acknowledgement, undefined);
+
+  const principal = await authenticateTask(f.auth, f.ctx.authPath);
+  const atStart = taskDueInput.parse({ channel: "session", session: "next-session" });
+  assert.equal(taskDueProjection(store, principal, atStart, 5000, true).cards[0]?.state, "expired");
+  assert.equal(
+    taskDueProjection(store, principal, taskDueInput.parse({ channel: "prompt" }), 5000, true).cards.length,
+    0
+  );
+
+  const current = await f.call("task_get", { id: task.id });
+  await f.mutate(current, "task_acknowledge", { occurrence_id: occurrence.id });
+  const acknowledged = await readTaskStore(f.ctx.path);
+  assert.equal(taskDueProjection(acknowledged, principal, atStart, 100_000_000, true).cards.length, 0);
 });
 
 test("definite expiry notification failures keep retry work, submitted and uncertain claims stop it", async () => {

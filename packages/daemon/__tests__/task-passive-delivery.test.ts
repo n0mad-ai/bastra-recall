@@ -284,6 +284,21 @@ test("due text frames original requests as data and cannot close its own block",
     await f.job.runtime.settle();
   }
 });
+test("#1468: overdue reminders are visible in successive starts without repeating within one start", async () => {
+  const f = await fixture();
+  try {
+    const { taskAttachment } = await import("../src/task-delivery.js");
+    const auth = `Bearer ${f.owner.token}`;
+    assert.ok(await taskAttachment(f.ctx, auth, "start-one", "session"));
+    assert.equal(await taskAttachment(f.ctx, auth, "start-one", "session"), undefined);
+    assert.equal(await taskAttachment(f.ctx, auth, "start-one", "prompt"), undefined);
+    assert.ok(await taskAttachment(f.ctx, auth, "start-two", "session"));
+  } finally {
+    f.job.stop();
+    await f.job.runtime.settle();
+  }
+});
+
 test("passive owner displays are quiet and acknowledged unfinished work resurfaces daily", async () => {
   const f = await fixture();
   try {

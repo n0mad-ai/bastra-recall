@@ -28,23 +28,25 @@ export async function taskAttachment(
       session: /^[a-z0-9][a-z0-9._:-]{0,95}$/.test(session) ? session : "unknown",
       channel,
     });
-    const projection = taskDueProjection(store, principal, input, (ctx.now ?? Date.now)(), true);
     const now = (ctx.now ?? Date.now)();
+    const projection = taskDueProjection(store, principal, input, now, true);
     for (const [key, until] of passiveQuiet) if (until <= now) passiveQuiet.delete(key);
-    const keep = projection.occurrenceIds.map((id, index) => {
-      const outcome = projection.cards[index].action_outcome as
-        { intent_id: string; state: string; review_hint?: string } | undefined;
-      return JSON.stringify([
-        ctx.path,
-        projection.client,
-        id,
-        outcome?.review_hint ? [outcome.intent_id, outcome.state] : null,
-      ]);
+    const contactKeys: string[] = [];
+    const checkKeys = projection.occurrenceIds.map((id, index) => {
+      const card = projection.cards[index];
+      const outcome = card.action_outcome as { intent_id: string; state: string; review_hint?: string } | undefined;
+      const parts = [ctx.path, projection.client, id, outcome?.review_hint ? [outcome.intent_id, outcome.state] : null];
+      const contactKey = JSON.stringify(parts);
+      contactKeys.push(contactKey);
+      // New starts bypass the usual contact delay. A subsequent prompt still sees it.
+      return channel === "session" && typeof card.due_at === "number" && card.due_at <= now
+        ? JSON.stringify([...parts, session])
+        : contactKey;
     });
-    if (keep.some((key) => (passiveQuiet.get(key) ?? 0) > now)) return undefined;
+    if (checkKeys.some((key) => (passiveQuiet.get(key) ?? 0) > now)) return undefined;
     if (!projection.cards.length) return undefined;
     if (passiveQuiet.size >= 5000) passiveQuiet.clear();
-    for (const key of keep) passiveQuiet.set(key, now + 60000);
+    for (const key of [...contactKeys, ...checkKeys]) passiveQuiet.set(key, now + 60000);
     return {
       text: taskDueText(projection),
       due: { coverage: projection.coverage, cards: projection.cards, overflow: projection.overflow },

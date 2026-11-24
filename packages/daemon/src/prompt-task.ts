@@ -58,6 +58,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const drift = active.some((c) => {
     const source = sources.get(c.id)!;
     return (
+      source.expired ||
       c.revision !== source.revision ||
       (input.conventionOf !== undefined && JSON.stringify(c.validator) !== JSON.stringify(source.validator))
     );
@@ -66,6 +67,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
   let updated: ActiveConventionsView | null = null;
   const persisted = await mutateSessionState(sessionId, (s) => {
     const changed: string[] = [];
+    s.activeConventions = s.activeConventions?.filter((c) => !sources.get(c.id)?.expired);
     for (const c of s.activeConventions ?? []) {
       const source = sources.get(c.id);
       if (!source) continue;

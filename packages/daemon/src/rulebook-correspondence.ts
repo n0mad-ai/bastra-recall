@@ -6,7 +6,7 @@
  */
 import { ConventionValidatorSchema } from "@bastra-recall/core";
 import type { ReadonlySessionState, SessionState } from "./session-state.js";
-import type { ConventionSource } from "./convention-source.js";
+import { activeConventionValidator, type ConventionSource } from "./convention-source.js";
 import {
   readCheckState,
   roundActor as actor,
@@ -17,8 +17,12 @@ import {
 } from "./rulebook-round-state.js";
 
 /** Validators imply correspondence structurally, including legacy rules. */
-export function isCorrespondenceRule(e: { validator?: unknown; rule_categories?: readonly string[] }): boolean {
-  return !!e.validator || !!e.rule_categories?.includes("correspondence");
+export function isCorrespondenceRule(e: {
+  expired_on?: string;
+  validator?: unknown;
+  rule_categories?: readonly string[];
+}): boolean {
+  return !e.expired_on && (!!e.validator || !!e.rule_categories?.includes("correspondence"));
 }
 export function hasReportedTask(state: Pick<ReadonlySessionState, "activeTask">): boolean {
   return !!state.activeTask && state.activeTask.kind !== "none";
@@ -100,7 +104,8 @@ export function refreshRoundValidators(
       const source = sources.get(rule.id);
       if (!source) continue;
       rule.revision = source.revision;
-      if (source.validator && !source.hiddenFromPublic) rule.validator = source.validator;
+      const validator = activeConventionValidator(source);
+      if (validator) rule.validator = validator;
       else delete rule.validator;
     }
   put(state, value);
