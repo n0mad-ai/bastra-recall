@@ -8,6 +8,7 @@ import { patchesSummaryLine } from "./patches-cmd.js";
 import { installWordsIn } from "./install-words.js";
 import { statusWordsIn, type StatusWords } from "./status-words.js";
 import { taskCliLanguage } from "./task-cli-words.js";
+import { adapterDisplayLanguage } from "./adapter-words.js";
 
 interface StatusOptions {
   json?: boolean;
@@ -72,7 +73,8 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
     surfaces: {},
   };
 
-  const daemonInfo = await probeDaemon(endpoint);
+  const screenLanguage = adapterDisplayLanguage(language, options.json);
+  const daemonInfo = await probeDaemon(endpoint, screenLanguage);
   if (daemonInfo.ok) {
     statusResult.daemon = { status: "ok", message: daemonInfo.detail };
     if (!options.quiet && !options.json) {
@@ -147,7 +149,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
 
   for (const [name, adapter] of Object.entries(ADAPTERS)) {
     try {
-      const r = await adapter.doctor();
+      const r = await adapter.doctor(screenLanguage);
 
       statusResult.surfaces[name] = { status: r.status, message: r.message };
 

@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { CODEX_CONFIG, SKILL_SOURCE_DIR } from "./paths.js";
 import { confirm, isInteractive } from "./prompt.js";
+import { adapterWordsIn } from "./adapter-words.js";
 
 export const BOOTSTRAP_START = "<!-- bastra-recall:start -->";
 export const BOOTSTRAP_END = "<!-- bastra-recall:end -->";
@@ -69,6 +70,7 @@ export async function bootstrapProjection(): Promise<string> {
 export interface BootstrapOptions {
   dryRun: boolean;
   withBootstrap?: boolean;
+  language?: string;
   /** Explicit temporary test paths, never a second source of instructions. */
   path?: string;
   projection?: string;
@@ -80,15 +82,25 @@ export async function ensureBootstrap(
   action: "install" | "uninstall",
   opts: BootstrapOptions
 ): Promise<{ changed: boolean; detail: string; error?: true }> {
+  const text = adapterWordsIn(opts.language);
   const path = opts.path ?? bootstrapPath(host);
   // Opt-out and unattended installs do not own this optional instruction
   // channel. Do not even read it or require the optional projection asset.
   if (action === "install" && opts.withBootstrap === false)
-    return { changed: false, detail: `${path}: bootstrap declined; file untouched` };
+    return {
+      changed: false,
+      detail: text(
+        `${path}: bootstrap declined; file untouched`,
+        `${path}: Startanweisungen abgelehnt. Die Datei bleibt unverändert.`
+      ),
+    };
   if (action === "install" && opts.withBootstrap !== true && (opts.dryRun || !(opts.interactive ?? isInteractive()))) {
     return {
       changed: false,
-      detail: `${path}: bootstrap not authorized; use --with-bootstrap or accept the interactive offer`,
+      detail: text(
+        `${path}: bootstrap not authorized; use --with-bootstrap or accept the interactive offer`,
+        `${path}: Startanweisungen sind nicht freigegeben. Nutze --with-bootstrap oder nimm das Angebot im Dialog an.`
+      ),
     };
   }
   try {
@@ -98,7 +110,10 @@ export async function ensureBootstrap(
     if (inspection.state === "malformed")
       return {
         changed: false,
-        detail: `${path}: malformed/duplicate bootstrap markers; repair manually, file untouched`,
+        detail: text(
+          `${path}: malformed/duplicate bootstrap markers; repair manually, file untouched`,
+          `${path}: Fehlerhafte oder doppelte Markierungen für Startanweisungen. Korrigiere sie von Hand. Die Datei bleibt unverändert.`
+        ),
         error: true,
       };
     const outside =
@@ -106,22 +121,37 @@ export async function ensureBootstrap(
     if (action === "install" && host === "claude-code" && /bastra-recall/i.test(outside)) {
       return {
         changed: false,
-        detail: `${path}: existing unmanaged bastra-recall line; doctor notice only, file untouched`,
+        detail: text(
+          `${path}: existing unmanaged bastra-recall line; doctor notice only, file untouched`,
+          `${path}: Eigener Recall-Eintrag vorhanden. Doctor meldet ihn. Die Datei bleibt unverändert.`
+        ),
       };
     }
     if (action === "uninstall" && inspection.state === "missing")
-      return { changed: false, detail: `${path}: no managed bootstrap` };
+      return {
+        changed: false,
+        detail: text(`${path}: no managed bootstrap`, `${path}: keine von Recall verwalteten Startanweisungen`),
+      };
     if (action === "install" && inspection.state === "current")
-      return { changed: false, detail: `${path}: bootstrap current` };
+      return { changed: false, detail: text(`${path}: bootstrap current`, `${path}: Startanweisungen sind aktuell`) };
     if (action === "install") {
       if (opts.withBootstrap !== true) {
         // Exact target/content shown in the question. --yes / force is deliberately unrelated.
         if (
           !(await (opts.ask ?? confirm)(
-            `Add/update only this managed region in ${path}?\n${expected}\nWrite bootstrap?`
+            text(
+              `Add/update only this managed region in ${path}?\n${expected}\nWrite bootstrap?`,
+              `Nur diesen verwalteten Abschnitt in ${path} ergänzen oder aktualisieren?\n${expected}\nStartanweisungen schreiben?`
+            )
           ))
         ) {
-          return { changed: false, detail: `${path}: bootstrap declined; file untouched` };
+          return {
+            changed: false,
+            detail: text(
+              `${path}: bootstrap declined; file untouched`,
+              `${path}: Startanweisungen abgelehnt. Die Datei bleibt unverändert.`
+            ),
+          };
         }
       }
     }
@@ -133,15 +163,24 @@ export async function ensureBootstrap(
         : inspection.start === undefined
           ? source + expected
           : source.slice(0, inspection.start) + expected + source.slice(inspection.end);
-    if (opts.dryRun)
+    if (opts.dryRun) {
+      const verb = action === "install" ? text("write", "schreiben") : text("remove", "entfernen");
+      const content = action === "install" ? expected : "";
       return {
         changed: true,
-        detail: `${path}: would ${action === "install" ? "write" : "remove"} managed bootstrap\n${action === "install" ? expected : ""}`,
+        detail: text(
+          `${path}: would ${verb} managed bootstrap\n${content}`,
+          `${path}: würde die verwalteten Startanweisungen ${verb}\n${content}`
+        ),
       };
+    }
     if ((await textAt(path)) !== source)
       return {
         changed: false,
-        detail: `${path}: changed while awaiting bootstrap consent; file untouched, re-run installer`,
+        detail: text(
+          `${path}: changed while awaiting bootstrap consent; file untouched, re-run installer`,
+          `${path}: Datei hat sich während der Freigabe geändert und bleibt unverändert. Führe die Einrichtung erneut aus.`
+        ),
         error: true,
       };
     await mkdir(dirname(path), { recursive: true });
@@ -151,9 +190,13 @@ export async function ensureBootstrap(
       .catch(() => 0o600);
     await writeFile(tmp, next, { mode, flag: "wx" });
     await rename(tmp, path);
+    const result =
+      action === "install"
+        ? text("written; restart the host", "geschrieben. Starte den Client neu.")
+        : text("removed", "entfernt");
     return {
       changed: true,
-      detail: `${path}: managed bootstrap ${action === "install" ? "written; restart the host" : "removed"}`,
+      detail: text(`${path}: managed bootstrap ${result}`, `${path}: Verwaltete Startanweisungen ${result}`),
     };
   } catch (error) {
     return { changed: false, detail: `${path}: ${(error as Error).message}`, error: true };
@@ -163,52 +206,112 @@ export async function ensureBootstrap(
 /** Read-only diagnostics: file parity does not establish runtime loading. */
 export async function describeBootstrap(
   host: BootstrapHost,
-  opts: { path?: string; projection?: string } = {}
+  opts: { path?: string; projection?: string; language?: string } = {}
 ): Promise<string> {
+  const text = adapterWordsIn(opts.language);
   const path = opts.path ?? bootstrapPath(host);
   try {
     const source = await textAt(path);
     const expected = opts.projection ?? (await bootstrapProjection());
     const inspection = inspectBootstrap(source, expected);
-    const parts = [`${inspection.state}: ${path}`];
+    const stateDe = {
+      missing: "fehlt",
+      current: "aktuell",
+      stale: "veraltet",
+      modified: "bearbeitet",
+      malformed: "fehlerhaft",
+    };
+    const parts = [`${text(inspection.state, stateDe[inspection.state])}: ${path}`];
     if (inspection.state !== "current")
       parts.push(
         inspection.state === "missing" && /bastra-recall/i.test(source)
-          ? "unmanaged Recall line exists; no write offered on Claude Code"
-          : `repair with bastra install ${host} --with-bootstrap (optional, explicit consent)`
+          ? text(
+              "unmanaged Recall line exists; no write offered on Claude Code",
+              "Eigener Recall-Eintrag vorhanden. Für Claude Code wird deshalb kein zusätzlicher Eintrag angeboten."
+            )
+          : text(
+              `repair with bastra install ${host} --with-bootstrap (optional, explicit consent)`,
+              `reparieren mit bastra install ${host} --with-bootstrap (optional, mit ausdrücklicher Freigabe)`
+            )
       );
     if (host === "codex") {
       const root = dirname(path);
-      parts.push(`active CODEX_HOME/root: ${root}`);
+      parts.push(text(`active CODEX_HOME/root: ${root}`, `aktiver Codex-Ordner (CODEX_HOME): ${root}`));
       const override = await textAt(join(root, "AGENTS.override.md"));
       parts.push(
         override.trim()
-          ? "SHADOWED by non-empty AGENTS.override.md; override untouched"
-          : "AGENTS.md selected at global scope (empty override skipped)"
+          ? text(
+              "SHADOWED by non-empty AGENTS.override.md; override untouched",
+              "Eine nicht leere AGENTS.override.md hat Vorrang und bleibt unverändert"
+            )
+          : text(
+              "AGENTS.md selected at global scope (empty override skipped)",
+              "Globale AGENTS.md ausgewählt (leere Override-Datei übersprungen)"
+            )
       );
       const config = await textAt(join(root, "config.toml"));
       // Global root keys only. Per-project/CLI overrides cannot be proven here.
       const global = config.split(/^\s*\[/m)[0];
       const budget = Number(global.match(/^\s*project_doc_max_bytes\s*=\s*(\d+)\s*(?:#.*)?$/m)?.[1] ?? 32768);
       const end = inspection.end ?? source.length;
+      const budgetStatus =
+        Buffer.byteLength(source.slice(0, end)) > budget
+          ? text("bootstrap beyond budget", "Startanweisungen liegen außerhalb des Limits")
+          : text("bootstrap fits global budget", "Startanweisungen passen ins globale Limit");
       parts.push(
-        `instruction budget: ${budget} bytes; global file ${Buffer.byteLength(source)} bytes; ${Buffer.byteLength(source.slice(0, end)) > budget ? "bootstrap beyond budget" : "bootstrap fits global budget"}; combined project guidance/CLI overrides unverified`
+        text(
+          `instruction budget: ${budget} bytes; global file ${Buffer.byteLength(source)} bytes; ${budgetStatus}; combined project guidance/CLI overrides unverified`,
+          `Limit für Anweisungen: ${budget} Byte. Globale Datei: ${Buffer.byteLength(source)} Byte. ${budgetStatus}. Projektanweisungen und CLI-Overrides wurden zusammen nicht geprüft.`
+        )
       );
-      const fallback = global.match(/^\s*project_doc_fallback_filenames\s*=\s*(.*)$/m)?.[1];
+      const fallback =
+        global.match(/^\s*project_doc_fallback_filenames\s*=\s*(.*)$/m)?.[1] ??
+        text("none configured", "keine eingestellt");
       parts.push(
-        `project fallback selection: ${fallback ?? "none configured"}; project root/nearer overrides depend on launch directory`
+        text(
+          `project fallback selection: ${fallback}; project root/nearer overrides depend on launch directory`,
+          `Ausweichdateien des Projekts: ${fallback}. Projektordner und nähere Overrides hängen vom Startordner ab.`
+        )
       );
     } else {
+      const rootSelection = process.env.CLAUDE_CONFIG_DIR
+        ? text("set (runtime discovery unverified)", "gesetzt (Laufzeit nicht geprüft)")
+        : text("default", "Standard");
       parts.push(
-        `active Claude user root: ${dirname(path)}; CLAUDE_CONFIG_DIR=${process.env.CLAUDE_CONFIG_DIR ? "set (runtime discovery unverified)" : "default"}`
+        text(
+          `active Claude user root: ${dirname(path)}; CLAUDE_CONFIG_DIR=${rootSelection}`,
+          `aktiver Claude-Benutzerordner: ${dirname(path)}. CLAUDE_CONFIG_DIR=${rootSelection}`
+        )
       );
-      if (Buffer.byteLength(source) > 4 * 1024 * 1024) parts.push("over 4 MiB: host skips instruction file");
-      if (source.split("\n").length > 200) parts.push("over recommended 200 lines; use /context to inspect delivery");
-      parts.push("managed-only/exclusions/settings sources may suppress user instructions");
+      if (Buffer.byteLength(source) > 4 * 1024 * 1024)
+        parts.push(
+          text("over 4 MiB: host skips instruction file", "Über 4 MiB: Claude überspringt die Anweisungsdatei.")
+        );
+      if (source.split("\n").length > 200)
+        parts.push(
+          text(
+            "over recommended 200 lines; use /context to inspect delivery",
+            "Mehr als die empfohlenen 200 Zeilen. Prüfe mit /context, ob die Anweisungen ankommen."
+          )
+        );
+      parts.push(
+        text(
+          "managed-only/exclusions/settings sources may suppress user instructions",
+          "Verwaltete Einstellungen, Ausschlüsse oder andere Einstellungsquellen können Nutzeranweisungen unterdrücken."
+        )
+      );
     }
-    parts.push("file parity only; runtime loading and compliance unverified");
+    parts.push(
+      text(
+        "file parity only; runtime loading and compliance unverified",
+        "Datei geprüft. Laden und Befolgen der Anweisungen zur Laufzeit bleiben ungeprüft."
+      )
+    );
     return parts.join("; ");
   } catch (error) {
-    return `bootstrap diagnosis failed: ${(error as Error).message}`;
+    return text(
+      `bootstrap diagnosis failed: ${(error as Error).message}`,
+      `Startanweisungen konnten nicht geprüft werden: ${(error as Error).message}`
+    );
   }
 }

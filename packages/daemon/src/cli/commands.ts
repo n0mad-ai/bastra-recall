@@ -10,7 +10,7 @@ import {
 } from "../assistant-address.js";
 /** CLI command orchestration, including Codex/ChatGPT installation (#15). */
 import { missingVaultReason } from "../vault-presence.js";
-import { resolveTargets } from "./registry.js";
+import { adapterDescription, resolveTargets } from "./registry.js";
 import {
   VERSION,
   probeDaemon,
@@ -30,10 +30,11 @@ import { cmdInstallExtension } from "./extension-install.js";
 import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive, readSettings } from "../settings.js";
-import { addressLanguage, addressWords } from "../assistant-address-words.js";
+import { addressWords } from "../assistant-address-words.js";
 import { installWords, installWordsIn, type InstallWords } from "./install-words.js";
 import { doctorWordsIn, type DoctorWords } from "./doctor-words.js";
 import { taskCliLanguage } from "./task-cli-words.js";
+import { adapterDetailLabel, adapterDisplayLanguage } from "./adapter-words.js";
 import { autostartWordsIn } from "./autostart-words.js";
 import { canAutoSpawnAt } from "../forwarder-daemon-client.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
@@ -50,6 +51,7 @@ import { defaultDerivedClaimsIo, derivedClaimsLines } from "./derived-claims-not
 import { clientMemoryLines, findClientMemoryDirs } from "./client-memory.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
 import { fetchToolsFromDaemon, printDeliveryNote } from "./doctor-delivery.js";
+import { printSessionStartNote } from "./doctor-session-probe.js";
 import { cmdDoctorReplay } from "./doctor-replay.js";
 import { configuredState, daemonOriginLines } from "./daemon-origin-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
@@ -303,7 +305,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
 
   const language = await taskCliLanguage().catch(() => "en");
   const w = installWordsIn(language);
-  const targets = resolveTargets(args.surface);
+  const targets = resolveTargets(args.surface, language);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
     return 2;
@@ -349,7 +351,12 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // decides WHICH client they register (opts.useStub). Nothing here fails the
   // install — the node client serves the same daemon lanes, just slower.
   if (targets.some((a) => a.surface === "claude-code" || a.surface === "codex")) {
-    const stub = await ensureHookStub({ dryRun: args.dryRun, mode: args.stub ?? "ask", interactive: isInteractive() });
+    const stub = await ensureHookStub({
+      dryRun: args.dryRun,
+      mode: args.stub ?? "ask",
+      interactive: isInteractive(),
+      language,
+    });
     // #537: the ADAPTERS must not re-derive this from the disk. `--no-stub`
     // against an already downloaded binary used to register every Claude and
     // Codex hook on that binary anyway, because each adapter asked existsSync
@@ -360,10 +367,10 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
 
   let hadError = false;
   for (const adapter of targets) {
-    process.stdout.write(`→ ${adapter.surface} (${adapter.description})\n`);
+    process.stdout.write(`→ ${adapter.surface} (${adapterDescription(adapter, language)})\n`);
     process.stdout.write(w.config(adapter.configPath));
     try {
-      const r = await adapter.install(opts);
+      const r = await adapter.install(opts, language);
       process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
       if (r.backupPath) process.stdout.write(w.backup(r.backupPath));
       if (r.status === "error") hadError = true;
@@ -397,18 +404,18 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
-/** The address messages of `uninstall` in language.primary (#1602), from the injected options' settings. */
-async function uninstallAddressWords(io?: { address?: AssistantAddressOptions }) {
-  const o = io?.address ?? {};
-  return addressWords(o.language ?? (await addressLanguage(o.settingsPath)));
+async function uninstallLanguage(io?: { address?: AssistantAddressOptions }): Promise<string> {
+  const address = io?.address;
+  return address?.language ?? (await taskCliLanguage(address?.settingsPath).catch(() => "en"));
 }
 
 export async function cmdUninstall(
   args: ParsedArgs,
   io?: { address?: AssistantAddressOptions; notify?: () => Promise<void> }
 ): Promise<number> {
-  const a = await uninstallAddressWords(io);
-  const w = await installWords();
+  const language = await uninstallLanguage(io);
+  const a = addressWords(language);
+  const w = installWordsIn(language);
   try {
     if (args.surface === "all" && (await hasManagedAssistantAddress(io?.address))) {
       if (args.dryRun) process.stdout.write(w.addressDryRun);
@@ -431,7 +438,7 @@ export async function cmdUninstall(
     process.stderr.write(a.notCheckedOrRemoved((e as Error).message));
     return 1;
   }
-  const targets = resolveTargets(args.surface);
+  const targets = resolveTargets(args.surface, language);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
     return 2;
@@ -440,10 +447,10 @@ export async function cmdUninstall(
   let hadError = false;
   const succeededSurfaces: string[] = [];
   for (const adapter of targets) {
-    process.stdout.write(`→ ${adapter.surface} (${adapter.description})\n`);
+    process.stdout.write(`→ ${adapter.surface} (${adapterDescription(adapter, language)})\n`);
     process.stdout.write(w.config(adapter.configPath));
     try {
-      const r = await adapter.uninstall({ dryRun: args.dryRun });
+      const r = await adapter.uninstall({ dryRun: args.dryRun }, language);
       process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
       if (r.backupPath) process.stdout.write(w.backup(r.backupPath));
       if (r.status === "error") hadError = true;
@@ -462,7 +469,7 @@ export async function cmdUninstall(
   // so a full uninstall leaves nothing behind (#181). Silent when kept or
   // already absent. Only surfaces whose uninstall SUCCEEDED enter the
   // decision — a failed one counts as still registered.
-  const sweep = await sweepSharedSkill({ surface: args.surface, dryRun: args.dryRun, succeededSurfaces });
+  const sweep = await sweepSharedSkill({ surface: args.surface, dryRun: args.dryRun, succeededSurfaces, language });
   if (sweep.status === "removed" || sweep.status === "would-remove") {
     process.stdout.write(w.sharedSkill);
     process.stdout.write(`  ${w.status(sweep.status)}: ${sweep.detail}\n\n`);
@@ -498,7 +505,8 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // language.primary, read once for the whole run (English when unset or unreadable).
   const language = await taskCliLanguage().catch(() => "en");
   const w = doctorWordsIn(language);
-  const targets = resolveTargets(surface);
+  const screenLanguage = adapterDisplayLanguage(language, args.json);
+  const targets = resolveTargets(surface, screenLanguage);
   if ("error" in targets) {
     process.stderr.write(w.error(targets.error));
     return 2;
@@ -506,27 +514,32 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
 
   let hadBroken = false;
   const clientFeatures: FeatureState["clients"] = [];
+  const sessionStartClients: Parameters<typeof printSessionStartNote>[0] = [];
   for (const adapter of targets) {
-    process.stdout.write(`→ ${adapter.surface} (${adapter.description})\n`);
+    process.stdout.write(`→ ${adapter.surface} (${adapterDescription(adapter, screenLanguage)})\n`);
     process.stdout.write(w.config(adapter.configPath));
     try {
-      const r = await adapter.doctor();
+      const r = await adapter.doctor(screenLanguage);
       process.stdout.write(`  ${w.status(r.status)}: ${r.message}\n`);
       if (r.status === "broken" && !args.fix) hadBroken = true;
       if (r.features) clientFeatures.push({ surface: adapter.surface, features: r.features });
+      sessionStartClients.push({ surface: adapter.surface, result: r });
       if (r.details) {
         for (const [k, v] of Object.entries(r.details)) {
-          process.stdout.write(`    ${k}: ${v}\n`);
+          process.stdout.write(`    ${adapterDetailLabel(k, screenLanguage)}: ${v}\n`);
         }
       }
       if (args.fix && r.status !== "ok" && (r.status !== "missing" || fixMissing)) {
-        const fix = await adapter.install({
-          dryRun: args.dryRun,
-          vaultPath: resolveVaultPath(args.vaultPath),
-          force: args.yes,
-          withStopHook: args.withStopHook,
-          withBootstrap: args.withBootstrap,
-        });
+        const fix = await adapter.install(
+          {
+            dryRun: args.dryRun,
+            vaultPath: resolveVaultPath(args.vaultPath),
+            force: args.yes,
+            withStopHook: args.withStopHook,
+            withBootstrap: args.withBootstrap,
+          },
+          screenLanguage
+        );
         process.stdout.write(w.fix(w.status(fix.status), fix.message));
         if (fix.backupPath) process.stdout.write(w.backup(fix.backupPath));
         if (fix.status === "error" || fix.status === "not-implemented") hadBroken = true;
@@ -563,6 +576,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
     fetchToolsFromDaemon(undefined, language),
     language
   );
+  await printSessionStartNote(sessionStartClients, language, args.json);
   // What is switched off, as opposed to broken — never flips the exit code,
   // and --fix never turns a feature on.
   await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath), language);

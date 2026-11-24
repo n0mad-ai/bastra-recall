@@ -1,7 +1,7 @@
 /**
  * The words `bastra install` and `bastra uninstall` print, by language.primary
  * (#1602): English is the default and the fallback (byte-identical to before),
- * German complete. The adapters' own result messages keep their wording. Text
+ * German complete. The adapters use the same language for their own details. Text
  * the product writes — never matched against user text.
  */
 import { DEFAULT_VAULT_DISPLAY, VAULT_REQUIRED_ERROR, formatStatus } from "./helpers.js";

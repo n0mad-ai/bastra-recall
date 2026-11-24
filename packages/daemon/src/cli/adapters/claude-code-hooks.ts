@@ -21,6 +21,7 @@ import {
 } from "../paths.js";
 import { atomicWriteJson, backupConfig, fileExists, readJsonConfig } from "../helpers.js";
 import { checkForwarderRegistration } from "../stable-runtime.js";
+import { adapterWordsIn } from "../adapter-words.js";
 import { SAVE_NOTICE_MATCHER } from "../../save-notice-lane.js";
 import {
   existingHookWrapper,
@@ -420,8 +421,10 @@ export async function checkHookPaths(
     exists?: (p: string) => Promise<boolean>;
     running?: string;
     home?: string;
+    language?: string;
   } = {}
 ): Promise<string[]> {
+  const text = adapterWordsIn(io.language);
   const exists = io.exists ?? fileExists;
   const home = io.home ?? homedir();
   const problems: string[] = [];
@@ -429,10 +432,18 @@ export async function checkHookPaths(
     const sub = stubSubcommandForFile(file);
     const path = hookCommandPath(cmd, file, home) ?? (sub ? stubLaneCommandPath(cmd, sub, home) : null);
     if (path === null) {
-      problems.push(`${file}: no path in '${cmd}'`);
+      problems.push(text(`${file}: no path in '${cmd}'`, `${file}: kein Pfad in '${cmd}'`));
       continue;
     }
-    const check = checkForwarderRegistration(path, await exists(path), "claude-code", io.running, home);
+    const check = checkForwarderRegistration(
+      path,
+      await exists(path),
+      "claude-code",
+      io.running,
+      home,
+      undefined,
+      io.language
+    );
     if (check.broken) problems.push(`${file} → ${check.detail}`);
   }
   return problems;
@@ -605,12 +616,20 @@ export function planHookEntries(
 /** The lane list behind the "N hooks registered" line. Names every registered
  *  entry, the chat SessionEnd included; Stop and the harvest SessionEnd are
  *  on by default and only missing under `--no-stop-hook`. */
-export function installedLanes(includeStop: boolean, stopPreserved: boolean): string {
+export function installedLanes(includeStop: boolean, stopPreserved: boolean, language?: string): string {
+  const text = adapterWordsIn(language);
   const base =
     "SessionStart, SubagentStart, SessionEnd (chat), UserPromptSubmit, PreToolUse×4, PostToolUse×2, PostToolUseFailure";
   if (includeStop) return `${base}, Stop, SessionEnd (harvest), PreCompact (harvest)`;
-  if (stopPreserved) return `${base}; Stop + SessionEnd + PreCompact (harvest) kept at current path`;
-  return `${base}; Stop + SessionEnd + PreCompact (harvest) off: --no-stop-hook`;
+  if (stopPreserved)
+    return text(
+      `${base}; Stop + SessionEnd + PreCompact (harvest) kept at current path`,
+      `${base}. Stop + SessionEnd + PreCompact (Harvest) behalten den bisherigen Pfad`
+    );
+  return text(
+    `${base}; Stop + SessionEnd + PreCompact (harvest) off: --no-stop-hook`,
+    `${base}. Stop + SessionEnd + PreCompact (Harvest) ausgeschaltet: --no-stop-hook`
+  );
 }
 
 export async function patchClaudeCodeHooks(
@@ -619,10 +638,12 @@ export async function patchClaudeCodeHooks(
     dryRun: boolean;
     includeStop?: boolean;
     mapBin?: (bin: string) => string;
+    language?: string;
     /** #537 — the client the install step selected; undefined probes the disk. */
     stubPresent?: boolean;
   }
 ): Promise<{ status: HookStepStatus; detail: string; backupPath?: string; note?: string }> {
+  const text = adapterWordsIn(opts.language);
   const sourceDefs = hookDefinitions({ includeStop: opts.includeStop });
   const includeStop = opts.includeStop === true;
 
@@ -631,12 +652,18 @@ export async function patchClaudeCodeHooks(
     // runtime the copy may not exist yet (dry-run), but it mirrors these.
     for (const def of sourceDefs) {
       if (!(await fileExists(def.bin))) {
-        return { status: "error", detail: `hook binary missing: ${def.bin} — run 'npm run build'` };
+        return {
+          status: "error",
+          detail: text(
+            `hook binary missing: ${def.bin} — run 'npm run build'`,
+            `Hook-Programm fehlt: ${def.bin} — führe 'npm run build' aus`
+          ),
+        };
       }
     }
   }
 
-  const read = await readJsonConfig(CLAUDE_CODE_SETTINGS);
+  const read = await readJsonConfig(CLAUDE_CODE_SETTINGS, opts.language);
   if ("error" in read) return { status: "error", detail: read.error };
 
   const data = read.data;
@@ -650,12 +677,12 @@ export async function patchClaudeCodeHooks(
     mapBin: opts.mapBin,
     stubPresent: opts.stubPresent,
   });
-  const note = leftAloneNote(leftAlone);
+  const note = leftAloneNote(leftAlone, opts.language);
   const installNote = includeStop
     ? ""
     : stopPreserved
-      ? " (existing Stop hook kept at current path)"
-      : " (Stop hook off: --no-stop-hook)";
+      ? text(" (existing Stop hook kept at current path)", " (bisheriger Stop-Hook bleibt am aktuellen Pfad)")
+      : text(" (Stop hook off: --no-stop-hook)", " (Stop-Hook ausgeschaltet: --no-stop-hook)");
 
   const currentMatches = HOOK_EVENTS.every((ev) => JSON.stringify(before[ev]) === JSON.stringify(after[ev]));
 
@@ -663,20 +690,34 @@ export async function patchClaudeCodeHooks(
     return action === "install"
       ? {
           status: "already-installed",
-          detail: `${sourceDefs.length} hooks already registered with matching paths${installNote}`,
+          detail: text(
+            `${sourceDefs.length} hooks already registered with matching paths${installNote}`,
+            `${sourceDefs.length} Hooks bereits mit passenden Pfaden registriert${installNote}`
+          ),
           note,
         }
-      : { status: "not-present", detail: "no bastra-recall hooks present", note };
+      : {
+          status: "not-present",
+          detail: text("no bastra-recall hooks present", "keine bastra-recall-Hooks vorhanden"),
+          note,
+        };
   }
 
   if (opts.dryRun) {
     return action === "install"
       ? {
           status: "would-install",
-          detail: `would (re)register ${sourceDefs.length} hooks across ${HOOK_EVENTS.length} events${installNote}`,
+          detail: text(
+            `would (re)register ${sourceDefs.length} hooks across ${HOOK_EVENTS.length} events${installNote}`,
+            `würde ${sourceDefs.length} Hooks für ${HOOK_EVENTS.length} Ereignisse registrieren oder erneuern${installNote}`
+          ),
           note,
         }
-      : { status: "would-remove", detail: "would strip bastra-recall hook entries", note };
+      : {
+          status: "would-remove",
+          detail: text("would strip bastra-recall hook entries", "würde bastra-recall-Hook-Einträge entfernen"),
+          note,
+        };
   }
 
   // Commit changes
@@ -691,9 +732,17 @@ export async function patchClaudeCodeHooks(
   return action === "install"
     ? {
         status: "installed",
-        detail: `${sourceDefs.length} hooks registered (${installedLanes(includeStop, stopPreserved)})`,
+        detail: text(
+          `${sourceDefs.length} hooks registered (${installedLanes(includeStop, stopPreserved)})`,
+          `${sourceDefs.length} Hooks registriert (${installedLanes(includeStop, stopPreserved, opts.language)})`
+        ),
         backupPath: backupPath ?? undefined,
         note,
       }
-    : { status: "removed", detail: "bastra-recall hook entries removed", backupPath: backupPath ?? undefined, note };
+    : {
+        status: "removed",
+        detail: text("bastra-recall hook entries removed", "bastra-recall-Hook-Einträge entfernt"),
+        backupPath: backupPath ?? undefined,
+        note,
+      };
 }

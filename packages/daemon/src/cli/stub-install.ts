@@ -32,6 +32,7 @@ import { HOOK_STUB_BIN } from "./paths.js";
 import { VERSION } from "./helpers.js";
 import { confirm } from "./prompt.js";
 import { isEphemeralInstallPath } from "./stable-runtime.js";
+import { adapterWordsIn } from "./adapter-words.js";
 
 const REPO = "n0mad-ai/bastra-recall";
 /** Shown in the prompt — the deno runtime plus ~150 KB of our code; the arm64
@@ -261,6 +262,7 @@ export async function ensureHookStub(
     dryRun: boolean;
     mode: StubMode;
     interactive: boolean;
+    language?: string;
     version?: string;
     target?: StubTarget | null;
     stubBin?: string;
@@ -272,6 +274,7 @@ export async function ensureHookStub(
     log?: (line: string) => void;
   } = {}
 ): Promise<StubStepResult> {
+  const text = adapterWordsIn(i.language);
   const stubBin = i.stubBin ?? HOOK_STUB_BIN;
   const markerPath = i.markerPath ?? stubMarkerPath();
   const version = i.version ?? VERSION;
@@ -288,7 +291,7 @@ export async function ensureHookStub(
     remembered: await readStubOptIn(markerPath),
     interactive: i.interactive,
   });
-  const onNode = "hooks run on the node client";
+  const onNode = text("hooks run on the node client", "Hooks laufen mit dem Node-Client");
 
   switch (decision) {
     case "present":
@@ -303,60 +306,97 @@ export async function ensureHookStub(
           version,
         });
       }
-      return { status: "present", detail: `compiled hook client present (${stubBin})`, useStub: true };
+      return {
+        status: "present",
+        detail: text(`compiled hook client present (${stubBin})`, `kompilierter Hook-Client vorhanden (${stubBin})`),
+        useStub: true,
+      };
     case "skip":
       if (!i.dryRun) await writeStubMarker(markerPath, { optIn: false, decidedAt: new Date().toISOString() });
       return {
         status: "skipped",
         useStub: false,
         detail: existsSync(stubBin)
-          ? `--no-stub: ${onNode} (remembered; the downloaded binary is kept — pass --stub to use it again)`
-          : `--no-stub: ${onNode} (remembered; pass --stub to change)`,
+          ? text(
+              `--no-stub: ${onNode} (remembered; the downloaded binary is kept — pass --stub to use it again)`,
+              `--no-stub: ${onNode}. Die Auswahl ist gespeichert. Mit --stub nutzt du wieder das vorhandene Programm.`
+            )
+          : text(
+              `--no-stub: ${onNode} (remembered; pass --stub to change)`,
+              `--no-stub: ${onNode}. Die Auswahl ist gespeichert. Mit --stub kannst du sie ändern.`
+            ),
       };
     case "ephemeral":
       return {
         status: "skipped",
         useStub: false,
-        detail: `npx runtime — the compiled hook client needs a permanent install (npm install -g bastra-recall); ${onNode}`,
+        detail: text(
+          `npx runtime — the compiled hook client needs a permanent install (npm install -g bastra-recall); ${onNode}`,
+          `Der kompilierte Hook-Client braucht statt npx eine dauerhafte Installation (npm install -g bastra-recall). ${onNode}.`
+        ),
       };
     case "no-manifest":
       return {
         status: "skipped",
         useStub: false,
-        detail: `no stub manifest in this package (source checkout? build it with \`npm run build:stub\`); ${onNode}`,
+        detail: text(
+          `no stub manifest in this package (source checkout? build it with \`npm run build:stub\`); ${onNode}`,
+          `Paket ohne Manifest für den Hook-Client. Im Quellverzeichnis kannst du es mit \`npm run build:stub\` erstellen. ${onNode}.`
+        ),
       };
     case "unsupported":
       return {
         status: "skipped",
         useStub: false,
-        detail: `no compiled hook client for ${process.platform}/${process.arch}; ${onNode}`,
+        detail: text(
+          `no compiled hook client for ${process.platform}/${process.arch}; ${onNode}`,
+          `kein kompilierter Hook-Client für ${process.platform}/${process.arch}. ${onNode}.`
+        ),
       };
     case "dry-run":
       return {
         status: "skipped",
         useStub: false,
-        detail: `~ would offer the compiled hook client for ${target} (${STUB_SIZE_HINT}) (dry-run)`,
+        detail: text(
+          `~ would offer the compiled hook client for ${target} (${STUB_SIZE_HINT}) (dry-run)`,
+          `~ würde den kompilierten Hook-Client für ${target} (${STUB_SIZE_HINT}) anbieten (Probelauf)`
+        ),
       };
     case "declined":
       return {
         status: "skipped",
         useStub: false,
-        detail: `compiled hook client declined earlier; ${onNode} (pass --stub to download)`,
+        detail: text(
+          `compiled hook client declined earlier; ${onNode} (pass --stub to download)`,
+          `kompilierter Hook-Client wurde abgelehnt. ${onNode}. Mit --stub lädst du das Programm herunter.`
+        ),
       };
     case "non-interactive":
       return {
         status: "skipped",
         useStub: false,
-        detail: `non-interactive: pass --stub to download the compiled hook client; ${onNode}`,
+        detail: text(
+          `non-interactive: pass --stub to download the compiled hook client; ${onNode}`,
+          `ohne Dialog: nutze --stub, um den kompilierten Hook-Client herunterzuladen. ${onNode}.`
+        ),
       };
     case "ask": {
-      const accepted = await (io.ask ?? confirm)(STUB_QUESTION, { defaultYes: true });
+      const accepted = await (io.ask ?? confirm)(
+        text(
+          STUB_QUESTION,
+          `Kompilierten Hook-Client (${STUB_SIZE_HINT}, einmalig) herunterladen, damit Hooks schneller als mit Node starten?`
+        ),
+        { defaultYes: true }
+      );
       if (!accepted) {
         await writeStubMarker(markerPath, { optIn: false, decidedAt: new Date().toISOString() });
         return {
           status: "skipped",
           useStub: false,
-          detail: `declined; ${onNode} (re-run with --stub to download later)`,
+          detail: text(
+            `declined; ${onNode} (re-run with --stub to download later)`,
+            `abgelehnt. ${onNode}. Für einen späteren Download führe die Einrichtung mit --stub erneut aus.`
+          ),
         };
       }
       break;
@@ -365,24 +405,42 @@ export async function ensureHookStub(
       break;
   }
   if (!target || !asset)
-    return { status: "skipped", useStub: false, detail: `no compiled hook client for this host; ${onNode}` };
+    return {
+      status: "skipped",
+      useStub: false,
+      detail: text(
+        `no compiled hook client for this host; ${onNode}`,
+        `kein kompilierter Hook-Client für diesen Rechner. ${onNode}.`
+      ),
+    };
 
   // The decision is the user's, not the download's: remembered before the
   // fetch, so a transient failure retries on the next install instead of
   // being mistaken for a no.
   await writeStubMarker(markerPath, { optIn: true, decidedAt: new Date().toISOString(), target, version });
   const log = io.log ?? ((line: string) => process.stdout.write(line));
-  log(`  · hook client: downloading ${asset.file} (${STUB_SIZE_HINT}) from GitHub releases…\n`);
+  log(
+    text(
+      `  · hook client: downloading ${asset.file} (${STUB_SIZE_HINT}) from GitHub releases…\n`,
+      `  · Hook-Client: ${asset.file} (${STUB_SIZE_HINT}) wird von GitHub Releases geladen …\n`
+    )
+  );
   const r = await downloadVerified(stubAssetUrl(version, asset.file), asset.sha256, stubBin, { fetch: io.fetch });
   if (!r.ok)
     return {
       status: "failed",
       useStub: false,
-      detail: `could not fetch the compiled hook client (${r.reason}); ${onNode}`,
+      detail: text(
+        `could not fetch the compiled hook client (${r.reason}); ${onNode}`,
+        `kompilierter Hook-Client konnte nicht geladen werden (${r.reason}). ${onNode}.`
+      ),
     };
   return {
     status: "installed",
     useStub: true,
-    detail: `compiled hook client installed (${(r.bytes / 1_048_576).toFixed(0)} MB, sha256 verified against the package manifest)`,
+    detail: text(
+      `compiled hook client installed (${(r.bytes / 1_048_576).toFixed(0)} MB, sha256 verified against the package manifest)`,
+      `kompilierter Hook-Client installiert (${(r.bytes / 1_048_576).toFixed(0)} MB, SHA-256 anhand des Paketmanifests geprüft)`
+    ),
   };
 }

@@ -16,8 +16,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { isOptedOut } from "../update-check.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
-import { formatModelNotice, pendingModelNotice, type OfferOptions } from "../model-recommendation.js";
+import { pendingModelNotice, type OfferOptions } from "../model-recommendation.js";
 import { tryWithPathLock } from "../path-lock.js";
+import { modelNoticeWordsIn } from "./model-notice-words.js";
+import { taskCliLanguage } from "./task-cli-words.js";
 
 const PROBE_TIMEOUT_MS = 700;
 
@@ -111,7 +113,9 @@ export async function maybeEmitUpdateHint(): Promise<boolean> {
  *
  * `opts` is for tests (a recommendation, the settings file, the marker file).
  */
-export async function maybeEmitModelHint(opts: OfferOptions & { shownPath?: string } = {}): Promise<boolean> {
+export async function maybeEmitModelHint(
+  opts: OfferOptions & { shownPath?: string; language?: string } = {}
+): Promise<boolean> {
   const shownPath = opts.shownPath ?? join(bastraDataDir(), "model-hint-shown.txt");
   if ((await alreadyShownToday(shownPath)) || !(await pendingModelNotice(opts))) return false;
   try {
@@ -124,7 +128,9 @@ export async function maybeEmitModelHint(opts: OfferOptions & { shownPath?: stri
           const offer = await pendingModelNotice(opts);
           if (!offer) return false;
           if (!(await markShownToday(shownPath))) return false;
-          const lines = formatModelNotice(offer).split("\n");
+          const language =
+            opts.language ?? (process.stderr.isTTY ? await taskCliLanguage(opts.settingsPath).catch(() => "en") : "en");
+          const lines = modelNoticeWordsIn(language).notice(offer).split("\n");
           process.stderr.write(`\n\x1b[2mℹ ${lines.join("\n  ")}\x1b[0m\n`);
           return true;
         },

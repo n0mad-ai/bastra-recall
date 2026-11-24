@@ -1,4 +1,5 @@
 /** Path matching for registered hook commands, shared by the Claude Code and Codex adapters. */
+import { adapterWordsIn } from "../adapter-words.js";
 
 /**
  * Hook commands are matched on forward slashes. The installer writes whatever
@@ -252,9 +253,13 @@ export function lookalikeHookCommands(
 }
 
 /** The line install/uninstall print for those commands; undefined when there are none. */
-export function leftAloneNote(commands: string[]): string | undefined {
+export function leftAloneNote(commands: string[], language?: string): string | undefined {
+  const text = adapterWordsIn(language);
   return commands.length > 0
-    ? `hooks left alone (the name looks like ours, the command does not run a bastra-recall hook): ${commands.join(" | ")}`
+    ? text(
+        `hooks left alone (the name looks like ours, the command does not run a bastra-recall hook): ${commands.join(" | ")}`,
+        `Diese Hooks bleiben unverändert: Der Name ähnelt Recall, aber der Befehl startet keinen Recall-Hook. ${commands.join(" | ")}`
+      )
     : undefined;
 }
 

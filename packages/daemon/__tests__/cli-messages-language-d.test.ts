@@ -197,6 +197,8 @@ test("bastra models follows language.primary from its settings file", async () =
   // recommendation), so the amount differs between this machine and CI.
   assert.match(de, /^Generierungsmodell: .*\nRechner: \d+ GB/m);
   assert.match(de, /empfohlen: /);
+  assert.match(de, /gemma4:12b war in unserem Vergleich genauer/);
+  assert.doesNotMatch(de, /more accurate in our comparison/);
   const en = await run(null);
   assert.match(en, /^generation model: .*\nmachine: /m);
   assert.equal(await run("ru"), en);

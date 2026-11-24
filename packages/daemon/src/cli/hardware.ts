@@ -15,6 +15,7 @@
  */
 import { totalmem } from "node:os";
 import { execFileSync } from "node:child_process";
+import { adapterWordsIn } from "./adapter-words.js";
 
 export interface HardwareInfo {
   platform: NodeJS.Platform;
@@ -83,7 +84,10 @@ export interface ModelRecommendation {
    * tier, because a 12B is not better in the same way a 4B is.
    */
   models: Partial<
-    Record<Exclude<TextModelRec["tier"], "keyword-only">, { model: string; sizeGB: number; improves: string }>
+    Record<
+      Exclude<TextModelRec["tier"], "keyword-only">,
+      { model: string; sizeGB: number; improves: string; improvesDe?: string }
+    >
   >;
 }
 
@@ -109,26 +113,33 @@ export interface ModelRecommendation {
  * while a recommendation is active: it is the fallback of every user who never
  * stored a choice, so changing it would switch their model without asking.
  */
+const TEV1_IMPROVEMENTS = {
+  improves:
+    "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker. Similar draft-check and reranker answer times; keyword expansion was slower and more often produced no phrases.",
+  improvesDe:
+    "Im Vergleich zu gemma3:4b: weniger Fehlurteile bei der Entwurfsprüfung, deutlich schwerer durch eingeschleusten Text zu beeinflussen und genaueres Sortieren der Treffer. Ähnliche Antwortzeiten bei Entwurfsprüfung und Trefferrangfolge. Die Stichworterweiterung war langsamer und lieferte öfter keine Vorschläge.",
+};
+
 export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
   id: "2026-10-tev1",
   models: {
     baseline: {
       model: "tev1:4b",
       sizeGB: 4.5,
-      improves:
-        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker. Similar draft-check and reranker answer times; keyword expansion was slower and more often produced no phrases.",
+      ...TEV1_IMPROVEMENTS,
     },
     enhanced: {
       model: "tev1:4b",
       sizeGB: 4.5,
-      improves:
-        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker. Similar draft-check and reranker answer times; keyword expansion was slower and more often produced no phrases.",
+      ...TEV1_IMPROVEMENTS,
     },
     high: {
       model: "gemma4:12b",
       sizeGB: 8.1,
       improves:
         "Compared with gemma3:4b: fewer wrong verdicts in the draft check, harder to steer with injected text, and a clearly more accurate reranker — at about three times the answer time.",
+      improvesDe:
+        "Im Vergleich zu gemma3:4b: weniger Fehlurteile bei der Entwurfsprüfung, schwerer durch eingeschleusten Text zu beeinflussen und deutlich genaueres Sortieren der Treffer. Die Antwort braucht etwa dreimal so lange.",
     },
   },
 };
@@ -158,9 +169,11 @@ export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
  */
 export function recommendTextModel(
   ramGB: number,
-  recommendation: ModelRecommendation | null = MODEL_RECOMMENDATION
+  recommendation: ModelRecommendation | null = MODEL_RECOMMENDATION,
+  screenLanguage?: string
 ): TextModelRec {
-  const ladder = ladderTextModel(ramGB);
+  const text = adapterWordsIn(screenLanguage);
+  const ladder = ladderTextModel(ramGB, screenLanguage);
   if (!recommendation || ladder.tier === "keyword-only") return ladder;
   const pick = recommendation.models[ladder.tier];
   if (!pick) return ladder;
@@ -171,18 +184,25 @@ export function recommendTextModel(
     note:
       pick.model === ladder.model
         ? ladder.note
-        : `${ramGB} GB — ${pick.model} is the current bastra-recall recommendation for this machine.`,
+        : text(
+            `${ramGB} GB — ${pick.model} is the current bastra-recall recommendation for this machine.`,
+            `${ramGB} GB — Recall empfiehlt derzeit ${pick.model} für diesen Rechner.`
+          ),
     ...(ladder.alt && ladder.alt.model !== pick.model ? { alt: ladder.alt } : {}),
   };
 }
 
-function ladderTextModel(ramGB: number): TextModelRec {
+function ladderTextModel(ramGB: number, screenLanguage?: string): TextModelRec {
+  const text = adapterWordsIn(screenLanguage);
   if (ramGB < BASELINE_GB) {
     return {
       model: null,
       sizeGB: 0,
       tier: "keyword-only",
-      note: `${ramGB} GB is below the 16 GB baseline — keyword + semantic recall run fine without a generation model.`,
+      note: text(
+        `${ramGB} GB is below the 16 GB baseline — keyword + semantic recall run fine without a generation model.`,
+        `${ramGB} GB liegen unter der Schwelle von 16 GB. Stichwortsuche und semantische Suche funktionieren auch ohne Generierungsmodell.`
+      ),
     };
   }
   if (ramGB < ENHANCED_GB) {
@@ -190,7 +210,10 @@ function ladderTextModel(ramGB: number): TextModelRec {
       model: "tev1:4b",
       sizeGB: 4.5,
       tier: "baseline",
-      note: `${ramGB} GB — tev1:4b (a small text model) is the suggestion for this tier. That it fits next to the embedding model follows from its size (4.5 GB); it was not measured on a 16 GB machine.`,
+      note: text(
+        `${ramGB} GB — tev1:4b (a small text model) is the suggestion for this tier. That it fits next to the embedding model follows from its size (4.5 GB); it was not measured on a 16 GB machine.`,
+        `${ramGB} GB — für diese Stufe empfehlen wir das kleine Textmodell tev1:4b. Mit 4,5 GB sollte es neben dem Embedding-Modell Platz finden. Wir haben es auf einem Rechner mit 16 GB nicht gemessen.`
+      ),
     };
   }
   if (ramGB < HIGH_GB) {
@@ -198,11 +221,17 @@ function ladderTextModel(ramGB: number): TextModelRec {
       model: "tev1:4b",
       sizeGB: 4.5,
       tier: "enhanced",
-      note: `${ramGB} GB — tev1:4b is the suggestion; gemma4:12b was more accurate in our comparison at about three times the answer time. Both ran on a 24 GB machine there.`,
+      note: text(
+        `${ramGB} GB — tev1:4b is the suggestion; gemma4:12b was more accurate in our comparison at about three times the answer time. Both ran on a 24 GB machine there.`,
+        `${ramGB} GB — wir empfehlen tev1:4b. gemma4:12b war in unserem Vergleich genauer und brauchte etwa dreimal so lange. Beide liefen dabei auf einem Rechner mit 24 GB.`
+      ),
       alt: {
         model: "gemma4:12b",
         sizeGB: 8.1,
-        note: "12B, more accurate in our comparison, about three times the answer time",
+        note: text(
+          "12B, more accurate in our comparison, about three times the answer time",
+          "12B, im Vergleich genauer, etwa dreifache Antwortzeit"
+        ),
       },
     };
   }
@@ -210,6 +239,9 @@ function ladderTextModel(ramGB: number): TextModelRec {
     model: "gemma4:12b",
     sizeGB: 8.1,
     tier: "high",
-    note: `${ramGB} GB — gemma4:12b (a 12B text model), the most accurate model in our comparison.`,
+    note: text(
+      `${ramGB} GB — gemma4:12b (a 12B text model), the most accurate model in our comparison.`,
+      `${ramGB} GB — das 12B-Textmodell gemma4:12b war in unserem Vergleich am genauesten.`
+    ),
   };
 }

@@ -24,20 +24,16 @@ import { ask, isInteractive } from "./prompt.js";
 import { maybeEmitModelHint } from "./update-hint.js";
 import type { ParsedArgs } from "./types.js";
 import {
-  DISMISS_STILL_OPEN,
-  DISMISS_WARNING,
   claimModelQuestion,
   currentModelOffer,
   decisionCommand,
-  envOverrideNote,
-  formatModelNotice,
   machineRecommendation,
-  modelOfferFacts,
   pendingModelNotice,
   recordModelAnswer,
   type ModelOffer,
   type OfferOptions,
 } from "../model-recommendation.js";
+import { modelNoticeWordsIn } from "./model-notice-words.js";
 import { usageWordsIn } from "./usage-words.js";
 import { taskCliLanguage } from "./task-cli-words.js";
 import { modelsCmdWordsIn, type ModelsCmdWords } from "./models-cmd-words.js";
@@ -73,9 +69,9 @@ export async function cmdModels(opts: {
   const w = modelsCmdWordsIn(language);
   switch (opts.sub ?? "status") {
     case "status":
-      return cmdStatus(deps, w);
+      return cmdStatus(deps, w, language);
     case "recommend":
-      return cmdRecommend();
+      return cmdRecommend(process.stdout.isTTY ? language : undefined);
     case "set": {
       // positional = [command, surface, ...args] — the model tag is [2],
       // matching cmdBridges / cmdCommons.
@@ -98,10 +94,10 @@ export async function cmdModels(opts: {
   }
 }
 
-async function cmdStatus(deps: ModelsDeps, w: ModelsCmdWords): Promise<number> {
+async function cmdStatus(deps: ModelsDeps, w: ModelsCmdWords, language: string): Promise<number> {
   const active = await resolveGenerationModel(deps.settingsPath);
   const hw = detectHardware();
-  const rec = recommendTextModel(deps.ramGB ?? hw.ramGB, deps.recommendation);
+  const rec = recommendTextModel(deps.ramGB ?? hw.ramGB, deps.recommendation, language);
   write(w.generationModel(active, active === GENERATION_MODEL_DEFAULT));
   write(w.machine(`${hw.ramGB}`, hw.chip ?? "", hw.platform));
   write(w.recommended(rec.model, rec.tier));
@@ -110,7 +106,7 @@ async function cmdStatus(deps: ModelsDeps, w: ModelsCmdWords): Promise<number> {
   const offer = await currentModelOffer(deps);
   if (offer) {
     write("");
-    write(formatModelNotice(offer));
+    write(modelNoticeWordsIn(language).notice(offer));
   } else if (rec.model && active !== rec.model && rec.tier !== "keyword-only") {
     // The command for the model named on the `recommended:` line. The heavier
     // alternative gets its own line, labelled as what it is.
@@ -120,12 +116,12 @@ async function cmdStatus(deps: ModelsDeps, w: ModelsCmdWords): Promise<number> {
   return 0;
 }
 
-async function cmdRecommend(): Promise<number> {
+async function cmdRecommend(screenLanguage?: string): Promise<number> {
   const hw = detectHardware();
-  const rec = recommendTextModel(hw.ramGB);
+  const rec = recommendTextModel(hw.ramGB, undefined, screenLanguage);
   write(rec.model ?? "none");
   write(`# ${hw.ramGB} GB [${rec.tier}] — ${rec.note}`);
-  if (rec.alt) write(`# opt-in: ${rec.alt.model}`);
+  if (rec.alt) write(screenLanguage === "de" ? `# Alternative: ${rec.alt.model}` : `# opt-in: ${rec.alt.model}`);
   return 0;
 }
 
@@ -194,6 +190,7 @@ async function answer(
   w: ModelsCmdWords,
   language: string
 ): Promise<number> {
+  const notice = modelNoticeWordsIn(language);
   if (choice !== "switch") {
     try {
       await recordModelAnswer(offer.id, choice === "later" ? "later" : "dismissed", deps.settingsPath, deps.now);
@@ -205,8 +202,8 @@ async function answer(
     if (choice === "later") {
       write(w.later(offer.current));
     } else {
-      write(w.dismissed(offer.current, DISMISS_WARNING));
-      write(w.stillOpen(DISMISS_STILL_OPEN));
+      write(w.dismissed(offer.current, notice.warning));
+      write(w.stillOpen(notice.stillOpen));
     }
     return 0;
   }
@@ -229,7 +226,7 @@ async function answer(
   if (previous !== offer.model) {
     write(w.previousKept(previous));
   }
-  const env = envOverrideNote(offer);
+  const env = notice.environment(offer);
   if (env) write(w.note(env));
   return 0;
 }
@@ -246,10 +243,11 @@ async function answer(
  */
 async function askQuestion(offer: ModelOffer, deps: ModelsDeps, w: ModelsCmdWords, language: string): Promise<number> {
   write("");
-  for (const line of modelOfferFacts(offer)) write(line);
-  const env = envOverrideNote(offer);
+  const notice = modelNoticeWordsIn(language);
+  for (const line of notice.facts(offer)) write(line);
+  const env = notice.environment(offer);
   if (env) write(w.note(env));
-  write(w.aboutNever(DISMISS_WARNING, DISMISS_STILL_OPEN));
+  write(w.aboutNever(notice.warning, notice.stillOpen));
   const reply = await (deps.ask ?? ask)(w.question);
   if (reply === null) return 0;
   if (/^s(witch)?$/i.test(reply)) return answer("switch", offer, deps, w, language);
@@ -267,7 +265,7 @@ async function cmdAsk(deps: ModelsDeps, w: ModelsCmdWords, language: string): Pr
   if (!offer) return 0;
   if (!(deps.interactive ?? isInteractive())) {
     write("");
-    write(formatModelNotice(offer));
+    write(modelNoticeWordsIn(undefined).notice(offer));
     return 0;
   }
   // `bastra update` asks whenever the question is open, also a second time
@@ -336,5 +334,6 @@ export async function modelNoticeAfterCommand(
 ): Promise<"asked" | "hinted" | "none"> {
   if (!args.command || NO_NOTICE_AFTER.has(args.command) || args.showHelp || args.showVersion) return "none";
   if (!args.json && args.command !== "uninstall" && (await maybeAskModelCatchUp(deps))) return "asked";
-  return (await maybeEmitModelHint(deps)) ? "hinted" : "none";
+  const hintLanguage = args.json || !process.stderr.isTTY ? "en" : deps.language;
+  return (await maybeEmitModelHint({ ...deps, language: hintLanguage })) ? "hinted" : "none";
 }

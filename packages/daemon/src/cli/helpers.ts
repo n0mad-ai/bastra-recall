@@ -17,6 +17,7 @@ import { getJson } from "../prompt-loopback.js";
 import { projectForFilter } from "../scope-filter.js";
 import { getApiToken } from "../settings.js";
 import { DAEMON_VERSION } from "../version.js";
+import { adapterWordsIn } from "./adapter-words.js";
 
 // Read from package.json at runtime (see ../version.ts) instead of a literal.
 // The literals drifted: this one said 0.8.9 while index.ts still said 0.8.8,
@@ -209,23 +210,39 @@ export interface ParsedConfig {
   existed: boolean;
 }
 
-export async function readJsonConfig(p: string): Promise<ParsedConfig | { error: string }> {
+export async function readJsonConfig(p: string, language?: string): Promise<ParsedConfig | { error: string }> {
+  const text = adapterWordsIn(language);
   if (!(await fileExists(p))) return { data: {}, existed: false };
   let raw: string;
   try {
     raw = await readFile(p, "utf8");
   } catch (e) {
-    return { error: `cannot read ${p}: ${(e as Error).message}` };
+    return {
+      error: text(
+        `cannot read ${p}: ${(e as Error).message}`,
+        `${p} kann nicht gelesen werden: ${(e as Error).message}`
+      ),
+    };
   }
   if (raw.trim() === "") return { data: {}, existed: true };
   try {
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { error: `${p} is valid JSON but not an object — refusing to edit` };
+      return {
+        error: text(
+          `${p} is valid JSON but not an object — refusing to edit`,
+          `${p} enthält gültiges JSON, aber kein Objekt. Die Datei bleibt unverändert.`
+        ),
+      };
     }
     return { data: parsed as Record<string, unknown>, existed: true };
   } catch (e) {
-    return { error: `${p} has invalid JSON: ${(e as Error).message} — refusing to edit (fix it manually first)` };
+    return {
+      error: text(
+        `${p} has invalid JSON: ${(e as Error).message} — refusing to edit (fix it manually first)`,
+        `${p} enthält ungültiges JSON: ${(e as Error).message}. Korrigiere die Datei zuerst von Hand.`
+      ),
+    };
   }
 }
 
@@ -286,13 +303,21 @@ async function detectExistingVault(): Promise<string | null> {
 export const VAULT_REQUIRED_ERROR =
   "vault path required — pass --vault <path>, set BASTRA_VAULT_PATH, or install for another surface first (vault is auto-detected from existing registrations)";
 
-export async function resolveVault(opts: InstallOpts): Promise<{ path: string } | { error: string }> {
+export async function resolveVault(
+  opts: InstallOpts,
+  language?: string
+): Promise<{ path: string } | { error: string }> {
   if (opts.vaultPath) return { path: opts.vaultPath };
   const env = process.env.BASTRA_VAULT_PATH;
   if (env && env.length > 0) return { path: env };
   const detected = await detectExistingVault();
   if (detected) return { path: detected };
-  return { error: VAULT_REQUIRED_ERROR };
+  return {
+    error: adapterWordsIn(language)(
+      VAULT_REQUIRED_ERROR,
+      "Kein Vault gefunden. Gib den Ordner mit --vault an oder setze BASTRA_VAULT_PATH."
+    ),
+  };
 }
 
 // ─── first-run vault (#178) ──────────────────────────────────────────────────
@@ -502,7 +527,11 @@ export interface DaemonProbe {
  * its report names the HTTP status, the socket error code and the timeout
  * apart, which a helper that folds every failure into null cannot give back.
  */
-export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()): Promise<DaemonProbe> {
+export function probeDaemon(
+  endpoint: DaemonEndpoint = resolveDaemonEndpoint(),
+  language?: string
+): Promise<DaemonProbe> {
+  const text = adapterWordsIn(language);
   return new Promise((resolve_) => {
     const req = httpRequest(endpoint.healthUrl, { method: "GET", timeout: 1500 }, (res) => {
       let body = "";
@@ -514,7 +543,10 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
             resolve_({
               ok: true,
               endpoint,
-              detail: `vault_size=${data.vault_size} at ${endpoint.label}`,
+              detail: text(
+                `vault_size=${data.vault_size} at ${endpoint.label}`,
+                `${data.vault_size} Notizen unter ${endpoint.label}`
+              ),
               version: typeof data.version === "string" ? data.version : undefined,
               codeStale: isCodeStale(data.code_stale) ? data.code_stale : undefined,
               semanticRecall: data.semantic_recall,
@@ -548,7 +580,10 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
         resolve_({
           ok: false,
           endpoint,
-          detail: `daemon at ${endpoint.label} answered but health unexpected (status=${res.statusCode})`,
+          detail: text(
+            `daemon at ${endpoint.label} answered but health unexpected (status=${res.statusCode})`,
+            `Daemon unter ${endpoint.label} antwortet mit einem unerwarteten Status (${res.statusCode})`
+          ),
         });
       });
     });
@@ -557,14 +592,20 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
       resolve_({
         ok: false,
         endpoint,
-        detail: `timeout (no daemon listening on ${endpoint.label} — forwarder will auto-spawn on first MCP call)`,
+        detail: text(
+          `timeout (no daemon listening on ${endpoint.label} — forwarder will auto-spawn on first MCP call)`,
+          `Zeitüberschreitung: Unter ${endpoint.label} antwortet kein Daemon. Der Forwarder startet ihn beim ersten MCP-Aufruf.`
+        ),
       });
     });
     req.on("error", (e) =>
       resolve_({
         ok: false,
         endpoint,
-        detail: `not reachable at ${endpoint.label}: ${(e as NodeJS.ErrnoException).code ?? e.message} (forwarder will auto-spawn on first MCP call)`,
+        detail: text(
+          `not reachable at ${endpoint.label}: ${(e as NodeJS.ErrnoException).code ?? e.message} (forwarder will auto-spawn on first MCP call)`,
+          `Unter ${endpoint.label} nicht erreichbar: ${(e as NodeJS.ErrnoException).code ?? e.message}. Der Forwarder startet den Daemon beim ersten MCP-Aufruf.`
+        ),
       })
     );
     req.end();

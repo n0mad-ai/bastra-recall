@@ -26,7 +26,8 @@ import { runSubagentStartLane } from "./subagent-start-lane.js";
 import { runTodoLane, type ClaudeHookPayload as TodoPayload } from "./todo-lane.js";
 import { runGateLane, type GateDeps, type GatePayload } from "./gate-lane.js";
 import type { Memory } from "@bastra-recall/core";
-import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
+import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
+import { DOCTOR_SESSION_PATH, sessionOutput } from "./session-output.js";
 import type { SaveNoticePayload } from "./save-notice-lane.js";
 import type { WarmupCoordinator } from "./embedding-warmup.js";
 
@@ -74,6 +75,22 @@ export function dispatchLaneRoutes(
   conventionOf?: (id: string) => Promise<import("./convention-source.js").ConventionSource>
 ): boolean {
   if (method !== "POST") return false;
+
+  // Exercise the real hook envelope without entering any session, loading
+  // vault content, or handing the probe to a notice or telemetry callback.
+  if (url === DOCTOR_SESSION_PATH) {
+    void readJsonBody(req, 256)
+      .then(({ challenge }) => {
+        if (typeof challenge !== "string" || !/^[a-f0-9]{32}$/.test(challenge)) {
+          sendJson(res, 400, {});
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(sessionOutput(`bastra-recall-doctor:${challenge}`));
+      })
+      .catch(() => sendJson(res, 400, {}));
+    return true;
+  }
 
   // Stop (#35/#48/#67): the highest-frequency lane — one call at the end of
   // every answer. Always answers `{}`; the suggestions go to the pending file.

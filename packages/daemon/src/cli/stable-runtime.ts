@@ -27,6 +27,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { homedir } from "node:os";
 import { FORWARDER_SCRIPT_PATH } from "./paths.js";
 import { VERSION, fileExists } from "./helpers.js";
+import { adapterWordsIn } from "./adapter-words.js";
 
 /**
  * True when the path lives inside an npm exec cache. "_npx" is matched as a
@@ -217,9 +218,10 @@ export async function removeRuntimeBase(home: string = homedir()): Promise<boole
  * with a note — install never throws over this.
  */
 export async function ensureStableForwarder(
-  opts: { dryRun: boolean },
+  opts: { dryRun: boolean; language?: string },
   io: { forwarderPath?: string; version?: string; home?: string; stablePath?: (p: string) => string } = {}
 ): Promise<ForwarderResolution> {
+  const text = adapterWordsIn(opts.language);
   const fwd = io.forwarderPath ?? FORWARDER_SCRIPT_PATH;
   if (!isEphemeralInstallPath(fwd)) return { path: (io.stablePath ?? homebrewStablePath)(fwd), action: "native" };
 
@@ -234,7 +236,10 @@ export async function ensureStableForwarder(
     return {
       path: target.forwarderPath,
       action: "reused",
-      note: `stable runtime ${version} reused (${target.rootDir})`,
+      note: text(
+        `stable runtime ${version} reused (${target.rootDir})`,
+        `vorhandene Laufzeitumgebung ${version} weiterverwendet (${target.rootDir})`
+      ),
       ...stable,
     };
   }
@@ -242,7 +247,10 @@ export async function ensureStableForwarder(
     return {
       path: target.forwarderPath,
       action: "would-copy",
-      note: `would copy runtime to ${target.rootDir} (npx cache is ephemeral)`,
+      note: text(
+        `would copy runtime to ${target.rootDir} (npx cache is ephemeral)`,
+        `würde die Laufzeitumgebung nach ${target.rootDir} kopieren (der npx-Cache ist vorübergehend)`
+      ),
       ...stable,
     };
   }
@@ -251,7 +259,10 @@ export async function ensureStableForwarder(
     return {
       path: fwd,
       action: "fallback",
-      note: "npx cache detected but package layout unexpected — registering the cache path (prefer a permanent install: npm i -g)",
+      note: text(
+        "npx cache detected but package layout unexpected — registering the cache path (prefer a permanent install: npm i -g)",
+        "Unbekannter Paketaufbau im npx-Cache. Der Cache-Pfad wird registriert. Für eine dauerhafte Installation: npm i -g."
+      ),
     };
   }
   try {
@@ -260,7 +271,10 @@ export async function ensureStableForwarder(
     return {
       path: target.forwarderPath,
       action: "copied",
-      note: `copied to ${target.rootDir} (npx cache is ephemeral — registrations now survive cache eviction)`,
+      note: text(
+        `copied to ${target.rootDir} (npx cache is ephemeral — registrations now survive cache eviction)`,
+        `nach ${target.rootDir} kopiert. Die Registrierungen bleiben erhalten, wenn npm den Cache leert.`
+      ),
       ...stable,
     };
   } catch (e) {
@@ -269,14 +283,20 @@ export async function ensureStableForwarder(
       return {
         path: target.forwarderPath,
         action: "reused",
-        note: `stable runtime ${version} reused (${target.rootDir})`,
+        note: text(
+          `stable runtime ${version} reused (${target.rootDir})`,
+          `vorhandene Laufzeitumgebung ${version} weiterverwendet (${target.rootDir})`
+        ),
         ...stable,
       };
     }
     return {
       path: fwd,
       action: "fallback",
-      note: `runtime copy failed (${(e as Error).message}) — registering the npx cache path`,
+      note: text(
+        `runtime copy failed (${(e as Error).message}) — registering the npx cache path`,
+        `Die Laufzeitumgebung konnte nicht kopiert werden (${(e as Error).message}). Der npx-Cache-Pfad wird registriert.`
+      ),
     };
   }
 }
@@ -328,36 +348,52 @@ export function checkForwarderRegistration(
   surface: string,
   runningVersion: string = VERSION,
   home: string = homedir(),
-  stablePath: (p: string) => string = homebrewStablePath
+  stablePath: (p: string) => string = homebrewStablePath,
+  language?: string
 ): ForwarderPathCheck {
+  const text = adapterWordsIn(language);
   if (!exists) {
-    return { detail: `${fwd} (MISSING — re-run 'bastra install ${surface}')`, broken: true };
+    return {
+      detail: text(
+        `${fwd} (MISSING — re-run 'bastra install ${surface}')`,
+        `${fwd} (FEHLT — führe 'bastra install ${surface}' erneut aus)`
+      ),
+      broken: true,
+    };
   }
   if (isEphemeralInstallPath(fwd)) {
     return {
-      detail: `${fwd} (EPHEMERAL npx cache — breaks when npm evicts it; re-run 'bastra install ${surface}' to pin ~/.bastra/runtime)`,
+      detail: text(
+        `${fwd} (EPHEMERAL npx cache — breaks when npm evicts it; re-run 'bastra install ${surface}' to pin ~/.bastra/runtime)`,
+        `${fwd} (vorübergehender npx-Cache — fällt beim Leeren aus. Führe 'bastra install ${surface}' erneut aus, um ~/.bastra/runtime zu verwenden.)`
+      ),
       broken: true,
     };
   }
   const pinned = pinnedRuntimeVersion(fwd, home);
   if (pinned && pinned !== runningVersion) {
     return {
-      detail:
+      detail: text(
         `${fwd} (STALE PIN — this surface runs ${pinned}, but ${runningVersion} is installed; ` +
-        `the update is on disk and not in effect. Fix: 'bastra install ${surface}')`,
+          `the update is on disk and not in effect. Fix: 'bastra install ${surface}')`,
+        `${fwd} (VERALTET: Dieser Client nutzt ${pinned}, installiert ist ${runningVersion}. Aktiviere das Update mit 'bastra install ${surface}'.)`
+      ),
       broken: true,
     };
   }
   // "It exists" is not "it will keep existing". A registration at the CURRENT
   // keg passes every check above today and dies at the next `brew upgrade` +
   // `brew cleanup` — the same shape as the npx cache, one package manager over.
-  if (stablePath(fwd) !== fwd) {
+  const stable = stablePath(fwd);
+  if (stable !== fwd) {
     return {
-      detail:
+      detail: text(
         `${fwd} (VERSION-PINNED Homebrew keg — runs now, breaks after the next brew upgrade + cleanup; ` +
-        `re-run 'bastra install ${surface}' to register ${stablePath(fwd)})`,
+          `re-run 'bastra install ${surface}' to register ${stable})`,
+        `${fwd} (fester Homebrew-Versionspfad — fällt nach dem nächsten brew upgrade und cleanup aus. Registriere ${stable} mit 'bastra install ${surface}'.)`
+      ),
       broken: true,
     };
   }
-  return { detail: `${fwd} (exists)`, broken: false };
+  return { detail: text(`${fwd} (exists)`, `${fwd} (vorhanden)`), broken: false };
 }

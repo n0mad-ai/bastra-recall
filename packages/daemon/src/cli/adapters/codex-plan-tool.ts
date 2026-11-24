@@ -17,6 +17,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { backupConfig, fileExists } from "../helpers.js";
+import { CODEX_CONFIG } from "../paths.js";
+import { adapterWordsIn } from "../adapter-words.js";
 
 export const PLAN_TOOL_KEY = "tools.update_plan.enabled";
 
@@ -125,21 +127,31 @@ export interface PlanToolPlan {
 }
 
 /** Pure planner: what enabling the plan tool would do to this config text. */
-export function planPlanToolEnable(source: string): PlanToolPlan {
+export function planPlanToolEnable(source: string, language?: string, dryRun = false): PlanToolPlan {
+  const text = adapterWordsIn(language);
   const { state, sectionHeader } = inspectPlanTool(source);
   if (state === "enabled") {
-    return { status: "already-enabled", detail: `${PLAN_TOOL_KEY} is already true` };
+    return {
+      status: "already-enabled",
+      detail: text(`${PLAN_TOOL_KEY} is already true`, `${PLAN_TOOL_KEY} steht bereits auf true`),
+    };
   }
   if (state === "disabled") {
     return {
       status: "user-disabled",
-      detail: `${PLAN_TOOL_KEY} is false in your Codex config — left untouched; the plan hook lane stays silent until you set it to true`,
+      detail: text(
+        `${PLAN_TOOL_KEY} is false in your Codex config — left untouched; the plan hook lane stays silent until you set it to true`,
+        `${PLAN_TOOL_KEY} steht in deiner Codex-Konfiguration auf false und bleibt unverändert. Der Planungs-Hook läuft erst nach dem Wechsel auf true.`
+      ),
     };
   }
   if (state === "unsupported") {
     return {
       status: "unsupported",
-      detail: `cannot read ${PLAN_TOOL_KEY} in this config shape — set it to true by hand so the plan hook lane can fire`,
+      detail: text(
+        `cannot read ${PLAN_TOOL_KEY} in this config shape — set it to true by hand so the plan hook lane can fire`,
+        `${PLAN_TOOL_KEY} kann in dieser Form nicht gelesen werden. Setze den Wert von Hand auf true, damit der Planungs-Hook läuft.`
+      ),
     };
   }
   if (sectionHeader) {
@@ -148,51 +160,83 @@ export function planPlanToolEnable(source: string): PlanToolPlan {
     lines.splice(at + 1, 0, MANAGED_LINES.replace(/\n$/, ""));
     return {
       status: "enabled",
-      detail: `set ${PLAN_TOOL_KEY} = true (Codex ships its planning tool off; the plan hook lane needs it)`,
+      detail: text(
+        `set ${PLAN_TOOL_KEY} = true (Codex ships its planning tool off; the plan hook lane needs it)`,
+        `${PLAN_TOOL_KEY} ${dryRun ? "würde auf true gesetzt" : "auf true gesetzt"}. Codex liefert das Planungswerkzeug ausgeschaltet aus. Der Planungs-Hook braucht es.`
+      ),
       next: lines.join("\n"),
     };
   }
   const base = source === "" || source.endsWith("\n") ? source : `${source}\n`;
   return {
     status: "enabled",
-    detail: `set ${PLAN_TOOL_KEY} = true (Codex ships its planning tool off; the plan hook lane needs it)`,
+    detail: text(
+      `set ${PLAN_TOOL_KEY} = true (Codex ships its planning tool off; the plan hook lane needs it)`,
+      `${PLAN_TOOL_KEY} ${dryRun ? "würde auf true gesetzt" : "auf true gesetzt"}. Codex liefert das Planungswerkzeug ausgeschaltet aus. Der Planungs-Hook braucht es.`
+    ),
     next: `${base}${MANAGED_BLOCK}`,
   };
 }
 
 /** Pure planner: what uninstalling would do to this config text. */
-export function planPlanToolRemoval(source: string): PlanToolPlan {
+export function planPlanToolRemoval(source: string, language?: string, dryRun = false): PlanToolPlan {
+  const text = adapterWordsIn(language);
   if (source.includes(MANAGED_BLOCK)) {
     return {
       status: "removed",
-      detail: `removed the bastra-managed ${PLAN_TOOL_KEY} block`,
+      detail: text(
+        `removed the bastra-managed ${PLAN_TOOL_KEY} block`,
+        `Der von bastra verwaltete ${PLAN_TOOL_KEY}-Abschnitt ${dryRun ? "würde entfernt" : "wurde entfernt"}`
+      ),
       next: source.replace(MANAGED_BLOCK, ""),
     };
   }
   if (source.includes(MANAGED_LINES)) {
     return {
       status: "removed",
-      detail: `removed the bastra-managed ${PLAN_TOOL_KEY} setting`,
+      detail: text(
+        `removed the bastra-managed ${PLAN_TOOL_KEY} setting`,
+        `Die von bastra verwaltete Einstellung ${PLAN_TOOL_KEY} ${dryRun ? "würde entfernt" : "wurde entfernt"}`
+      ),
       next: source.replace(MANAGED_LINES, ""),
     };
   }
   if (source.includes(PLAN_TOOL_MARKER)) {
     return {
       status: "kept",
-      detail: `${PLAN_TOOL_KEY} carries the bastra marker but was edited by hand — left in place`,
+      detail: text(
+        `${PLAN_TOOL_KEY} carries the bastra marker but was edited by hand — left in place`,
+        `${PLAN_TOOL_KEY} trägt die bastra-Markierung, wurde aber von Hand geändert. Die Einstellung bleibt erhalten.`
+      ),
     };
   }
   const { state } = inspectPlanTool(source);
-  if (state === "absent") return { status: "not-present", detail: `${PLAN_TOOL_KEY} not set by bastra` };
-  return { status: "kept", detail: `${PLAN_TOOL_KEY} is your own setting — left in place` };
+  if (state === "absent")
+    return {
+      status: "not-present",
+      detail: text(`${PLAN_TOOL_KEY} not set by bastra`, `${PLAN_TOOL_KEY} wurde nicht von bastra gesetzt`),
+    };
+  return {
+    status: "kept",
+    detail: text(
+      `${PLAN_TOOL_KEY} is your own setting — left in place`,
+      `${PLAN_TOOL_KEY} wurde von dir gesetzt und bleibt erhalten`
+    ),
+  };
 }
 
-async function readConfigText(configPath: string): Promise<string | { error: string }> {
+async function readConfigText(configPath: string, language?: string): Promise<string | { error: string }> {
+  const text = adapterWordsIn(language);
   if (!(await fileExists(configPath))) return "";
   try {
     return await readFile(configPath, "utf8");
   } catch (e) {
-    return { error: `cannot read ${configPath}: ${(e as Error).message}` };
+    return {
+      error: text(
+        `cannot read ${configPath}: ${(e as Error).message}`,
+        `${configPath} kann nicht gelesen werden: ${(e as Error).message}`
+      ),
+    };
   }
 }
 
@@ -209,11 +253,13 @@ async function atomicWriteText(configPath: string, text: string): Promise<void> 
  */
 export async function ensureCodexPlanTool(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; configPath: string }
+  opts: { dryRun: boolean; configPath: string; language?: string }
 ): Promise<{ status: PlanToolStatus | "error"; detail: string; backupPath?: string }> {
-  const source = await readConfigText(opts.configPath);
+  const text = adapterWordsIn(opts.language);
+  const source = await readConfigText(opts.configPath, opts.language);
   if (typeof source !== "string") return { status: "error", detail: source.error };
-  const plan = action === "install" ? planPlanToolEnable(source) : planPlanToolRemoval(source);
+  const planFn = action === "install" ? planPlanToolEnable : planPlanToolRemoval;
+  const plan = planFn(source, opts.language, opts.dryRun);
   // `next` is the planned file content, and the empty string is a valid one:
   // uninstalling a config whose only content was our block leaves nothing
   // behind. Only `undefined` means "no change planned" — a truthiness test
@@ -222,11 +268,69 @@ export async function ensureCodexPlanTool(
   if (next === undefined) return { status: plan.status, detail: plan.detail };
   if (opts.dryRun) {
     return action === "install"
-      ? { status: "would-enable", detail: `would ${plan.detail}` }
-      : { status: "would-remove", detail: `would ${plan.detail}` };
+      ? { status: "would-enable", detail: text(`would ${plan.detail}`, plan.detail) }
+      : { status: "would-remove", detail: text(`would ${plan.detail}`, plan.detail) };
   }
   const backupPath = await backupConfig(opts.configPath);
   await atomicWriteText(opts.configPath, next);
   // Reported only now, after the write that earned it.
   return { status: plan.status, detail: plan.detail, backupPath: backupPath ?? undefined };
+}
+
+/**
+ * #506 — read-only view of `tools.update_plan.enabled` for doctor. Absent is
+ * repairable by re-running the installer; an explicit `false` is the user's own
+ * decision, so it is reported but never counted as broken.
+ */
+export async function describePlanTool(language?: string): Promise<{ detail: string; broken: boolean }> {
+  const text = adapterWordsIn(language);
+  let source = "";
+  if (await fileExists(CODEX_CONFIG)) {
+    try {
+      source = await readFile(CODEX_CONFIG, "utf8");
+    } catch (e) {
+      return {
+        detail: text(
+          `cannot read ${CODEX_CONFIG}: ${(e as Error).message}`,
+          `${CODEX_CONFIG} kann nicht gelesen werden: ${(e as Error).message}`
+        ),
+        broken: false,
+      };
+    }
+  }
+  const { state, managed } = inspectPlanTool(source);
+  switch (state) {
+    case "enabled":
+      return {
+        detail: text(
+          `${PLAN_TOOL_KEY} = true${managed ? " (set by bastra)" : ""}`,
+          `${PLAN_TOOL_KEY} = true${managed ? " (von bastra gesetzt)" : ""}`
+        ),
+        broken: false,
+      };
+    case "disabled":
+      return {
+        detail: text(
+          `${PLAN_TOOL_KEY} = false — your setting; the plan hook lane (^update_plan$) stays silent until you set it to true`,
+          `${PLAN_TOOL_KEY} = false — deine Einstellung. Der Planungs-Hook (^update_plan$) wird erst mit true aktiv.`
+        ),
+        broken: false,
+      };
+    case "unsupported":
+      return {
+        detail: text(
+          `${PLAN_TOOL_KEY} has a shape bastra will not edit — set it to true by hand or the plan hook lane stays silent`,
+          `Recall kann ${PLAN_TOOL_KEY} in dieser Form nicht bearbeiten. Setze den Wert von Hand auf true, um den Planungs-Hook zu aktivieren.`
+        ),
+        broken: false,
+      };
+    default:
+      return {
+        detail: text(
+          `MISSING — Codex ships its planning tool off by default, so the plan hook lane (^update_plan$) never fires; re-run 'bastra install codex'`,
+          `FEHLT — Codex liefert das Planungswerkzeug ausgeschaltet aus. Führe 'bastra install codex' erneut aus, damit der Planungs-Hook (^update_plan$) aktiv wird.`
+        ),
+        broken: true,
+      };
+  }
 }

@@ -42,6 +42,13 @@ export interface DoctorResult {
    * skill (Claude Code, Codex), and only when the MCP server is registered.
    */
   features?: ClientFeatures;
+  /** An eligible native SessionStart hook, when its registration can be isolated. */
+  sessionStart?: SessionStartRegistration;
+}
+
+export interface SessionStartRegistration {
+  runner: string[];
+  matcher?: string;
 }
 
 export interface ClientFeatures {
@@ -70,9 +77,9 @@ export interface Adapter {
   surface: string;
   description: string;
   configPath: string;
-  install(opts: InstallOpts): Promise<InstallResult>;
-  uninstall(opts: { dryRun: boolean }): Promise<UninstallResult>;
-  doctor(): Promise<DoctorResult>;
+  install(opts: InstallOpts, language?: string): Promise<InstallResult>;
+  uninstall(opts: { dryRun: boolean }, language?: string): Promise<UninstallResult>;
+  doctor(language?: string): Promise<DoctorResult>;
 }
 
 export interface ParsedArgs {

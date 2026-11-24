@@ -1,4 +1,5 @@
 import { SESSION_START_BUDGET_MS } from "./hook-budgets.js";
+import { sessionOutput } from "./session-output.js";
 import { resetRulebookContext } from "./rulebook-check.js";
 import { capSessionContext } from "./session-context-cap.js";
 import { buildSoulBlock, readSoulPreference } from "./soul.js";
@@ -67,9 +68,9 @@ import {
   type ActiveConvention,
 } from "./session-state.js";
 import { renderRuleKernel, type RenderedKernel } from "./rule-kernel.js";
-import { isGatedHint } from "./hook-recall-response.js";
 import { rememberSessionStartKernel } from "./rule-kernel-seen.js";
 import { getPrimaryLanguage } from "./settings.js";
+import { isGatedHint } from "./hook-recall-response.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookGateAvailable, hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
@@ -252,8 +253,8 @@ export async function runSessionLane(
     modelNotice,
     protectedParts: [kernel.text, standing.language, soulBlock],
   });
-  const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
   await rememberSessionStartKernel(payload, kernel.text, injected).catch(() => {});
+  const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
   const deliveredTop = retained(assembled.recallBlock) ? ranked.top : [];
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
@@ -841,15 +842,6 @@ function assembleSessionContext(
   const pinnedHead = pinnedBlock === "" ? "" : pinnedBlock + "\n";
   const injected = kernelHead + pinnedHead + recallBlock + extras;
   return { out: sessionOutput(injected), injected, recallBlock, emptyAnswer: false };
-}
-
-function sessionOutput(injected: string): string {
-  return JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: injected,
-    },
-  });
 }
 
 /** #462: each part as far as it survived into the injected text. */

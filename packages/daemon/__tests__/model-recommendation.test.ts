@@ -126,29 +126,44 @@ test("shipped: the active recommendation is 2026-10-tev1 — tev1:4b up to 24 GB
   // Pinned on purpose: whoever changes a model, a size or a sentence has to come
   // through here — and a changed shipped recommendation needs a NEW id (hardware.ts).
   // The sentences are the ones docs/local-model-comparison.md covers.
-  assert.deepEqual(MODEL_RECOMMENDATION, {
-    id: "2026-10-tev1",
-    models: {
-      baseline: { model: "tev1:4b", sizeGB: 4.5, improves: TEV1_IMPROVES },
-      enhanced: { model: "tev1:4b", sizeGB: 4.5, improves: TEV1_IMPROVES },
-      high: {
-        model: "gemma4:12b",
-        sizeGB: 8.1,
-        improves:
-          "Compared with gemma3:4b: fewer wrong verdicts in the draft check, harder to steer with injected text, and a clearly more accurate reranker — at about three times the answer time.",
-      },
+  assert.deepEqual(
+    MODEL_RECOMMENDATION && {
+      id: MODEL_RECOMMENDATION.id,
+      models: Object.fromEntries(
+        Object.entries(MODEL_RECOMMENDATION.models).map(([tier, pick]) => [
+          tier,
+          { model: pick.model, sizeGB: pick.sizeGB, improves: pick.improves },
+        ])
+      ),
     },
-  });
+    {
+      id: "2026-10-tev1",
+      models: {
+        baseline: { model: "tev1:4b", sizeGB: 4.5, improves: TEV1_IMPROVES },
+        enhanced: { model: "tev1:4b", sizeGB: 4.5, improves: TEV1_IMPROVES },
+        high: {
+          model: "gemma4:12b",
+          sizeGB: 8.1,
+          improves:
+            "Compared with gemma3:4b: fewer wrong verdicts in the draft check, harder to steer with injected text, and a clearly more accurate reranker — at about three times the answer time.",
+        },
+      },
+    }
+  );
 });
 
 test("shipped: an existing install is told and asked — per tier, never below 16 GB, and nothing switches", async () => {
   await existingUser(async (path, dir) => {
     const shipped = (ramGB: number) => ({ ramGB, settingsPath: path, now: NOW });
-    assert.deepEqual(await pendingModelNotice(shipped(16)), {
+    const offer = await pendingModelNotice(shipped(16));
+    assert.ok(offer);
+    assert.match(offer.improvesDe ?? "", /^Im Vergleich zu gemma3:4b/);
+    assert.deepEqual(offer, {
       id: "2026-10-tev1",
       model: "tev1:4b",
       sizeGB: 4.5,
       improves: TEV1_IMPROVES,
+      improvesDe: offer.improvesDe,
       current: "gemma3:4b",
       envOverride: null,
     });
@@ -180,6 +195,23 @@ test("shipped: an existing install is told and asked — per tier, never below 1
     // daemon still resolves the runtime default — never a model nobody pulled.
     assert.equal(await readSettingsFixture(path, "utf8"), before);
     assert.equal(await resolveGenerationModel(path), "gemma3:4b");
+  });
+});
+
+test("the German model notice is only for the terminal", async () => {
+  await existingUser(async (path) => {
+    const run = (sub: string) => captured(() => cmdModels({ sub, settingsPath: path, deps: { ramGB: 16 } }));
+    const englishRecommendation = (await run("recommend")).out;
+    const settings = JSON.parse(await readSettingsFixture(path, "utf8"));
+    await writeSettingsFixture(path, JSON.stringify({ ...settings, language: { primary: "de" } }));
+    assert.equal((await run("recommend")).out, englishRecommendation);
+    const { out } = await run("status");
+    assert.match(out, /Was besser wird: Im Vergleich zu gemma3:4b/);
+    assert.match(out, /bastra models switch 2026-10-tev1 tev1:4b   jetzt wechseln/);
+    const offer = await pendingModelNotice({ settingsPath: path, ramGB: 16 });
+    assert.ok(offer);
+    assert.match(formatModelSessionBlock(offer), /What gets better: Compared with gemma3:4b/);
+    assert.doesNotMatch(formatModelSessionBlock(offer), /Im Vergleich zu gemma3:4b/);
   });
 });
 

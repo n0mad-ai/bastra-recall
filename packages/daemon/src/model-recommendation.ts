@@ -40,6 +40,7 @@ export interface ModelOffer {
   /** Download size, GB. */
   sizeGB: number;
   improves: string;
+  improvesDe?: string;
   /** The model in effect right now (env > cli-settings > default). */
   current: string;
   /** Name of the env variable that pins `current`, or null. A stored choice

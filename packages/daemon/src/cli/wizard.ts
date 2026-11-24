@@ -22,7 +22,7 @@ import * as p from "@clack/prompts";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
-import { ADAPTERS } from "./registry.js";
+import { ADAPTERS, adapterDescription } from "./registry.js";
 import { ensureHookStub } from "./stub-install.js";
 import {
   VERSION,
@@ -138,12 +138,13 @@ export function buildSurfaceChoices(
  */
 export function buildTextModelChoices(
   ramGB: number,
-  w: WizardWords = EN
+  w: WizardWords = EN,
+  screenLanguage?: string
 ): {
   options: { value: string; label: string; hint?: string }[];
   initialValue: string;
 } | null {
-  const rec = recommendTextModel(ramGB);
+  const rec = recommendTextModel(ramGB, undefined, screenLanguage);
   if (!rec.model) return null;
   const options: { value: string; label: string; hint?: string }[] = [
     { value: rec.model, label: w.textModelRecommended(rec.model, ramGB), hint: w.download(rec.sizeGB) },
@@ -504,7 +505,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     }
   }
   if (offerTextModel) {
-    const choices = buildTextModelChoices(detectHardware().ramGB, w);
+    const choices = buildTextModelChoices(detectHardware().ramGB, w, language.language);
     if (choices) {
       const ans = await p.select({
         message: w.textModel,
@@ -671,7 +672,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     const CANCELLED = Symbol("cancelled");
     try {
       const stub = await ensureHookStub(
-        { dryRun: false, mode: "ask", interactive: true },
+        { dryRun: false, mode: "ask", interactive: true, language: language.language },
         {
           ask: async (question, o) => {
             const a = await p.confirm({ message: question, initialValue: o.defaultYes ?? false });
@@ -697,16 +698,19 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   let hadError = false;
   for (const surface of surfaces) {
     const adapter = ADAPTERS[surface];
-    s.message(w.registeringOne(adapter.description));
+    s.message(w.registeringOne(adapterDescription(adapter, language.language)));
     try {
-      const r = await adapter.install({
-        dryRun: false,
-        vaultPath,
-        force: false,
-        withStopHook: stopHook,
-        withBootstrap: args.withBootstrap,
-        useStub,
-      });
+      const r = await adapter.install(
+        {
+          dryRun: false,
+          vaultPath,
+          force: false,
+          withStopHook: stopHook,
+          withBootstrap: args.withBootstrap,
+          useStub,
+        },
+        language.language
+      );
       results.push({ surface, r });
       if (r.status === "error") hadError = true;
     } catch (err) {

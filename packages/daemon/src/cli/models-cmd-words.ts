@@ -2,10 +2,9 @@
  * The words of `bastra models` by language.primary (#1602). English is the
  * default and the fallback, byte-identical to before; German complete.
  *
- * Not here, on purpose: `bastra models recommend` (its first line is the bare
- * model tag, read by scripts), and the recommendation texts from
- * model-recommendation.ts / hardware.ts, which the session hook and the MCP
- * notice hand to the model as well. The answer keys of the question stay
+ * `bastra models recommend` preserves its pipe output. Recommendation details
+ * live in hardware.ts and model-notice-words.ts, and the session hook uses the
+ * canonical English wording in model-recommendation.ts. The answer keys stay
  * s / l / n in every language — the reply is matched on them. Text the
  * product writes — never matched against user text.
  */

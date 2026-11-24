@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { SERVER_KEY, fileExists, getServersBlock, readJsonConfig } from "./helpers.js";
+import { adapterWordsIn } from "./adapter-words.js";
 import { CLAUDE_CODE_CONFIG, CLAUDE_DESKTOP_CONFIG, SKILL_SOURCE_DIR, SKILL_TARGET_DIR } from "./paths.js";
 
 export type SkillStepStatus =
@@ -75,14 +76,22 @@ export async function inspectSkillInstall(sourceDir: string, targetDir: string):
 }
 
 /** Doctor wording for one skill install — identical on every surface. */
-export function describeSkillInstall(i: SkillInstallInspection, targetDir: string): string {
-  if (i.status === "missing") return "missing";
-  if (i.status === "up-to-date") return `present, up to date (bundle ${i.revision}, ${targetDir})`;
+export function describeSkillInstall(i: SkillInstallInspection, targetDir: string, language?: string): string {
+  const text = adapterWordsIn(language);
+  if (i.status === "missing") return text("missing", "fehlt");
+  if (i.status === "up-to-date")
+    return text(
+      `present, up to date (bundle ${i.revision}, ${targetDir})`,
+      `vorhanden und aktuell (Version ${i.revision}, ${targetDir})`
+    );
   const parts = [
-    ...(i.stale.length > 0 ? [`stale: ${i.stale.join(", ")}`] : []),
-    ...(i.missing.length > 0 ? [`missing: ${i.missing.join(", ")}`] : []),
+    ...(i.stale.length > 0 ? [text(`stale: ${i.stale.join(", ")}`, `veraltet: ${i.stale.join(", ")}`)] : []),
+    ...(i.missing.length > 0 ? [text(`missing: ${i.missing.join(", ")}`, `fehlt: ${i.missing.join(", ")}`)] : []),
   ];
-  return `STALE — ${parts.join("; ")} (installed copy differs from bundle ${i.revision})`;
+  return text(
+    `STALE — ${parts.join("; ")} (installed copy differs from bundle ${i.revision})`,
+    `VERALTET — ${parts.join("; ")} (installierte Kopie weicht von Version ${i.revision} ab)`
+  );
 }
 
 /**
@@ -94,14 +103,18 @@ export function describeSkillInstall(i: SkillInstallInspection, targetDir: strin
  * `io` is injectable for tests only (real paths live under HOME).
  */
 export async function copySkill(
-  opts: { dryRun: boolean },
+  opts: { dryRun: boolean; language?: string },
   io: { sourceDir?: string; targetDir?: string } = {}
 ): Promise<{ status: SkillStepStatus; detail: string }> {
+  const text = adapterWordsIn(opts.language);
   const sourceDir = io.sourceDir ?? SKILL_SOURCE_DIR;
   const targetDir = io.targetDir ?? SKILL_TARGET_DIR;
   const sourceFile = join(sourceDir, "SKILL.md");
   if (!(await fileExists(sourceFile))) {
-    return { status: "error", detail: `skill source missing: ${sourceFile}` };
+    return {
+      status: "error",
+      detail: text(`skill source missing: ${sourceFile}`, `Skill-Quelldatei fehlt: ${sourceFile}`),
+    };
   }
   const payload = await skillPayload(sourceDir);
   const outdated: string[] = [];
@@ -116,17 +129,35 @@ export async function copySkill(
   }
   const scope = `${payload.length} file${payload.length === 1 ? "" : "s"}`;
   if (outdated.length === 0) {
-    return { status: "already-installed", detail: `skill already at ${targetDir} (${scope})` };
+    return {
+      status: "already-installed",
+      detail: text(
+        `skill already at ${targetDir} (${scope})`,
+        `Skill bereits unter ${targetDir} (${payload.length} ${payload.length === 1 ? "Datei" : "Dateien"})`
+      ),
+    };
   }
   if (opts.dryRun) {
-    return { status: "would-install", detail: `would copy ${outdated.join(", ")} → ${targetDir}` };
+    return {
+      status: "would-install",
+      detail: text(
+        `would copy ${outdated.join(", ")} → ${targetDir}`,
+        `würde ${outdated.join(", ")} nach ${targetDir} kopieren`
+      ),
+    };
   }
   await mkdir(targetDir, { recursive: true });
   for (const name of outdated) {
     await mkdir(dirname(join(targetDir, name)), { recursive: true });
     await copyFile(join(sourceDir, name), join(targetDir, name));
   }
-  return { status: "installed", detail: `skill installed at ${targetDir} (${outdated.join(", ")})` };
+  return {
+    status: "installed",
+    detail: text(
+      `skill installed at ${targetDir} (${outdated.join(", ")})`,
+      `Skill unter ${targetDir} installiert (${outdated.join(", ")})`
+    ),
+  };
 }
 
 // ─── post-uninstall skill sweep (#181) ───────────────────────────────────────
@@ -194,9 +225,10 @@ async function liveSkillRegistrations(configPaths: Record<string, string>): Prom
  * under HOME).
  */
 export async function sweepSharedSkill(
-  opts: { surface: string | null; dryRun: boolean; succeededSurfaces?: string[] },
+  opts: { surface: string | null; dryRun: boolean; succeededSurfaces?: string[]; language?: string },
   io: { skillDir?: string; configPaths?: Record<string, string> } = {}
 ): Promise<{ status: "removed" | "would-remove" | "kept" | "not-present"; detail: string }> {
+  const text = adapterWordsIn(opts.language);
   try {
     const skillDir = io.skillDir ?? SKILL_TARGET_DIR;
     if (!(await fileExists(skillDir))) return { status: "not-present", detail: `no skill at ${skillDir}` };
@@ -226,10 +258,22 @@ export async function sweepSharedSkill(
       return { status: "kept", detail: `kept (${why})` };
     }
     if (opts.dryRun) {
-      return { status: "would-remove", detail: `${skillDir} — no surface registration would remain` };
+      return {
+        status: "would-remove",
+        detail: text(
+          `${skillDir} — no surface registration would remain`,
+          `${skillDir} — nach dem Entfernen wäre kein Client mehr registriert`
+        ),
+      };
     }
     await rm(skillDir, { recursive: true, force: true });
-    return { status: "removed", detail: `${skillDir} — no surface registration references it anymore` };
+    return {
+      status: "removed",
+      detail: text(
+        `${skillDir} — no surface registration references it anymore`,
+        `${skillDir} — kein registrierter Client verweist mehr darauf`
+      ),
+    };
   } catch (err) {
     // Cleanup must never fail the uninstall — an unregistered skill is inert.
     return { status: "kept", detail: `kept (${(err as Error).message})` };
