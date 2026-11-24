@@ -53,6 +53,10 @@ export function conversationTitle(question: string): string {
 export class ChatHistory {
   constructor(private readonly db: AppDatabase) {}
 
+  has(id: string): boolean {
+    return ID_RE.test(id) && !!this.db.sqlite.prepare("SELECT 1 FROM chat_conversations WHERE id=?").get(id);
+  }
+
   /** Appends one exchange. An unknown, deleted or missing id starts a new conversation. */
   append(
     conversationId: string | null | undefined,
@@ -62,8 +66,7 @@ export class ChatHistory {
     now = Date.now()
   ): string {
     return this.db.transaction(() => {
-      let id = typeof conversationId === "string" && ID_RE.test(conversationId) ? conversationId : null;
-      if (id && !this.db.sqlite.prepare("SELECT 1 FROM chat_conversations WHERE id=?").get(id)) id = null;
+      let id = typeof conversationId === "string" && this.has(conversationId) ? conversationId : null;
       if (!id) {
         id = randomUUID();
         this.db.sqlite
@@ -137,6 +140,16 @@ let shared: ChatHistory | null = null;
 export function chatHistory(): ChatHistory {
   shared ??= new ChatHistory(openAppDatabase());
   return shared;
+}
+
+/** An answer's preview may outlive its conversation or the history store. */
+export function storedConversationId(id: unknown): string | null {
+  if (typeof id !== "string" || !ID_RE.test(id)) return null;
+  try {
+    return chatHistory().has(id) ? id : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Handles /ui/chat/conversations[/<id>]. Returns false for other paths. */

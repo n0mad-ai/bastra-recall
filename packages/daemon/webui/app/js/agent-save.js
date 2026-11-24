@@ -136,13 +136,13 @@ export function saveFailure(statusCode, body) {
 const savedAnswers = new Map();
 const answerKey = (q, a) => `${q}\u0000${a}`;
 
-async function postSave(draft, sources) {
+async function postSave(draft, sources, conversationId) {
   try {
     const r = await fetch("/ui/save-memory", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...draft, sources }),
+      body: JSON.stringify({ ...draft, sources, conversation_id: conversationId }),
     });
     const b = await r.json().catch(() => ({}));
     return { ok: r.ok && typeof b.id === "string", status: r.status, body: b };
@@ -211,7 +211,7 @@ const doneView = (m, close, open) => [
   ),
 ];
 
-/** Opens the preview for one answer { q, a, sources: [[title, type, id]] }. */
+/** Opens the preview for one answer { q, a, sources: [[title, type, id]], conversationId? }. */
 function openPreview(answer, onOpen, onSaved) {
   const nodes = data.graph?.nodes;
   const sourceIds = answer.sources.map((x) => x[2]).filter(Boolean);
@@ -280,7 +280,7 @@ function openPreview(answer, onOpen, onSaved) {
     st = draftStep(st, { type: "save" });
     if (st.phase !== "saving") return;
     sync();
-    const r = await postSave(st.draft, sourceIds);
+    const r = await postSave(st.draft, sourceIds, answer.conversationId);
     if (r.ok) {
       st = draftStep(st, { type: "saved", memory: r.body });
       onSaved(r.body);

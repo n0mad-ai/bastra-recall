@@ -16,6 +16,7 @@ import { readSettings, mutateSettings, settingsFilePath } from "../src/settings-
 import { resetSaveFailures, saveMemoryHandler } from "../src/tool-handlers.js";
 import { createServer } from "node:http";
 import { handleUiMemoryEdit } from "../src/webui-memory-edit.js";
+import { chatHistory, storedConversationId } from "../src/chat-history.js";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -940,6 +941,48 @@ test("#1469/#1496: the web UI's save, edit, rule decision, archive and restore n
       "save, edit, decision, archive and restore: one row each, all from the web UI"
     );
   } finally {
+    await f.close();
+  }
+});
+
+test("#1496: a Web UI save records its stored conversation in the memory and audit", async (t) => {
+  const f = await fixture();
+  const previousDbPath = process.env.BASTRA_DB_PATH;
+  const dbPath = join(f.dir, "chat-fixture.db");
+  process.env.BASTRA_DB_PATH = dbPath;
+  try {
+    assert.equal(storedConversationId("not-a-conversation"), null);
+    assert.equal(existsSync(dbPath), false, "a malformed id must not open the chat store");
+
+    const port = await f.start();
+    async function assertSave(title: string, conversation_id: string, expectedSession: string | null) {
+      const saved = await call(port, "POST", "/ui/save-memory", {
+        title,
+        type: "reference",
+        scope: "planning",
+        body: `My edited notes about ${title}.`,
+        conversation_id,
+      });
+      assert.equal(saved.status, 200, JSON.stringify(saved.body));
+      const evidence = f.vault.get(saved.body.id)?.fm.write_origin_evidence;
+      assert.equal(evidence?.session, expectedSession);
+      const row = (await readFile(join(f.dir, ".bastra", "audit-log.ndjson"), "utf8")).trim().split("\n").at(-1)!;
+      assert.equal(JSON.parse(row).caller_session, expectedSession);
+    }
+    const history = chatHistory();
+    const conversationId = history.append(null, "When do I plan the week?", "On Monday morning.", []);
+    const deletedId = history.append(null, "When do I review the month?", "On the first day.", []);
+    history.remove(deletedId);
+    await assertSave("Archive routine", "not-a-conversation", null);
+    await assertSave("Week planning", conversationId, conversationId);
+    await assertSave("Month review", deletedId, null);
+    t.mock.method(history, "has", () => {
+      throw new Error("history unavailable");
+    });
+    await assertSave("Planning routine", conversationId, null);
+  } finally {
+    if (previousDbPath === undefined) delete process.env.BASTRA_DB_PATH;
+    else process.env.BASTRA_DB_PATH = previousDbPath;
     await f.close();
   }
 });

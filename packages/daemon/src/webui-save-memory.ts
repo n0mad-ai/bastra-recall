@@ -30,6 +30,8 @@ import { vaultLocator } from "./vault-locator.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { hiddenFromCaller, TRUSTED_LOCAL_APP, type PrivateAccess } from "./private-access.js";
 import { USER_SAVE_TYPES, userDirectedSaveInput } from "./user-save-input.js";
+import { IMPORT_WEBUI_WRITER, writeCallerStore } from "./caller-session.js";
+import { storedConversationId } from "./chat-history.js";
 
 export { summaryFrom } from "./user-save-input.js";
 
@@ -46,6 +48,7 @@ interface UiSaveDraft {
   scope: string;
   body: string;
   sources: string[];
+  conversationId?: string;
 }
 
 class UiSaveError extends Error {
@@ -98,6 +101,7 @@ function parseDraft(raw: Record<string, unknown>): UiSaveDraft {
     scope: parseScope(raw.scope),
     body,
     sources: parseSources(raw.sources),
+    conversationId: typeof raw.conversation_id === "string" ? raw.conversation_id : undefined,
   };
 }
 
@@ -160,7 +164,7 @@ async function saveDraft(deps: ToolDeps, draft: UiSaveDraft, access?: PrivateAcc
   };
 }
 
-/** POST /ui/save-memory {title, type, scope, body, sources?} → the saved
+/** POST /ui/save-memory {title, type, scope, body, sources?, conversation_id?} → the saved
  *  memory {id, title, type, scope, sensitivity, private_sources}. 400/413 on
  *  invalid input, 409 {code: exists|held, existing: [{id, title}]} when the
  *  save path held or refused it, 404 while the UI is disabled. */
@@ -177,7 +181,12 @@ export async function handleUiSaveMemory(
     return;
   }
   try {
-    sendJsonPlain(res, 200, await saveDraft(deps, await readDraft(req), privateGraph ? TRUSTED_LOCAL_APP : undefined));
+    const draft = await readDraft(req);
+    const writer = { ...IMPORT_WEBUI_WRITER, session: storedConversationId(draft.conversationId) };
+    const result = await writeCallerStore.run(writer, () =>
+      saveDraft(deps, draft, privateGraph ? TRUSTED_LOCAL_APP : undefined)
+    );
+    sendJsonPlain(res, 200, result);
   } catch (err) {
     if (err instanceof UiSaveError) sendJsonPlain(res, err.status, { error: err.message, ...err.extra });
     else sendJsonPlain(res, 500, { error: `save failed: ${(err as Error).message}` });

@@ -54,10 +54,9 @@ export interface WriteCaller {
 }
 export const writeCallerStore = new AsyncLocalStorage<WriteCaller>();
 
-/** #1469: the write paths outside a tool call. Neither carries a client
- *  session of its own; an import's run id already sits in `session_id`. The
- *  web UI's own saves, edits, archives and restores (http-ui-routes.ts) use
- *  the same caller identity as the web UI import. */
+/** #1469: the default callers outside a tool call. An import's run id already
+ *  sits in `session_id`. Saving a web UI chat answer adds its verified
+ *  conversation id to the web UI writer identity when available. */
 export const IMPORT_CLI_WRITER: WriteCaller = { transport: "cli", client: "bastra-cli", session: null };
 export const IMPORT_WEBUI_WRITER: WriteCaller = { transport: "webui", client: "bastra-web-ui", session: null };
 

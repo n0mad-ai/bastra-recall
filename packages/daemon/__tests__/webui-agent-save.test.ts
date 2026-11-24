@@ -10,15 +10,16 @@ import { runInNewContext } from "node:vm";
 const plain = (v: unknown) => JSON.parse(JSON.stringify(v));
 
 const NAMES =
-  "SAVE_TYPES, suggestTitle, scopeChoices, suggestScope, hasPrivateSource, draftInit, draftStep, draftView, saveFailure";
+  "SAVE_TYPES, suggestTitle, scopeChoices, suggestScope, hasPrivateSource, draftInit, draftStep, draftView, saveFailure, postSave";
 
-async function load() {
+async function load(fetch?: typeof globalThis.fetch) {
   const source = await readFile(new URL("../webui/app/js/agent-save.js", import.meta.url), "utf8");
   return runInNewContext(source.replace(/^import .*;$/gm, "").replace(/^export /gm, "") + `\n({${NAMES}})`, {
     addStrings() {},
     en: {},
     de: {},
     Map,
+    fetch,
   });
 }
 
@@ -62,6 +63,21 @@ test("private hint: shown when a source is private", async () => {
 });
 
 const DRAFT = { title: "Backups", type: "reference", scope: "home", body: "Nightly." };
+
+test("agent save sends the answer's conversation when one was stored (#1496)", async () => {
+  const bodies: unknown[] = [];
+  const { postSave } = await load(async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({ id: "backups" });
+  });
+  const conversationId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  await postSave(DRAFT, ["a"], conversationId);
+  await postSave(DRAFT, ["a"]);
+  assert.deepEqual(bodies, [
+    { ...DRAFT, sources: ["a"], conversation_id: conversationId },
+    { ...DRAFT, sources: ["a"] },
+  ]);
+});
 
 test("preview: edit → saving → saved; nothing moves while saving", async () => {
   const { draftInit, draftStep, draftView } = await load();

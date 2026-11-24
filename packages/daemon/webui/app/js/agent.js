@@ -181,7 +181,13 @@ export function ask(q) {
   if (chatState.shown)
     chatState.msgs.push(
       { role: "you", text: chatState.shown.q },
-      { role: "recall", text: chatState.shown.a, sources: chatState.shown.sources, saveable: chatState.shown.saveable }
+      {
+        role: "recall",
+        text: chatState.shown.a,
+        sources: chatState.shown.sources,
+        saveable: chatState.shown.saveable,
+        conversationId: chatState.shown.conversationId,
+      }
     );
   chatState.shown = null;
   chatState.typed = "";
@@ -195,6 +201,7 @@ export function ask(q) {
     .then(async ({ ok, status, body }) => {
       if (seq !== chatState.seq) return;
       let answer,
+        conversationId,
         sources = [];
       // Only a real model answer can be saved as a memory (agent-save.js).
       const saveable = ok && typeof body.reply === "string";
@@ -205,8 +212,9 @@ export function ask(q) {
           else if (getArea(body.navigate)?.kind === "view") setState({ view: body.navigate, hover: null });
         }
         if (typeof body.conversation_id === "string") {
-          chatState.conv = body.conversation_id;
-          storeConv(chatState.conv);
+          conversationId = body.conversation_id;
+          chatState.conv = conversationId;
+          storeConv(conversationId);
         }
         sources = Array.isArray(body.hits)
           ? body.hits
@@ -229,7 +237,7 @@ export function ask(q) {
       } else answer = t("agent.error");
       if (seq !== chatState.seq) return;
       chatState.history.push({ role: "user", content: q }, { role: "assistant", content: answer });
-      typeOut({ q, a: answer, sources, saveable });
+      typeOut({ q, a: answer, sources, saveable, conversationId });
     })
     .catch(() => {
       if (seq === chatState.seq) typeOut({ q, a: t("agent.error"), sources: [], saveable: false });
@@ -382,7 +390,12 @@ async function openConversation(id, row, quiet) {
     const list = Array.isArray(b.messages) ? b.messages : [];
     for (let i = 0; i + 1 < list.length; i++)
       if (list[i].role === "user" && list[i + 1].role === "assistant") {
-        ex.push({ q: String(list[i].text), a: String(list[i + 1].text), sources: toSources(list[i + 1].sources) });
+        ex.push({
+          q: String(list[i].text),
+          a: String(list[i + 1].text),
+          sources: toSources(list[i + 1].sources),
+          conversationId: id,
+        });
         i++;
       }
     stopTyping();
@@ -393,7 +406,7 @@ async function openConversation(id, row, quiet) {
       question: last ? last.q : "",
       msgs: ex.flatMap((e) => [
         { role: "you", text: e.q },
-        { role: "recall", text: e.a, sources: e.sources },
+        { role: "recall", text: e.a, sources: e.sources, conversationId: e.conversationId },
       ]),
       history: [...ex, ...(last ? [last] : [])].flatMap((e) => [
         { role: "user", content: e.q },
@@ -577,7 +590,13 @@ export function render(L) {
       h("div.msg.msg--recall.agent__md", null, ...md(rec.text)),
       ...(rec.sources?.length ? [h("div.agent__srcs.agent__srcs--old", null, ...srcButtons(rec.sources))] : []),
       ...saveAction(
-        { q: you.text, a: rec.text, sources: rec.sources || [], saveable: rec.saveable },
+        {
+          q: you.text,
+          a: rec.text,
+          sources: rec.sources || [],
+          saveable: rec.saveable,
+          conversationId: rec.conversationId,
+        },
         openSaved,
         render
       ),
