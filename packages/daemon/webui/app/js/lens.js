@@ -8,6 +8,7 @@ import { getArea, ICON, VAULT_VIEWS } from "./areas.js";
 import { FREE_VIEWS, isPro, viewLocked, pickVaultView } from "./views/pro-views.js";
 import { signalsTab } from "./views/signals.js";
 import { panelIndicator } from "./panel-indicator.js";
+import { COMPACT_BELOW } from "./layout.js";
 import { liveTab } from "./views/live-tab.js";
 
 // Vault views (no tabs of their own): Areas, Signals, View, Live.
@@ -170,7 +171,7 @@ export function peekIn() {
   if (!state.lensPeek) setState({ lensPeek: true });
 }
 export function peekOut() {
-  if (state.vw >= 1400) return;
+  if (state.vw >= COMPACT_BELOW) return;
   clearTimeout(lpT);
   lpT = setTimeout(() => setState({ lensPeek: false }), 380);
 }

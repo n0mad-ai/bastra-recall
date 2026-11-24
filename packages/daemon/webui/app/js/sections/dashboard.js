@@ -15,6 +15,7 @@ import { registerArea, extendRecallUi, ICON } from "../areas.js";
 import { onData } from "../data.js";
 import { h, s, clear } from "../dom.js";
 import { state, setState } from "../state.js";
+import { COMPACT_BELOW } from "../layout.js";
 import { BUILTIN, openTasks, deadlines } from "./dashboard-widgets.js";
 import en from "../i18n/dashboard-en.js";
 import de from "../i18n/dashboard-de.js";
@@ -510,7 +511,7 @@ function resize(e, id, ax) {
 
 // ── right panel: Widgets (library) and Layout ─────────────────────────────
 function openLib() {
-  setState({ tab: "areas", lensOpen: true, lensPeek: state.vw < 1400 ? true : state.lensPeek });
+  setState({ tab: "areas", lensOpen: true, lensPeek: state.vw < COMPACT_BELOW ? true : state.lensPeek });
   refreshPanel();
 }
 function refreshPanel() {

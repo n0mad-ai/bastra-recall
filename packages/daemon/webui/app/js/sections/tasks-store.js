@@ -3,6 +3,7 @@
 // Actions are the old UI's (webui/js/tasks.js) on the same endpoints.
 import { t } from "../i18n.js";
 import { state, setState } from "../state.js";
+import { COMPACT_BELOW } from "../layout.js";
 import { touched, setBusy } from "./loading.js";
 import { openMemoryBrowser } from "../views/memory-browser.js";
 import {
@@ -155,7 +156,7 @@ export function openTask(id) {
 export function select(id, extra = {}) {
   S.sel = id;
   S.edit = null;
-  setState({ tab: "areas", lensOpen: true, ...(state.vw < 1400 ? { lensPeek: true } : {}), ...extra });
+  setState({ tab: "areas", lensOpen: true, ...(state.vw < COMPACT_BELOW ? { lensPeek: true } : {}), ...extra });
   emit();
 }
 

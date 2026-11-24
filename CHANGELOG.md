@@ -349,6 +349,13 @@ until a new design replaces it; this name is independent of the product version.
   notes, `bastra codex`, `bastra feedback` and the error prefixes of
   recall/save/archive/trash/rules proposals follow `language.primary`;
   English output is unchanged, `--json` stays English (#1602).
+- Web UI: switching to or from an area with the Jarvis panel, the panel
+  fades in or out first and the content area slides only after that; it no
+  longer shows through the half-faded panel. With reduced motion the content
+  area moves without sliding.
+- Web UI: the right panel folds away below 1528 px window width (was
+  1400 px). The Tasks calendar now keeps its whole week down to 1136 px;
+  before, it showed three days at 1400–1527 px and the week again below.
 
 ### Removed
 

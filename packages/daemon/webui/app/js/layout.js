@@ -5,6 +5,10 @@ import { isPinned } from "./areas.js";
 import { setVars } from "./dom.js";
 
 const FOOTERS = new Set(["console", "mirror", "anchored", "drawer", "island"]);
+// Below this width the right panel folds away. Tasks shows its week from a 700px stage: beside the pinned
+// agent (100 + 360 + 12) and the open panel (24 + 320 + 12) that is 1528px, so the week never drops to
+// three days and comes back while the window narrows.
+export const COMPACT_BELOW = 1528;
 
 export function computeLayout(s) {
   const pinAgent = isPinned(s.view);
@@ -19,7 +23,7 @@ export function computeLayout(s) {
     stT = panelT;
   const lensW = wide ? 320 : 288;
   const narrowSet = pinAgent && s.vw < 1200;
-  const compact = s.vw < 1400;
+  const compact = s.vw < COMPACT_BELOW;
   const lensOpen = compact ? !!s.lensPeek : s.lensOpen && (s.vw >= 1200 || !jOpen || s.view === "settings");
   const jW = narrowSet ? 300 : 360;
   const cL = jOpen && !isl ? jL + jW + 12 : jL;
