@@ -51,6 +51,14 @@ async function outcome(p: Promise<unknown>) {
   }
 }
 
+function pausedReply() {
+  let release!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { wait, release };
+}
+
 // ── shell task client (data.js taskApi) ──────────────────────────────────────
 async function shellClient(script: Record<string, Reply[]> = {}) {
   const s = server("/ui/tasks/session", script);
@@ -275,10 +283,7 @@ test("tasks area client: parallel calls rejected together share one renewal", as
 });
 
 test("tasks area client: a delayed rejection reuses the session already renewed by a peer", async () => {
-  let release!: () => void;
-  const wait = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const { wait, release } = pausedReply();
   const c = await tasksClient({
     "/ui/tasks/api/task_list": [{}, { status: 401, body: {} }, { body: { tasks: [1] } }],
     "/ui/tasks/api/task_get": [{ status: 401, body: {}, wait }, { body: { id: "t1" } }],
@@ -290,6 +295,22 @@ test("tasks area client: a delayed rejection reuses the session already renewed 
   assert.deepEqual(await outcome(delayed), { ok: { id: "t1" } });
   assert.equal(c.log.filter((call) => call === TASKS_SESSION).length, 2);
   assert.equal(c.log.at(-1), tasksCall("get", "csrf-2", '{"id":"t1"}'));
+});
+
+test("tasks area client: a delayed rejection can renew after a peer's network error (#1692)", async () => {
+  const { wait, release } = pausedReply();
+  const c = await tasksClient({
+    "/ui/tasks/session": [{ body: { csrf: "old" } }, "network", { body: { csrf: "new" } }],
+    "/ui/tasks/api/task_list": [{}, { status: 401, body: {} }],
+    "/ui/tasks/api/task_get": [{ status: 401, body: {}, wait }, { body: { id: "t1" } }],
+  });
+  await c.api("list");
+  const delayed = c.api("get", { id: "t1" });
+  assert.equal((await outcome(c.api("list"))).error?.type, "TypeError");
+  release();
+  assert.deepEqual(await outcome(delayed), { ok: { id: "t1" } });
+  assert.equal(c.log.filter((call) => call === TASKS_SESSION).length, 3);
+  assert.equal(c.log.at(-1), tasksCall("get", "new", '{"id":"t1"}'));
 });
 
 test("tasks area client: a network error is passed on unchanged and not repeated", async () => {
@@ -427,6 +448,22 @@ test("settings client: parallel calls rejected together share one renewal", asyn
     settingsGet("/ui/settings", "csrf-2"),
     settingsGet("/ui/settings/models", "csrf-2"),
   ]);
+});
+
+test("settings client: a delayed rejection can renew after a peer's failed sign-in (#1692)", async () => {
+  const { wait, release } = pausedReply();
+  const c = await settingsClient({
+    "/ui/settings/session": [{ body: { csrf: "old" } }, { status: 503, body: {} }, { body: { csrf: "new" } }],
+    "/ui/settings": [{}, { status: 401, body: {} }],
+    "/ui/settings/models": [{ status: 401, body: {}, wait }, { body: { models: [] } }],
+  });
+  await c.get("/ui/settings");
+  const delayed = c.get("/ui/settings/models");
+  assert.equal((await outcome(c.get("/ui/settings"))).error?.status, 503);
+  release();
+  assert.deepEqual(await outcome(delayed), { ok: { models: [] } });
+  assert.equal(c.log.filter((call) => call === SETTINGS_SESSION).length, 3);
+  assert.equal(c.log.at(-1), settingsGet("/ui/settings/models", "new"));
 });
 
 test("settings client: a network error is passed on unchanged and not repeated", async () => {

@@ -37,9 +37,10 @@ function sessionClient(path) {
   }
 
   function renew(grant) {
-    invalidate(grant);
     // A delayed rejection for the old grant must not invalidate a newer one.
-    return current ?? pending ?? (grant.renewal ??= get());
+    invalidate(grant);
+    // get() shares the active sign-in and lets later calls retry after it fails.
+    return get();
   }
 
   async function run(readCsrf, request, retry = true) {
