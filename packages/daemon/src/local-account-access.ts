@@ -68,7 +68,7 @@ export function parseLsofPeerUid(output: string, socket: Socket): number | undef
 }
 /** The gateway runs as a launchd Background job, so lsof inherits throttled
  * CPU/IO: one scan takes ~150 ms and parallel scans add up past tight limits. */
-export const LOCAL_ACCOUNT_LOOKUP_TIMEOUT_MS = 2000;
+const LOCAL_ACCOUNT_LOOKUP_TIMEOUT_MS = 2000;
 const LOOKUP_ATTEMPTS = 2;
 export type PortScan = (port: number) => Promise<string>;
 /** macOS ships lsof. Its Darwin backend reads pbi_uid and TCP endpoints through

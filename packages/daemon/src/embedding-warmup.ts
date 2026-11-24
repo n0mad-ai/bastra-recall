@@ -140,7 +140,7 @@ export interface ResidencyReading {
  * nichts über einen Ladevorgang sagen" (Provider ohne `embedWithMeta`) — nicht
  * „es gab keinen".
  */
-export interface WarmupLoad {
+interface WarmupLoad {
   /** Ollamas `load_duration` in ms, `null` wenn der Provider keine meldet. */
   loadMs: number | null;
 }
@@ -171,7 +171,7 @@ export interface WarmupSettle {
 }
 
 /** What `ensureWarm()` decided. */
-export type WarmupOutcome =
+type WarmupOutcome =
   "fired" | "skipped-in-flight" | "skipped-warm" | "skipped-no-provider" | "skipped-hosted" | "skipped-battery";
 
 /**
@@ -186,7 +186,7 @@ export type WarmupOutcome =
  * question the recall path asks: warming a model no recall can use is one
  * embed for nothing.
  */
-export type WarmupTrigger = "boot" | "turn" | "session";
+type WarmupTrigger = "boot" | "turn" | "session";
 
 export interface WarmupCoordinator {
   /** Free residency answer for a caller about to spend a deadline on it. */

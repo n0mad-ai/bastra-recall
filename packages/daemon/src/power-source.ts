@@ -20,7 +20,7 @@ import { isOffValue, isOnValue } from "./env.js";
 export type PowerSource = "ac" | "battery" | "unknown";
 
 /** Poll cadence; also how long a plug change can go unnoticed. */
-export const POWER_POLL_MS = 60_000;
+const POWER_POLL_MS = 60_000;
 /** The idle-unload window while saving battery (instead of 10 min). */
 export const BATTERY_UNLOAD_MS = 60_000;
 

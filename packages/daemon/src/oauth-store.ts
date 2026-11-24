@@ -23,8 +23,8 @@ import { join } from "node:path";
 import { bastraDataDir } from "./platform-paths.js";
 import { withPathLock } from "./path-lock.js";
 
-export const ACCESS_TTL_MS = 60 * 60_000;
-export const REFRESH_TTL_MS = 30 * 24 * 60 * 60_000;
+const ACCESS_TTL_MS = 60 * 60_000;
+const REFRESH_TTL_MS = 30 * 24 * 60 * 60_000;
 /** A registration that never led to a grant is dropped after this — DCR is an
  *  open door, so unused clients must not pile up. */
 const UNUSED_CLIENT_TTL_MS = 10 * 60_000;
@@ -42,7 +42,7 @@ export interface OAuthClient {
   created_at: string;
 }
 
-export interface OAuthGrant {
+interface OAuthGrant {
   id: string;
   client_id: string;
   /** RFC 8707 audience: the canonical MCP URL the token is bound to. */
@@ -75,7 +75,7 @@ export interface IssuedTokens {
   scope: string;
 }
 
-export function oauthStorePath(): string {
+function oauthStorePath(): string {
   return process.env.BASTRA_OAUTH_PATH ?? join(bastraDataDir(), "oauth.json");
 }
 

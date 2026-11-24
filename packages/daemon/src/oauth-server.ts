@@ -114,7 +114,7 @@ export function createOAuthState(): OAuthState {
 const HOST_RE = /^(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::\d{1,5})?$/i;
 
 /** The public origin the caller reached, or null for a missing/odd Host. */
-export function publicOrigin(req: IncomingMessage): string | null {
+function publicOrigin(req: IncomingMessage): string | null {
   const host = req.headers.host;
   if (!host || !HOST_RE.test(host)) return null;
   const scheme = isLoopbackHost(host, []) ? "http" : "https";
@@ -122,7 +122,7 @@ export function publicOrigin(req: IncomingMessage): string | null {
 }
 
 /** RFC 8707 form for comparison: no query/fragment, no trailing slash. */
-export function normalizeResource(raw: string): string | null {
+function normalizeResource(raw: string): string | null {
   let u: URL;
   try {
     u = new URL(raw);
@@ -262,7 +262,7 @@ function oauthError(res: ServerResponse, status: number, error: string, descript
 
 /** https to one of {@link REDIRECT_HOSTS}, or plain http to loopback on any
  *  port; no fragments, no userinfo, no other schemes or hosts. */
-export function allowedRedirectUri(raw: string): boolean {
+function allowedRedirectUri(raw: string): boolean {
   let u: URL;
   try {
     u = new URL(raw);

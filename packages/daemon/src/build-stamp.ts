@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const BUILD_STAMP_FILE = ".build-revision";
+const BUILD_STAMP_FILE = ".build-revision";
 
 export interface BuildStamp {
   /** Full commit sha the build was produced from. */

@@ -39,7 +39,7 @@ import { envInt } from "./env.js";
 import type { RecallBand } from "./telemetry.js";
 import { hiddenFromCaller } from "./private-access.js";
 
-export type LiveUpdateKind = "add" | "change" | "delete" | "read";
+type LiveUpdateKind = "add" | "change" | "delete" | "read";
 
 export interface LiveUpdate {
   id: string;

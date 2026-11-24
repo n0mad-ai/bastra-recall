@@ -77,8 +77,8 @@ export async function saveCuratorState(vaultRoot: string, state: CuratorState): 
 
 // ─── run gate ────────────────────────────────────────────────────────────────
 
-export const CURATOR_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // ~7d
-export const CURATOR_MIN_IDLE_MS = 10 * 60 * 1000; // no requests for 10min
+const CURATOR_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // ~7d
+const CURATOR_MIN_IDLE_MS = 10 * 60 * 1000; // no requests for 10min
 
 /**
  * Cheap poll → real gate. Callers poll opportunistically (session start,

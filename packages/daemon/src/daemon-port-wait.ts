@@ -1,7 +1,7 @@
 /** Before storage boot: only bind/health probes, no vault or state writes. */
 import { probeDaemonPort } from "./http.js";
 
-export const SERVICE_PORT_RETRY_MS = 1000;
+const SERVICE_PORT_RETRY_MS = 1000;
 export const SERVICE_PORT_RETRY_MAX_MS = 30_000;
 const OWNER_PROBE_MS = 750;
 

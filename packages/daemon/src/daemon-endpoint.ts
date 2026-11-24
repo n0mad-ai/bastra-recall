@@ -30,7 +30,7 @@
 
 export const DEFAULT_DAEMON_PORT = 6723;
 
-export type EndpointSource = "BASTRA_DAEMON_URL" | "BASTRA_HTTP_URL" | "BASTRA_HTTP_PORT" | "default";
+type EndpointSource = "BASTRA_DAEMON_URL" | "BASTRA_HTTP_URL" | "BASTRA_HTTP_PORT" | "default";
 
 export interface DaemonEndpoint {
   /** Origin without a trailing slash, e.g. `http://127.0.0.1:26723`. */
