@@ -256,7 +256,7 @@ function indexView(vault: Pick<Vault, "list"> & Partial<Pick<Vault, "on">>) {
   return { memories: (view.memories ??= vault.list()), isCurrent: () => generation === own.generation };
 }
 export const RULEBOOK_TOOL_BUDGET_MS = 5000;
-export const RULEBOOK_STARTUP_BUDGET_MS = 800;
+const RULEBOOK_STARTUP_BUDGET_MS = 800;
 export async function cachedRulebookCatalog(
   vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
   opts: RulebookCatalogOptions

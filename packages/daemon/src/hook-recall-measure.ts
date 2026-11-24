@@ -119,7 +119,7 @@ function collectVectorMeta(timings: StageTimings, s: RecallStage): VectorArmRepo
  * ehrlichere Blockade-Wert, und genau so wird er in {@link eventLoopFields}
  * auch verwendet.
  */
-export const LOOP_PROBE_EVERY_MS = 10;
+const LOOP_PROBE_EVERY_MS = 10;
 
 export interface LoopProbeResult {
   ticks: number;
@@ -153,7 +153,7 @@ export function startLoopProbe(): { stop: () => LoopProbeResult } {
  * Rechenzeit selbst — sonst stünde hier eine 0, die wie „kein Problem"
  * aussieht und genau den Fall verschweigt, für den die Zahl gedacht war.
  */
-export function eventLoopFields(
+function eventLoopFields(
   probe: LoopProbeResult,
   bm25SearchMs: number | undefined,
   recallLatencyMs: number

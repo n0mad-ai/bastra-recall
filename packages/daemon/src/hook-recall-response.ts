@@ -39,7 +39,7 @@ export interface HookRecallHit {
 }
 
 /** #1303: the hint types a must-load gate may hold an action for. */
-export const GATED_HINT_TYPES: ReadonlySet<string> = new Set(["user-preference", "meta-working", "workflow"]);
+const GATED_HINT_TYPES: ReadonlySet<string> = new Set(["user-preference", "meta-working", "workflow"]);
 
 /**
  * #1303: does this emitted hint become a pending must-load? Only rule-shaped

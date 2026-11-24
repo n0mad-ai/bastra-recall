@@ -61,7 +61,7 @@ export const HARVEST_IDLE_MS = 30 * 60 * 1000;
 const QUEUE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const QUEUE_MAX_ENTRIES = 200;
 /** Per session: the relay entry must stay well inside the 3,000-char budget. */
-export const HARVEST_MAX_CANDIDATES = 3;
+const HARVEST_MAX_CANDIDATES = 3;
 const QUOTE_MAX_CHARS = 280;
 const CONTEXT_MAX_CHARS = 160;
 /** An answer shorter than this is a yes/no or an acknowledgement. */
@@ -71,7 +71,7 @@ const QUESTION_END_RE = /[?？؟]\s*$/u;
 
 export type HarvestTurn = TranscriptTurn;
 
-export type HarvestKind = "restated" | "correction" | "answer";
+type HarvestKind = "restated" | "correction" | "answer";
 
 export interface HarvestCandidate {
   kind: HarvestKind;
@@ -100,7 +100,7 @@ interface QueueEntry {
   compact_at?: number;
 }
 
-export function harvestQueuePath(): string {
+function harvestQueuePath(): string {
   return process.env.BASTRA_HARVEST_QUEUE_PATH ?? join(bastraDataDir(), "harvest-queue.json");
 }
 

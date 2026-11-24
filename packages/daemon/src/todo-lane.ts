@@ -67,7 +67,7 @@ const BACKOFF_SOURCE = "todo-plan";
 const TOPIC_WORD_CAP = 3;
 const MIN_QUERY_LEN_WITHOUT_TOPICS = 10;
 
-export interface TodoItem {
+interface TodoItem {
   content?: unknown;
   status?: unknown;
   activeForm?: unknown;

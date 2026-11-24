@@ -69,7 +69,7 @@ const DEFAULT_BUDGET_TOKENS = 0;
 
 /** Welche Abschnitte es gibt. Der Name landet in der Antwort, also ist er
  *  Vertrag und keine Beschriftung. */
-export type SectionKind =
+type SectionKind =
   | "due"
   | "pinned"
   | "project"
@@ -128,7 +128,7 @@ export interface SessionSection {
 }
 
 /** Ein Abschnitt in der Antwort — inklusive der Auskunft, warum er fehlt. */
-export interface SectionReport {
+interface SectionReport {
   kind: SectionKind;
   priority: number;
   tokens_est: number;
@@ -139,7 +139,7 @@ export interface SectionReport {
   omitted?: "empty" | "deadline" | "token_budget";
 }
 
-export interface SessionBudget {
+interface SessionBudget {
   /** Gesamtzeit für die Erhebung. */
   time_ms?: number;
   /** Obergrenze für den gerenderten Text; 0 = keine. */
@@ -271,7 +271,7 @@ export interface SessionContextDeps {
  * `deep_recall` steht dort auch, kommt hier aber nie vor: Der Assembler ist
  * kein Konsument von Deep Recall (C-031/C-052).
  */
-export type RetrievalMarker = "lexical_only" | "hybrid" | "degraded";
+type RetrievalMarker = "lexical_only" | "hybrid" | "degraded";
 
 /**
  * Das Rohmaterial hinter den Abschnitten (#265).
@@ -280,7 +280,7 @@ export type RetrievalMarker = "lexical_only" | "hybrid" | "degraded";
  * eigenen Mengen. Sie braucht deshalb die Daten, nicht die fertigen Zeilen. Die
  * Felder sind additiv: Wer nur `sections` liest, merkt nichts davon.
  */
-export interface SessionRawData {
+interface SessionRawData {
   /** Pro Recall die Antwort der Pipeline, in Abfragereihenfolge — dieselbe
    *  Form, die `/hook/recall` liefert, damit die Lane sie wie bisher liest
    *  (`isUnfused`, `mergeSessionHits`). `null`, wo der Recall scheiterte. */

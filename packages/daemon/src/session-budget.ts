@@ -64,7 +64,7 @@ export function shadowBudgetTokens(env: NodeJS.ProcessEnv = process.env): number
 }
 
 /** Höchstzahl gleichzeitig geführter Sitzungen; die älteste fällt zuerst. */
-export const SESSION_BUDGET_MAX_SESSIONS = 2000;
+const SESSION_BUDGET_MAX_SESSIONS = 2000;
 
 export type BudgetLane = HookLaneKind;
 

@@ -17,7 +17,7 @@ import {
 import { RULE_KERNEL_TOOL_CALLS } from "./rule-kernel.js";
 import { kernelWorker } from "./rule-kernel-seen.js";
 
-export const DENIED_REFLEX_CAP = 200;
+const DENIED_REFLEX_CAP = 200;
 export const KERNEL_DELIVERY = "rule-kernel-delivery";
 export const KERNEL_RETRY_AT = "rule-kernel-retry-at";
 

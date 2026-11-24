@@ -38,7 +38,7 @@ const NOTICE_BY_LANGUAGE: Readonly<Record<string, string>> = {
 };
 
 /** The lanes that announce an unreachable daemon. */
-export const NOTICE_LANES: ReadonlySet<string> = new Set(["prompt", "session"]);
+const NOTICE_LANES: ReadonlySet<string> = new Set(["prompt", "session"]);
 
 const base = () => process.env.BASTRA_HOOK_STATE_DIR || defaultHookStateDir();
 const directory = () => join(base(), "unreachable-notice");

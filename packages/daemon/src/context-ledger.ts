@@ -24,7 +24,7 @@
  * Reine Funktion über Ereignisse, keine Persistenz, kein Rohtext.
  */
 
-export const CONTEXT_LEDGER_VERSION = 1;
+const CONTEXT_LEDGER_VERSION = 1;
 export const CONTEXT_LEDGER_ESTIMATOR = "chars/4";
 
 /** Alle Lane-Ereignisse, die Text ins Transkript schreiben. Die Liste ist
@@ -41,7 +41,7 @@ export const HOOK_LANE_KINDS = [
 export type HookLaneKind = (typeof HOOK_LANE_KINDS)[number];
 
 export const TOOL_PAYLOAD_KINDS = ["recall", "load_memory", "read_document"] as const;
-export type ToolPayloadKind = (typeof TOOL_PAYLOAD_KINDS)[number];
+type ToolPayloadKind = (typeof TOOL_PAYLOAD_KINDS)[number];
 
 export interface LedgerEvent {
   kind: string;
@@ -57,7 +57,7 @@ export interface LedgerEvent {
   [k: string]: unknown;
 }
 
-export interface LedgerPart {
+interface LedgerPart {
   /** Posten mit bekannter Größe. */
   emissions: number;
   tokens: number;
@@ -65,7 +65,7 @@ export interface LedgerPart {
   unknown: number;
 }
 
-export interface SessionLedger {
+interface SessionLedger {
   session: string;
   lanes: Record<HookLaneKind, LedgerPart>;
   tools: Record<ToolPayloadKind, LedgerPart>;
@@ -112,7 +112,7 @@ const numberOrNull = (v: unknown): number | null => (typeof v === "number" && Nu
  *  Hook-Lanes tragen die echte Client-Session in `session_id`; die
  *  Daemon-Ereignisse tragen dort die Boot-Id und die Client-Session (wenn
  *  bekannt) in `caller_session`. */
-export function ledgerSessionKey(e: LedgerEvent): string {
+function ledgerSessionKey(e: LedgerEvent): string {
   if (typeof e.caller_session === "string" && e.caller_session) return e.caller_session;
   if (typeof e.session_id === "string" && e.session_id) return e.session_id;
   return "(none)";

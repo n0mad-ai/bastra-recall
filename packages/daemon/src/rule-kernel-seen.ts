@@ -20,7 +20,7 @@ import { loadSessionState, mutateSessionState } from "./session-state.js";
 
 const SEEN_PREFIX = "rule-kernel-seen:";
 /** Agents a session remembers; the one delivered to longest ago is forgotten first. */
-export const KERNEL_SEEN_CAP = 50;
+const KERNEL_SEEN_CAP = 50;
 
 export interface KernelSeen {
   key?: string;

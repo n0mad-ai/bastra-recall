@@ -60,7 +60,7 @@ export function isMemoryShapedMarkdown(head: string | null): boolean {
  *  carries the new content inline; `Edit`/`MultiEdit` only carry edit
  *  strings, so the existing file's head is read (2KB, sync — this runs in
  *  a short-lived hook process). Fail-open: unreadable → null. */
-export function pendingWriteHead(filePath: string, toolInput?: Record<string, unknown>): string | null {
+function pendingWriteHead(filePath: string, toolInput?: Record<string, unknown>): string | null {
   const content = toolInput?.content;
   if (typeof content === "string") return content.slice(0, 2048);
   try {

@@ -3,7 +3,7 @@ import { countCopyUnits } from "@bastra-recall/core";
 import type { TranscriptTurn } from "./stop-transcript.js";
 import { ownerPromptText } from "./system-turn.js";
 
-export function isOwnerBoundary(turn: TranscriptTurn): boolean {
+function isOwnerBoundary(turn: TranscriptTurn): boolean {
   const owner =
     !turn.isMeta &&
     !turn.isCompactSummary &&

@@ -29,7 +29,7 @@ export interface ConventionSource {
   validator?: ConventionValidator;
 }
 
-export function projectRulebookMetadata(fm: Frontmatter, context: RulebookLegacyContext = {}): RulebookMetadata {
+function projectRulebookMetadata(fm: Frontmatter, context: RulebookLegacyContext = {}): RulebookMetadata {
   return {
     ...resolveRulebook(fm, context),
     ...(fm.rule_categories ? { rule_categories: fm.rule_categories } : {}),
@@ -74,7 +74,7 @@ export async function readConventionSource(
 }
 
 /** One active/floor context per response, shared by index and current-source paths. */
-export async function readRulebookContext(sessionId?: string | null): Promise<(id: string) => RulebookLegacyContext> {
+async function readRulebookContext(sessionId?: string | null): Promise<(id: string) => RulebookLegacyContext> {
   const [state, floors] = await Promise.all([sessionId ? loadSessionState(sessionId) : undefined, listFloors()]);
   const activeIds = new Set(state?.activeConventions?.map((c) => c.id));
   const floorIds = new Set(floors.map((f) => f.memory_id));

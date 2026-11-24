@@ -95,8 +95,8 @@ interface ReflexResponse {
   recall_id: string | null;
 }
 
-export type RecallStatus = "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
-export type RecallSkipped = "reflex-pool-empty" | "reflex-all-suppressed";
+type RecallStatus = "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
+type RecallSkipped = "reflex-pool-empty" | "reflex-all-suppressed";
 
 /** What the search stage hands to the rest of the lane. */
 export interface PromptSearch {

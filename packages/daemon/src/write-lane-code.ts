@@ -13,7 +13,7 @@ import { codeGraphCache, repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { recordTouched, type ReadonlySessionState, type SessionState } from "./session-state.js";
 
-export interface TargetNotes {
+interface TargetNotes {
   repoRoot: string;
   impact: ImpactResult;
   applies: AppliesToNote | null;

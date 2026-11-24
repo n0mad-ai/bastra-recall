@@ -21,7 +21,7 @@ import type { KernelCandidates } from "./rule-kernel.js";
 // derselbe Typ wie in allen anderen Lanes.
 export type { HookRecallHit as RecallHit, HookRecallResponse as RecallResponse } from "./hook-recall-response.js";
 
-export interface UpdateAvailable {
+interface UpdateAvailable {
   current: string;
   latest: string;
   html_url: string;

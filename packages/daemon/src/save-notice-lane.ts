@@ -60,7 +60,7 @@ type WriteTool = (typeof WRITE_TOOLS)[number];
  */
 /** Recall namespace, direct or plugin-bundled. Write notices use this prefix;
  * the rulebook gate exempts only read/check operations within it. */
-export const RECALL_TOOL_PREFIX = "^mcp__(plugin_.+_)?bastra-recall__";
+const RECALL_TOOL_PREFIX = "^mcp__(plugin_.+_)?bastra-recall__";
 export const SAVE_NOTICE_MATCHER = `${RECALL_TOOL_PREFIX}(${WRITE_TOOLS.join("|")})$`;
 export const CODEX_SAVE_NOTICE_MATCHER = SAVE_NOTICE_MATCHER.replace("bastra-recall", "bastra[-_]recall");
 const TOOL_NAME = new RegExp(CODEX_SAVE_NOTICE_MATCHER);
@@ -181,7 +181,7 @@ export function readToolResult(value: unknown): Record<string, unknown> | null {
 }
 
 /** What the call did, as the line states it; `null` when nothing is to be said. */
-export function describeWrite(
+function describeWrite(
   tool: WriteTool,
   input: Record<string, unknown>,
   result: Record<string, unknown> | null,
