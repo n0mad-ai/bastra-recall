@@ -32,8 +32,8 @@ until a new design replaces it; this name is independent of the product version.
   Handed over, Done, Question. An agent closing the last handed-over note
   signs the report off and marks it read; a follow-up report with questions
   (`task_report_save` `follow_up_of`) shows as Question on the original
-  while any follow-up with questions in its chain remains open. Marking a
-  follow-up outdated removes its branch from this check (#1657).
+  while any follow-up with questions in its chain remains open. A live
+  follow-up remains visible through an outdated intermediate report (#1657).
 
 - **Answer a question in a task report.** Questions ending with answer
   options such as `[? Yes | No]` offer answer buttons, a free answer and a

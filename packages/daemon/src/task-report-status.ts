@@ -11,8 +11,8 @@
  *   outdated follow-up asks nothing any more.
  * Only the notes the caller may see count, so an agent never learns of the owner's drafts. Whether
  * a follow-up still asks is taken from its notes; the walk down the chain visits every report once,
- * so even a circle in a damaged store ends. An outdated follow-up ends its branch. Questions are
- * recognised by the fixed syntax only, never by words. */
+ * so even a circle in a damaged store ends. A live descendant can still ask through an outdated
+ * follow-up. Questions are recognised by the fixed syntax only, never by words. */
 
 // One scanner for the reader and this status (#1656): the web reader's own module, which the daemon
 // finds next to its code as it finds the rest of the web UI (webui.ts).
@@ -112,10 +112,10 @@ function openQuestion<R extends StatusReport>(
   seen = new Set([report.id])
 ): R | undefined {
   const next = reports
-    .filter((r) => r.follow_up_of === report.id && !seen.has(r.id) && r.outdated_at === undefined)
+    .filter((r) => r.follow_up_of === report.id && !seen.has(r.id))
     .sort((a, b) => b.created_at - a.created_at);
   for (const r of next) seen.add(r.id);
-  const open = next.find((r) => asks(r) && notesStatus(notesOf(r)) !== "done");
+  const open = next.find((r) => r.outdated_at === undefined && asks(r) && notesStatus(notesOf(r)) !== "done");
   if (open) return open;
   for (const r of next) {
     const deeper = openQuestion(r, reports, notesOf, seen);

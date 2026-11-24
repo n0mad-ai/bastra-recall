@@ -90,8 +90,10 @@ test("#1657: a question stays until the whole chain of follow-ups is done", () =
   // A link without a question still carries the chain: A ← B (info only) ← C (asks).
   const info = followUp({ id: "b", title: "B", body: "Just info." });
   assert.deepEqual(status(a, [a, info, c]), { status: "question", follow_up: { id: "c", title: "C" } });
-  // An outdated report ends its branch.
-  assert.deepEqual(status(a, [a, { ...b, outdated_at: 9 }, c]), { status: "done" });
+  // The outdated report's question is gone, but the active descendant still asks.
+  const outdated = { ...b, outdated_at: 9 };
+  assert.deepEqual(status(a, [a, outdated, c]), { status: "question", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(a, [a, outdated, cDone]), { status: "done" });
   // An open direct follow-up is named before one further down.
   const open = followUp({ id: "d", title: "D", created_at: 1 });
   assert.deepEqual(status(a, [a, b, c, open]), { status: "question", follow_up: { id: "d", title: "D" } });
