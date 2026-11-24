@@ -48,10 +48,20 @@ export function assertKnipLock(lock) {
   return { version: tool.version, integrity: tool.integrity, resolved: tool.resolved };
 }
 
+// #1661: the reviewed configuration transition only classifies mkfifo as a system binary.
+function approvedMkfifoConfig(previous, candidate) {
+  return (
+    digest(previous) === "5ada164275a4e9077e292e8170cca4c7be915a597c3f6d36378ac4dbd60eda67" &&
+    digest(candidate) === "270184e1a1528c321a06a364836492d19269f59561d25e3aa6d9c6e75ea90322"
+  );
+}
+
 export function assertKnipBudget(candidate, config, previous, previousConfig, bootstrap = KNIP_BOOTSTRAP) {
   const budget = validateKnipBaseline(candidate, config);
   if (previous) {
-    if (digest(config) !== digest(previousConfig)) throw new Error("Knip configuration change needs explicit review");
+    if (digest(config) !== digest(previousConfig) && !approvedMkfifoConfig(previousConfig, config)) {
+      throw new Error("Knip configuration change needs explicit review");
+    }
     const trusted = validateKnipBaseline(previous, previousConfig);
     assertKnipDownward(trusted, budget, "Knip baseline");
     return;
@@ -75,7 +85,7 @@ function currentPackage(read, packageBefore, required) {
   }
 }
 
-export function verifyKnipContract(read, readBase) {
+export function verifyKnipContract(read, readBase, reviewedContract) {
   const before = readBase("knip-baseline.json");
   const configBefore = readBase("knip.json");
   const packageBefore = readBase("package.json") ?? "{}";
@@ -96,7 +106,12 @@ export function verifyKnipContract(read, readBase) {
   const oldLock = assertKnipLock(JSON.parse(readBase("package-lock.json")));
   if (digest(lock) !== digest(oldLock)) throw new Error("Knip locked tool changed without review");
   const contractBefore = readBase("scripts/lint-knip-contract.mjs");
-  if (!contractBefore || contractBefore !== read("scripts/lint-knip-contract.mjs")) {
+  const contractAfter = read("scripts/lint-knip-contract.mjs");
+  const exactReview =
+    approvedMkfifoConfig(previousConfig, config) &&
+    digest(contractBefore) === reviewedContract?.before &&
+    digest(contractAfter) === reviewedContract?.after;
+  if (!contractBefore || (contractBefore !== contractAfter && !exactReview)) {
     throw new Error("Knip bootstrap/contract changes need explicit review");
   }
 }

@@ -268,6 +268,60 @@ test("config entries/exclusions/project narrowing and bootstrap rewrites cannot 
   assert.match(guard(root).output, /bootstrap\/contract changes/);
 });
 
+test("#1661: the reviewed mkfifo configuration still requires a shrinking baseline", () => {
+  const reviewed = JSON.parse(readFileSync(join(repository, "knip.json"), "utf8"));
+  const { ignoreBinaries, ...previous } = reviewed;
+  assert.deepEqual(ignoreBinaries, ["mkfifo"]);
+  const oldBudget = { ...baseline(), configDigest: digest(previous) };
+  const newBudget = { ...baseline({}), configDigest: digest(reviewed) };
+  assert.doesNotThrow(() => assertKnipBudget(newBudget, reviewed, oldBudget, previous));
+  const newFindings = findings(row("new.ts"));
+  assert.throws(
+    () => assertKnipBudget({ ...newBudget, fingerprints: newFindings }, reviewed, oldBudget, previous),
+    /new\/increased/
+  );
+  const wider = { ...reviewed, ignoreBinaries: ["mkfifo", "another-tool"] };
+  assert.throws(
+    () => assertKnipBudget({ ...newBudget, configDigest: digest(wider) }, wider, oldBudget, previous),
+    /configuration change/
+  );
+});
+
+test("only the reviewed contract bytes can cross the mkfifo configuration change", () => {
+  const reviewed = JSON.parse(readFileSync(join(repository, "knip.json"), "utf8"));
+  const previous = { ...reviewed };
+  delete previous.ignoreBinaries;
+  const file = "scripts/lint-knip-contract.mjs";
+  const currentFiles = {
+    "knip.json": JSON.stringify(reviewed),
+    "knip-baseline.json": JSON.stringify({ ...baseline({}), configDigest: digest(reviewed) }),
+    "package.json": JSON.stringify(metadata),
+    "package-lock.json": JSON.stringify(lock),
+    ".github/workflows/ci.yml": workflow,
+    [file]: "reviewed contract\n",
+  };
+  const previousFiles = {
+    ...currentFiles,
+    "knip.json": JSON.stringify(previous),
+    "knip-baseline.json": JSON.stringify({ ...baseline(), configDigest: digest(previous) }),
+    [file]: "previous contract\n",
+  };
+  const read = (files) => (file) => files[file] ?? null;
+  const hashes = { before: digest(previousFiles[file]), after: digest(currentFiles[file]) };
+  assert.doesNotThrow(() => verifyKnipContract(read(currentFiles), read(previousFiles), hashes));
+  for (const [candidate, trusted] of [
+    [currentFiles, { ...previousFiles, [file]: previousFiles[file] + " " }],
+    [{ ...currentFiles, [file]: currentFiles[file] + " " }, previousFiles],
+  ]) {
+    assert.throws(() => verifyKnipContract(read(candidate), read(trusted), hashes), /bootstrap\/contract changes/);
+  }
+  const raised = {
+    ...currentFiles,
+    "knip-baseline.json": JSON.stringify({ ...baseline(), configDigest: digest(reviewed) }),
+  };
+  assert.throws(() => verifyKnipContract(read(raised), read(currentFiles), hashes), /new\/increased/);
+});
+
 test("workflow contract rejects skips, optional execution, different commands and order", () => {
   assert.doesNotThrow(() => assertKnipWorkflow(workflow));
   for (const changed of [
