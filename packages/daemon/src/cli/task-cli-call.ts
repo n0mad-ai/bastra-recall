@@ -7,6 +7,10 @@
 import { TaskDomainError } from "../task-auth.js";
 import { isTaskTool } from "../task-transport.js";
 
+export function taskCliOperationName(sub: string): string {
+  return `task_${sub.replaceAll("-", "_")}`;
+}
+
 /** Agent mode is explicit. Owner mode always asks privately, ignoring agent env. */
 export async function taskCliCall(
   sub: string,
@@ -14,7 +18,7 @@ export async function taskCliCall(
   authorization: string,
   baseUrl: string
 ): Promise<unknown> {
-  const operation = `task_${sub.replaceAll("-", "_")}`;
+  const operation = taskCliOperationName(sub);
   if (!isTaskTool(operation)) throw Object.assign(new Error("Unknown task operation"), { code: "validation" });
   const resp = await fetch(`${baseUrl}/api/v1/${operation}`, {
     method: "POST",

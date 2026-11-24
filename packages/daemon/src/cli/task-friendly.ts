@@ -204,6 +204,7 @@ const TASK_ERROR_REASONS: Record<string, TaskCliText> = {
     en: "The target time is in the past. Choose a future time.",
   },
   owner_declined: { de: "Nicht bestätigt. Nichts geändert.", en: "Not confirmed. Nothing changed." },
+  unknown_task_operation: { de: "Unbekannter Unterbefehl.", en: "Unknown subcommand." },
   owner_terminal_required: {
     de: "Dieser Befehl braucht ein interaktives Terminal für den Owner-Zugang. Ohne Terminal: --agent mit dem Agent-Zugang verwenden.",
     en: "This command needs an interactive terminal for owner access. Without a terminal, use --agent with the agent access.",

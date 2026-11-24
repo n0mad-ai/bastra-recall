@@ -159,7 +159,6 @@ const en = {
   },
   timezoneAssumed: (timezone: string) =>
     `Time zone taken from the system: ${timezone}. Set it deliberately with --timezone.`,
-  retired: "The instruction in chat is the approval. Keys and separate signatures are no longer needed.",
   uiHint: "(turn the UI on: bastra config set ui.enabled true)",
   clientValid: "Client credential valid (the daemon must be running)",
   clientNoCards: "No cards for this client",
@@ -364,7 +363,6 @@ const de: TaskCliWords = {
       revoked ? "widerrufen" : denied ? "abgelehnt" : consumed ? "verbraucht" : "erfasst",
   },
   timezoneAssumed: (timezone) => `Zeitzone aus dem System angenommen: ${timezone}. Mit --timezone bewusst festlegen.`,
-  retired: "Die Anweisung im Chat ist die Freigabe. Schlüssel und separate Unterschriften werden nicht mehr benötigt.",
   uiHint: "(UI aktivieren: bastra config set ui.enabled true)",
   clientValid: "Client-Kennung gültig (Daemon muss laufen)",
   clientNoCards: "Keine Karten für diesen Client",

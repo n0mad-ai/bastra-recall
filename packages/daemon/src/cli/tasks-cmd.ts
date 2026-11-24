@@ -16,8 +16,8 @@ import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { authenticateTask, mintTaskCredential, revokeTaskCredential, taskAuthPath } from "../task-auth.js";
-import { taskClientAuthorization, taskFailure } from "../task-transport.js";
-import { taskCliCall } from "./task-cli-call.js";
+import { isTaskTool, taskClientAuthorization, taskFailure } from "../task-transport.js";
+import { taskCliCall, taskCliOperationName } from "./task-cli-call.js";
 import { confirm } from "./prompt.js";
 
 /** A CLI input error with a stable reason the person reads in the CLI's language. */
@@ -100,19 +100,19 @@ export async function cmdTasks(args: TaskCliArgs): Promise<number> {
   }
   const language = await taskCliLanguage(),
     w = taskCliWords(language);
-  // Compatibility notice only: retired commands never read credentials or keys.
-  if (["keys", "approve", "deny"].includes(args.sub ?? "")) {
-    const hint = w.retired;
-    process.stderr.write((args.json ? JSON.stringify({ code: "retired_command", hint }) : hint) + "\n");
-    return 1;
-  }
   try {
     const { words, options } = parseTaskOptions(args.argv ?? args.positional);
     const local = localTaskCommands.get(args.sub ?? "");
     if (local) await local({ args, words, options, w });
     else if (isOwnerMaintenance(args.sub, words, options))
       await ownerTaskMaintenance(args.sub!, words, options, args.json);
-    else await runTaskApiCommand(args, words, options, language, w);
+    else {
+      // Reject unknown commands before reading input or looking up authorization.
+      const sub = args.sub ?? "list";
+      if (sub !== "execution-enable" && !Object.hasOwn(TASK_CONTROLS, sub) && !isTaskTool(taskCliOperationName(sub)))
+        throw new TaskCliInputError("Unknown task operation", "unknown_task_operation");
+      await runTaskApiCommand(args, words, options, language, w);
+    }
     return 0;
   } catch (error) {
     process.stderr.write(taskCliErrorText(error, args.sub, language, args.json) + "\n");

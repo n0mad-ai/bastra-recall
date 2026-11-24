@@ -6,12 +6,12 @@ import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Exercise the source entry point before building so this regression fails on
-// the old dispatch, which asks for credentials or signs/enrolls owner keys.
-for (const sub of ["keys", "approve", "deny"]) {
-  test(`#1428: retired ${sub} command reports chat authorization without credentials or writes`, async () => {
-    const root = await mkdtemp(join(tmpdir(), "task-retired-signing-"));
-    for (const agent of [false, true]) {
+// Exercise the source CLI with a non-interactive stdin and no task credentials.
+for (const agent of [false, true]) {
+  test(`#1514: old signing commands are unknown commands in ${agent ? "agent" : "owner"} mode`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "task-unknown-command-"));
+    for (const sub of ["keys", "approve", "deny", "bogus-command"]) {
+      const args = { sub, positional: [], argv: ["tasks", sub, ...(agent ? ["agent"] : []), "x", "y", "z"] };
       const child = spawn(
         process.execPath,
         [
@@ -19,7 +19,11 @@ for (const sub of ["keys", "approve", "deny"]) {
           "tsx",
           "--input-type=module",
           "-e",
-          `import { cmdTasks } from './packages/daemon/src/cli/tasks-cmd.ts'; process.exitCode = await cmdTasks(${JSON.stringify({ sub, positional: [], argv: ["tasks", sub, ...(agent ? ["agent"] : []), "x", "y", "z", "--json"], json: true })});`,
+          `import assert from 'node:assert/strict';
+           import { cmdTasks } from './packages/daemon/src/cli/tasks-cmd.ts';
+           const args = ${JSON.stringify(args)};
+           assert.equal(await cmdTasks(args), 1);
+           process.exitCode = await cmdTasks({ ...args, json: true, argv: [...args.argv, '--json'] });`,
         ],
         {
           env: {
@@ -45,10 +49,22 @@ for (const sub of ["keys", "approve", "deny"]) {
         child.once("error", reject);
         child.once("close", resolve);
       });
-      assert.equal(code, 1, errors);
-      const reply = JSON.parse(output || errors);
-      assert.equal(reply.code, "retired_command");
-      assert.match(reply.hint, /instruction in chat is the approval/);
+      assert.equal(code, 1, sub);
+      assert.equal(output, "", sub);
+      const [text, json, tail] = errors.split("\n");
+      assert.equal(text, `${sub}: Unknown subcommand.`);
+      assert.equal(tail, "");
+      assert.deepEqual(
+        JSON.parse(json),
+        {
+          error: "Unknown task operation",
+          code: "validation",
+          reason: "unknown_task_operation",
+          retryable: false,
+          status: 400,
+        },
+        sub
+      );
       assert.deepEqual(await readdir(root), []);
     }
   });
