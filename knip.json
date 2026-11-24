@@ -1,6 +1,7 @@
 {
   "includeEntryExports": false,
   "includeSubpathExports": false,
+  "ignoreBinaries": ["mkfifo"],
   "workspaces": {
     ".": {
       "entry": [

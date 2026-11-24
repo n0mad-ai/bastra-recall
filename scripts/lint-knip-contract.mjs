@@ -22,8 +22,9 @@ export function knipPackageAllowed(before, after) {
 export function assertKnipWorkflow(source) {
   const job = source.match(/^  build-and-test:\n([\s\S]*?)(?=^  [a-zA-Z][\w-]*:|$(?![\s\S]))/m)?.[1];
   if (!job) throw new Error("Missing mandatory build-and-test job");
-  const header = job.split(/^    steps:\s*$/m)[0];
-  if (/^    (?:if|continue-on-error):/m.test(header)) throw new Error("Conditional/optional mandatory job");
+  if (/^    (?:if|continue-on-error)[ \t]*:/m.test(job)) {
+    throw new Error("Conditional/optional mandatory job");
+  }
   const steps = job.split(/^      - /m).slice(1);
   const build = steps.findIndex((step) => /\n        run: npm run build\s*$/.test(step.trimEnd()));
   const gates = steps.filter((step) => /npm run lint:knip/.test(step));

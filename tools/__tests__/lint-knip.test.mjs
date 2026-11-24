@@ -282,6 +282,18 @@ test("workflow contract rejects skips, optional execution, different commands an
     assert.throws(() => assertKnipWorkflow(changed), /Knip|mandatory/);
 });
 
+test("#1658: mandatory Knip job fields cannot bypass the guard after the step list", () => {
+  const job = workflow + "      - name: Smoke test\n        run: npm run smoke\n";
+  assert.doesNotThrow(() => assertKnipWorkflow(job));
+  for (const fields of [
+    "    if: false\n",
+    "    continue-on-error: true\n",
+    "    if : false\n    continue-on-error : true\n",
+  ]) {
+    assert.throws(() => assertKnipWorkflow(job + fields), /Conditional\/optional mandatory job/);
+  }
+});
+
 test("package and lock contracts reject script/version/integrity weakening", () => {
   const json = JSON.stringify;
   assert.ok(knipPackageAllowed(json(metadata), json(metadata)));

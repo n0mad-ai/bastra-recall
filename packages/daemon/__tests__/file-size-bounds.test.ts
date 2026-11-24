@@ -1,6 +1,9 @@
 /**
  * #1650 (rest of #1538) — the size note's I/O stays inside its deadline.
  *
+ * Settings: a named pipe in place of the settings database must not block
+ * the caller past the note deadline.
+ *
  * File: only regular files are opened, and at most MAX_BYTES real bytes are
  * read — not the whole input first, and not decoded characters instead of
  * bytes. Oversized files and devices behind a symlink leave no read running
@@ -11,7 +14,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { constants } from "node:fs";
 import { mkdtemp, open, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,6 +57,42 @@ async function childLine(
     });
   });
 }
+
+test("#1650: a settings database that never answers does not stall the note past its deadline", async (t) => {
+  if (posixOnly) return t.skip(posixOnly);
+  const dir = await mkdtemp(join(tmpdir(), "bastra-size-settings-fifo-"));
+  const fifo = join(dir, "recall.db");
+  try {
+    execFileSync("mkfifo", [fifo]);
+    const file = join(dir, "big.ts");
+    const settings = join(dir, "cli-settings.json");
+    await writeFile(file, "export const x = 1;\n".repeat(900));
+    const line = await childLine(
+      dir,
+      `import { fileSizeNote } from ${JSON.stringify(SIZE_CHECK)};
+       const check = (deadline) => fileSizeNote(${JSON.stringify(file)}, ${JSON.stringify(settings)},
+         ${JSON.stringify(dir)}, deadline);
+       process.env.BASTRA_DB_PATH = ${JSON.stringify(join(dir, "absent.db"))};
+       const warmNote = await check(Date.now() + 3000);
+       process.env.BASTRA_DB_PATH = ${JSON.stringify(fifo)};
+       const started = Date.now();
+       const note = await check(started + 150);
+       console.log(JSON.stringify({ warmNote, note, ms: Date.now() - started }));
+       process.exit(0);`,
+      5000,
+      async () => {
+        await (await open(fifo, constants.O_RDWR | constants.O_NONBLOCK)).close();
+      }
+    );
+    assert.notEqual(line, "timeout", "the settings read stalled the child's event loop");
+    const { warmNote, note, ms } = JSON.parse(line) as { warmNote: string | null; note: string | null; ms: number };
+    assert.match(warmNote ?? "", /lines="900"/, "the ordinary call starts the settings reader and yields a note");
+    assert.equal(note, null, "no note without settings");
+    assert.ok(ms < 1000, `note took ${ms} ms`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("#1650: oversized files and devices leave no read running after the answer", async (t) => {
   if (posixOnly) return t.skip(posixOnly);
