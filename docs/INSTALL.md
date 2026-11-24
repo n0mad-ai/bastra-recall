@@ -65,6 +65,8 @@ After an update, re-run `bastra install claude-code` / `bastra install codex` if
 
 Use the [manual setup guide](./USAGE.md#fully-manual-install--fallback). Codex uses a separate [TOML-based setup](./CODEX.md). Restart the client after changing registrations, then run `bastra doctor` to check them. Its features section also shows what is switched off, for example no memory language set or no onboarding yet, with the command for each.
 
+Setup, removal and Doctor use `language.primary` for their terminal messages. For supported native Claude Code and Codex CLI registrations, [Doctor also probes context delivery](./USAGE.md#doctor-and-release-diagnostics).
+
 <a id="deutsch"></a>
 
 ### Optional startup instructions (#1314)
@@ -155,6 +157,8 @@ Führe nach einem Update `bastra install claude-code` / `bastra install codex` e
 
 Nutze die [manuelle Anleitung](./USAGE.md#komplett-manuelle-installation--fallback). Codex verwendet eine eigene [TOML-Konfiguration](./CODEX.md). Starte den Client nach geänderten Registrierungen neu und prüfe sie mit `bastra doctor`. Dessen Abschnitt features zeigt auch, was ausgeschaltet ist, etwa keine Memory-Sprache gesetzt oder noch kein Onboarding, jeweils mit dem passenden Befehl.
 
+Einrichtung, Entfernen und Doctor richten ihre Terminalmeldungen nach `language.primary`. Bei unterstützten nativen Anbindungen für Claude Code und Codex CLI [prüft Doctor auch die Kontextzustellung](./USAGE.md#doctor-und-release-diagnose).
+
 ### Optionale Startanweisungen (#1314)
 
 `bastra install codex --with-bootstrap` schreibt den generierten Recall-Startblock
@@ -180,6 +184,6 @@ Host-Einschränkungen gelten weiter. In Claude hilft `/context` beim Prüfen.
 
 ## First-use onboarding / Ersteinführung
 
-During a concrete user task, first-use onboarding waits for a later turn without active work and remains pending. Without active work, the interview starts immediately, at most once per session; if you do not take it up, the agent does not ask again in that session. See [how Recall works](https://github.com/n0mad-ai/bastra-recall/wiki/How-Recall-Works).
+During a concrete user task, first-use onboarding waits for a later turn without active work and remains pending. Without active work, the interview starts immediately, at most once per session; if you do not take it up, the agent does not ask again in that session. Across sessions it is offered at most once a day and three times in all; after that only a one-line mention remains. Saying "later" puts it off for a few days (or the time you name) and leaves it open; saying no ends it. The agent records your answer through the `onboarding_answer` tool, with no shell command to approve. See [how Recall works](https://github.com/n0mad-ai/bastra-recall/wiki/How-Recall-Works).
 
-Bei einer konkreten Nutzeraufgabe wartet die Ersteinführung auf einen späteren Gesprächsschritt ohne laufende Aufgabe und bleibt offen. Ohne laufende Aufgabe beginnt das Gespräch sofort, höchstens einmal je Sitzung; gehst du nicht darauf ein, fragt der Agent in dieser Sitzung nicht erneut. Siehe [wie Recall funktioniert](https://github.com/n0mad-ai/bastra-recall/wiki/How-Recall-Works).
+Bei einer konkreten Nutzeraufgabe wartet die Ersteinführung auf einen späteren Gesprächsschritt ohne laufende Aufgabe und bleibt offen. Ohne laufende Aufgabe beginnt das Gespräch sofort, höchstens einmal je Sitzung; gehst du nicht darauf ein, fragt der Agent in dieser Sitzung nicht erneut. Über Sitzungen hinweg kommt das Angebot höchstens einmal am Tag und insgesamt dreimal, danach nur noch als kurze Zeile. „Später“ schiebt es um ein paar Tage (oder die genannte Frist) auf und lässt es offen; „nein“ beendet es. Der Agent hält deine Antwort über das Werkzeug `onboarding_answer` fest, ohne Terminalbefehl zur Freigabe. Siehe [wie Recall funktioniert](https://github.com/n0mad-ai/bastra-recall/wiki/How-Recall-Works).

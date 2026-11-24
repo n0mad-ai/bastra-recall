@@ -12,6 +12,7 @@ import { forwardTaskExecutionMcp } from "./task-execution-client.js";
 import { finalizeTaskMcp } from "./task-delivery.js";
 import { taskTools, isTaskTool, callTaskMcp, taskClientAuthorization, defaultTaskContext } from "./task-transport.js";
 import { draftReviewTools, reviewDraftHandler } from "./draft-review-handler.js";
+import { onboardingAnswerTools, onboardingAnswerHandler } from "./onboarding-answer-handler.js";
 import { validateArtifactTools, validateArtifactHandler } from "./validate-artifact-handler.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -67,6 +68,14 @@ import { DAEMON_VERSION } from "./version.js";
 import { projectForFilter } from "./scope-filter.js";
 import { mcpClientLabel, writeCallerStore } from "./caller-session.js";
 
+/** Tools that record the user's answer to something Recall offered — a shown
+ *  draft, the setup interview (#1603): one lookup, so the call handler does
+ *  not grow with each. */
+const answerToolHandlers = new Map<string, (deps: ToolDeps, args: Record<string, unknown>) => Promise<unknown>>([
+  ["review_draft", reviewDraftHandler],
+  ["onboarding_answer", onboardingAnswerHandler],
+]);
+
 export async function startStdioServer(opts: {
   vault: Vault;
   search: SearchIndex;
@@ -87,6 +96,7 @@ export async function startStdioServer(opts: {
       ...draftReviewTools,
       ...saveSuggestionTools,
       ...validateArtifactTools,
+      ...onboardingAnswerTools,
       ...documentTools,
       ...(documentWriteEnabled ? documentWriteTools : []),
       ...productDocTools,
@@ -239,9 +249,10 @@ export async function startStdioServer(opts: {
           return errorResult((err as Error).message);
         }
       }
-      if (name === "review_draft") {
+      const answerTool = answerToolHandlers.get(name);
+      if (answerTool) {
         try {
-          return { content: [{ type: "text", text: JSON.stringify(await reviewDraftHandler(toolDeps, args ?? {})) }] };
+          return { content: [{ type: "text", text: JSON.stringify(await answerTool(toolDeps, args ?? {})) }] };
         } catch (err) {
           return errorResult((err as Error).message);
         }

@@ -1273,6 +1273,79 @@
         }
       }
     },
+    "/onboarding_answer": {
+      "post": {
+        "operationId": "onboarding_answer",
+        "summary": "onboarding answer",
+        "description": "The user's answer to the <vault-onboarding> offer, never your own: later (stays open, asked again after days), skip (declined), done (interview finished).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "answer": {
+                    "type": "string",
+                    "enum": [
+                      "later",
+                      "skip",
+                      "done"
+                    ]
+                  },
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 90
+                  }
+                },
+                "required": [
+                  "answer"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
     "/open_document": {
       "post": {
         "operationId": "open_document",
@@ -1608,7 +1681,7 @@
       "post": {
         "operationId": "restore_memory",
         "summary": "restore memory",
-        "description": "Undo archive_memory: bring an archived memory back from the vault trash to where it lived. Without id: list the archived memories that can be restored (newest first). With id: restore that memory; refused if a memory with the same id is live again.",
+        "description": "Omit id to list restorable memories, newest first. When the user asks, pass id to restore a memory from the vault trash to its original path. Restores are audited and never overwrite a live memory.",
         "requestBody": {
           "required": true,
           "content": {

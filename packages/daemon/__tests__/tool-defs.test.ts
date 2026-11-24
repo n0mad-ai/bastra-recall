@@ -74,7 +74,7 @@ test("tool names are unique (no accidental double-registration)", () => {
 
 // ─── #481: the per-client tool surface ───────────────────────────────
 
-const LIFECYCLE_TOOLS = ["archive_memory", "restore_memory", "move_document", "recategorize_document"];
+const FULL_ONLY_TOOLS = ["archive_memory", "move_document", "recategorize_document"];
 
 test("the search surface lists exactly the read tools", () => {
   const names = filterToolDefsForSurface(ALL_TOOL_DEFS as ToolDef[], "search").map((d) => d.name);
@@ -94,12 +94,12 @@ test("the search surface lists exactly the read tools", () => {
     // the read tools, not behind the full surface.
     "search is read-only: recall, load_memory, find_document, read_document, " + "find_code, find_affected_files"
   );
-  for (const t of [...LIFECYCLE_TOOLS, "save_memory"]) {
+  for (const t of [...FULL_ONLY_TOOLS, "save_memory", "restore_memory"]) {
     assert.equal(isToolAllowed(t, "search"), false, `${t} must not be reachable on search`);
   }
 });
 
-test("the write surface adds save and draft review tools and keeps lifecycle out", () => {
+test("the write surface adds save, restore and draft review tools", () => {
   const names = filterToolDefsForSurface(ALL_TOOL_DEFS as ToolDef[], "write").map((d) => d.name);
   assert.deepEqual(
     [...names].sort(),
@@ -113,8 +113,10 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
       "load_memory",
       "read_document",
       "recall",
+      "restore_memory",
       "review_draft",
       "review_save_suggestion",
+      "onboarding_answer",
       "save_document",
       "save_memory",
       "save_product_doc",
@@ -125,9 +127,10 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
     // and moves nothing, so it is not lifecycle — and leaving it out of the
     // surface a fresh install gets would push agents back to editing vault
     // files by hand, which is the hole it closes.
-    "write is search + save, draft review and local task tools"
+    "write is search + save, restore, draft review and local task tools"
   );
-  for (const t of LIFECYCLE_TOOLS) {
+  assert.equal(isToolAllowed("restore_memory", "write"), true);
+  for (const t of FULL_ONLY_TOOLS) {
     assert.equal(isToolAllowed(t, "write"), false, `${t} is full-only — it reshapes the vault`);
   }
 });

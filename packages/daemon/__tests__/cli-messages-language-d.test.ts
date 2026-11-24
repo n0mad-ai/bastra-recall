@@ -264,7 +264,7 @@ test("the AI interview handed to the model stays English and unchanged", () => {
   const block = buildOnboardingBlock(true);
   assert.equal(
     createHash("sha256").update(block).digest("hex"),
-    "d50d2d626e0f5fb55060c89421a3125af404b9339e1d6cc20998d361dadbb514"
+    "2cc3f5f256d5cda9bf937e66de873224b0b33cc7d356935cefed265710a3507c"
   );
   assert.doesNotMatch(block, /[äöüÄÖÜß]/);
   assert.equal(buildOnboardingBlock(false), "");

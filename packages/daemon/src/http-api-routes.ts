@@ -6,6 +6,7 @@ import { reviewSaveSuggestion } from "./save-suggestion-review.js";
  * Split out of http.ts (file-size convention).
  */
 import { reviewDraftHandler } from "./draft-review-handler.js";
+import { onboardingAnswerHandler } from "./onboarding-answer-handler.js";
 import { validateArtifactHandler } from "./validate-artifact-handler.js";
 import {
   recallHandler,
@@ -87,6 +88,20 @@ export async function dispatchApi(
   );
 }
 
+/** Tools that record the user's answer to something Recall offered — a shown
+ *  draft, the setup interview (#1603). Their own switch keeps dispatchTool
+ *  from growing; the OpenAPI generator reads both switches on `tool`. */
+function dispatchAnswerTool(tool: string, body: Record<string, unknown>, toolDeps: ToolDeps) {
+  switch (tool) {
+    case "review_draft":
+      return reviewDraftHandler(toolDeps, body);
+    case "onboarding_answer":
+      return onboardingAnswerHandler(toolDeps, body);
+    default:
+      return undefined;
+  }
+}
+
 async function dispatchTool(
   tool: string,
   body: Record<string, unknown>,
@@ -103,6 +118,8 @@ async function dispatchTool(
   // client's XML fallback is fully present — only its framing was lost, so the
   // call runs on the recovered arguments instead of costing the user the save.
   body = recoverCallArguments(tool, body, TOOL_ARG_EXPECTATIONS) as Record<string, unknown>;
+  const answered = dispatchAnswerTool(tool, body, toolDeps);
+  if (answered) return answered;
 
   switch (tool) {
     case "review_save_suggestion":
@@ -110,8 +127,6 @@ async function dispatchTool(
         ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null,
         body
       );
-    case "review_draft":
-      return reviewDraftHandler(toolDeps, body);
     case "validate_artifact":
       return await validateArtifactHandler(body, toolDeps);
     case "recall":

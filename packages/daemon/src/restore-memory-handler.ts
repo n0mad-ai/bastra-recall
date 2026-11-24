@@ -144,9 +144,8 @@ export const restoreMemoryTools = [
     name: "restore_memory",
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
-      "Undo archive_memory: bring an archived memory back from the vault trash to where it lived. " +
-      "Without id: list the archived memories that can be restored (newest first). " +
-      "With id: restore that memory; refused if a memory with the same id is live again.",
+      "Omit id to list restorable memories, newest first. When the user asks, pass id to restore a memory " +
+      "from the vault trash to its original path. Restores are audited and never overwrite a live memory.",
     inputSchema: {
       type: "object",
       properties: {

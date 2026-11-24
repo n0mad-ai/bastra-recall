@@ -36,7 +36,23 @@ test("#308: the block states the action and the moment instead of asking for a v
 test("#308: the user can still decline — only the model's licence to decline for them is removed", () => {
   assert.match(block, /If the user declines or wants to do it later, accept that immediately/i);
   assert.match(block, /Declining is THEIR decision to make, not yours to make for them/);
-  assert.match(block, /bastra onboard skip/);
+  assert.match(block, /onboarding_answer\(answer:"skip"\)/);
+});
+
+test("#1603: later is not never — the agent defers through a field, not a shell command", () => {
+  assert.match(block, /Later is not never: for later call onboarding_answer\(answer:"later"\)/);
+  assert.doesNotMatch(block, /bastra onboard skip/);
+  assert.doesNotMatch(block, /bastra onboard done/);
+});
+
+test("#1603: after three offers only a one-line mention remains, without the interview", () => {
+  const line = buildOnboardingBlock(false, true);
+  assert.ok(line.startsWith(`\n<${ONBOARDING_BLOCK_TAG}>\n`));
+  assert.ok(line.endsWith(`</${ONBOARDING_BLOCK_TAG}>`));
+  assert.match(line, /Do not ask about it or start it yourself/);
+  assert.match(line, /one short line/);
+  assert.doesNotMatch(line, /RUN THE ONBOARDING INTERVIEW NOW/);
+  assert.ok(line.length < block.length / 2);
 });
 
 test("#308: the interview itself is unchanged — nothing of substance was traded for the mandate", () => {
@@ -52,7 +68,7 @@ test("#308: the interview itself is unchanged — nothing of substance was trade
   assert.match(block, /write_origin: "user-directed"/);
   assert.match(block, /bastra config set size\.guide <N>/);
   assert.match(block, /bastra config set language\.primary <code>/);
-  assert.match(block, /bastra onboard done/);
+  assert.match(block, /onboarding_answer\(answer:"done"\)/);
   assert.match(block, /bastra import/);
 });
 
@@ -72,7 +88,7 @@ test("#1411: explicit work defers onboarding without adding questions to its del
     /If the user has given you a concrete task, complete that task without onboarding questions, offers or reminders in the task response/
   );
   assert.match(block, /Defer the interview to a later turn with no active task/);
-  assert.match(block, /Deferral is not a decline: do not run `bastra onboard skip` or `bastra onboard done` for it/);
+  assert.match(block, /Deferral is not a decline: do not call onboarding_answer for it/);
   assert.doesNotMatch(block, /before the user's request and before anything else/);
 });
 

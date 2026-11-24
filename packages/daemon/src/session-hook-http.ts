@@ -58,6 +58,8 @@ export interface SessionContextResponse {
     care?: { open: number; queued: number };
     imports?: { open: number; queued: number };
     onboarding?: boolean;
+    /** #1603: the one-line mention instead of the interview. */
+    onboarding_line?: boolean;
     /** #1305: present when the lane asked for the rule kernel; null when it failed. */
     kernel?: KernelCandidates | null;
   };

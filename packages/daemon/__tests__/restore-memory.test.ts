@@ -7,14 +7,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Vault, SearchIndex, saveMemory, type SaveMemoryInput } from "@bastra-recall/core";
+import { AuditLog, Vault, SearchIndex, saveMemory, type SaveMemoryInput } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { archiveMemoryHandler } from "../src/tool-handlers.js";
 import { restoreMemoryHandler } from "../src/restore-memory-handler.js";
 import { dispatchApi } from "../src/http-api-routes.js";
 import { resetAuditLogCache } from "../src/audit-trail.js";
 import { TRUSTED_LOCAL_APP } from "../src/private-access.js";
-import { ALL_TOOL_DEFS, isToolAllowed } from "../src/tool-defs.js";
 import { startHttpServer } from "../src/http.js";
 import { cmdTrash } from "../src/cli/trash-cmd.js";
 import type { ParsedArgs } from "../src/cli/types.js";
@@ -143,10 +142,20 @@ test("#1471 REST dispatch restores and records the writer", async (t) => {
   assert.equal(last.caller_session, "cc-9");
 });
 
-test("#1471 restore_memory is listed, and only on the full surface like archive_memory", () => {
-  assert.ok(ALL_TOOL_DEFS.some((d) => d.name === "restore_memory"));
-  assert.equal(isToolAllowed("restore_memory", "write"), false);
-  assert.equal(isToolAllowed("restore_memory", "full"), true);
+test("#1471 restore reports an audit write failure after putting the memory back", async (t) => {
+  const { deps, vault, seed } = await fixture(t);
+  const path = await seed("audit-write-fails");
+  const original = await readFile(path, "utf8");
+  await archiveMemoryHandler(deps, { id: "audit-write-fails" });
+  t.mock.method(AuditLog.prototype, "record", async () => {
+    throw Object.assign(new Error("audit write failed"), { code: "EIO" });
+  });
+
+  const restored = await restoreMemoryHandler(deps, { id: "audit-write-fails" }, undefined);
+  assert.ok("warning" in restored);
+  assert.match(restored.warning ?? "", /audit entry could not be written .*do NOT retry/);
+  assert.equal(await readFile(path, "utf8"), original);
+  assert.ok(vault.get("audit-write-fails"));
 });
 
 test("#1471 bastra trash lists and restores through the running daemon", async (t) => {

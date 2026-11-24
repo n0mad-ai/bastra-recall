@@ -709,7 +709,7 @@ async function collectStandingBlocks(
     // seed itself — the session model interviews adaptively, which no form
     // can. #308: the instruction text, and why it is an instruction rather
     // than an offer, lives in session-onboarding-block.ts.
-    onboarding: buildOnboardingBlock(sideData?.onboarding ?? false),
+    onboarding: buildOnboardingBlock(sideData?.onboarding ?? false, sideData?.onboarding_line ?? false),
     update,
     patch,
     review: relay.reviewBlock,

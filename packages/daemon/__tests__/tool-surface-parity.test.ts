@@ -129,11 +129,76 @@ function dispatchesTasks(branch: ts.IfStatement): boolean {
     });
 }
 
+function isNamed(node: ts.Node | undefined, name: string): boolean {
+  return node !== undefined && ts.isIdentifier(node) && node.text === name;
+}
+
+function answerToolKeys(source: ts.SourceFile): string[] {
+  const map = source.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((node) => [...node.declarationList.declarations])
+    .find((node) => isNamed(node.name, "answerToolHandlers"))?.initializer;
+  if (!map || !ts.isNewExpression(map) || !isNamed(map.expression, "Map")) return [];
+  const entries = map.arguments?.[0];
+  if (!entries || !ts.isArrayLiteralExpression(entries)) return [];
+  return entries.elements.filter(ts.isArrayLiteralExpression).flatMap(({ elements: [key, handler] }) => {
+    return key && ts.isStringLiteral(key) && handler && ts.isIdentifier(handler) ? [key.text] : [];
+  });
+}
+
+function isAnswerToolLookup(node: ts.Statement): boolean {
+  if (!ts.isVariableStatement(node)) return false;
+  const lookup = node.declarationList.declarations.find((decl) => isNamed(decl.name, "answerTool"))?.initializer;
+  return (
+    lookup !== undefined &&
+    ts.isCallExpression(lookup) &&
+    ts.isPropertyAccessExpression(lookup.expression) &&
+    isNamed(lookup.expression.expression, "answerToolHandlers") &&
+    lookup.expression.name.text === "get" &&
+    lookup.arguments[0] !== undefined &&
+    isToolName(lookup.arguments[0])
+  );
+}
+
+function objectProperty(expression: ts.Expression | undefined, name: string): ts.Expression | undefined {
+  if (!expression || !ts.isObjectLiteralExpression(expression)) return undefined;
+  return expression.properties.filter(ts.isPropertyAssignment).find((prop) => isNamed(prop.name, name))?.initializer;
+}
+
+function serializesAnswerTool(result: ts.Expression | undefined): boolean {
+  const content = objectProperty(result, "content");
+  if (!content || !ts.isArrayLiteralExpression(content)) return false;
+  const text = objectProperty(content.elements[0], "text");
+  if (!text || !ts.isCallExpression(text) || !ts.isPropertyAccessExpression(text.expression)) return false;
+  if (!isNamed(text.expression.expression, "JSON") || text.expression.name.text !== "stringify") return false;
+  const value = text.arguments[0];
+  if (!value || !ts.isAwaitExpression(value) || !ts.isCallExpression(value.expression)) return false;
+  return isNamed(value.expression.expression, "answerTool");
+}
+
+/** A map entry only counts when the tool name is looked up and its result is returned. */
+function returnsAnswerTool(branch: ts.Statement | undefined): boolean {
+  if (!branch || !ts.isIfStatement(branch) || !isNamed(branch.expression, "answerTool")) return false;
+  if (!ts.isBlock(branch.thenStatement)) return false;
+  return branch.thenStatement.statements
+    .filter(ts.isTryStatement)
+    .flatMap(({ tryBlock }) => tryBlock.statements.filter(ts.isReturnStatement))
+    .some(({ expression }) => serializesAnswerTool(expression));
+}
+
 function dispatchedTools(source: string): string[] {
-  const branches = descendants(requestHandler(source, "CallToolRequestSchema")).filter(ts.isIfStatement);
+  const handler = requestHandler(source, "CallToolRequestSchema");
+  const nodes = descendants(handler);
+  const branches = nodes.filter(ts.isIfStatement);
+  const dispatchesAnswers = nodes
+    .filter(ts.isBlock)
+    .some(({ statements }) =>
+      statements.some((statement, index) => isAnswerToolLookup(statement) && returnsAnswerTool(statements[index + 1]))
+    );
   return [
     ...branches.flatMap((node) => directToolNames(node.expression)),
     ...(branches.some(dispatchesTasks) ? TASK_CRUD_OPERATIONS : []),
+    ...(dispatchesAnswers ? answerToolKeys(handler.getSourceFile()) : []),
   ];
 }
 
@@ -204,4 +269,16 @@ test("registration and dispatch gates ignore imports, comments and formatting", 
   const schema = call.arguments[0]!;
   const missingHandler = source.slice(0, schema.getStart()) + "OtherRequestSchema" + source.slice(schema.end);
   assert.throws(() => dispatchedTools(missingHandler), /exactly one CallToolRequestSchema handler/);
+});
+
+test("answer handlers need both a map key and the returned dispatch through that map", async () => {
+  const source = await readFile(STDIO_TS, "utf8");
+  assert.ok(dispatchedTools(source).includes("onboarding_answer"));
+  const missingKey = source.replace('["onboarding_answer", onboardingAnswerHandler],', "");
+  assert.ok(!dispatchedTools(missingKey).includes("onboarding_answer"));
+  assert.ok(dispatchedTools(missingKey).includes("review_draft"));
+  const missingLookup = source.replace("answerToolHandlers.get(name)", 'answerToolHandlers.get("name")');
+  assert.ok(!dispatchedTools(missingLookup).includes("onboarding_answer"));
+  const missingReturn = source.replace("await answerTool(toolDeps, args ?? {})", "null /* await answerTool(...) */");
+  assert.ok(!dispatchedTools(missingReturn).includes("onboarding_answer"));
 });

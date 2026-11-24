@@ -15,9 +15,11 @@ import { join } from "node:path";
 import { request } from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Vault, SearchIndex } from "@bastra-recall/core";
+import { AuditLog, Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
+import type { ToolDeps } from "../src/tool-deps.js";
+import { archiveMemoryHandler } from "../src/tool-handlers.js";
 
 const TOKEN = "test-token-abcdef0123456789";
 process.env.BASTRA_API_TOKEN = TOKEN;
@@ -57,7 +59,10 @@ function rawPost(port: number, path: string, headers: Record<string, string>, bo
   });
 }
 
-async function withServer(fn: (port: number) => Promise<void>, documentWriteEnabled = false): Promise<void> {
+async function withServer(
+  fn: (port: number, deps: ToolDeps) => Promise<void>,
+  documentWriteEnabled = false
+): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-mcphttp-"));
   await writeFile(join(dir, "alpha.md"), memoryMarkdown("alpha", "alpha bravo"), "utf8");
   const vault = new Vault(dir);
@@ -65,20 +70,21 @@ async function withServer(fn: (port: number) => Promise<void>, documentWriteEnab
   const search = new SearchIndex(vault);
   search.start();
   const telemetry = new Telemetry();
+  const toolDeps = { vault, search, telemetry, vaultPath: dir };
   const handle = await startHttpServer({
     port: 0,
     vault,
     search,
     telemetry,
     version: "test-version",
-    toolDeps: { vault, search, telemetry, vaultPath: dir },
+    toolDeps,
     documentWriteEnabled,
     onActivity: () => {},
     embedding: { on: false, providerId: null, source: "none" },
     origin: { startedBy: "direct", envOrigin: "own", configFingerprint: "0123456789ab" },
   });
   try {
-    await fn(handle.port!);
+    await fn(handle.port!, toolDeps);
   } finally {
     search.stop();
     await vault.stop?.();
@@ -170,6 +176,48 @@ test("mcp http: GET is refused — the stateless door has no event stream", asyn
       req.end();
     });
     assert.equal(status, 405);
+  });
+});
+
+test("#1471: write clients can list and restore archived memories over MCP", async () => {
+  await withServer(async (port, deps) => {
+    await archiveMemoryHandler(deps, { id: "alpha" });
+    assert.equal(deps.vault.get("alpha"), undefined);
+
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/api/v1/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
+      })
+    );
+    try {
+      assert.ok((await client.listTools()).tools.some((tool) => tool.name === "restore_memory"));
+      for (const surface of ["search", "write"]) {
+        const response = await fetch(`http://127.0.0.1:${port}/tools?surface=${surface}`);
+        assert.equal(response.status, 200);
+        const { tools } = (await response.json()) as { tools: { name: string }[] };
+        assert.equal(
+          tools.some((tool) => tool.name === "restore_memory"),
+          surface === "write"
+        );
+      }
+      const listed = await client.callTool({ name: "restore_memory", arguments: {} });
+      assert.notEqual(listed.isError, true);
+      const listText = (listed.content as { type: string; text: string }[])[0].text;
+      assert.deepEqual(
+        (JSON.parse(listText) as { archived: { id: string }[] }).archived.map((memory) => memory.id),
+        ["alpha"]
+      );
+
+      const restored = await client.callTool({ name: "restore_memory", arguments: { id: "alpha" } });
+      assert.notEqual(restored.isError, true);
+      assert.equal(deps.vault.get("alpha")?.fm.title, "alpha bravo");
+      const last = (await new AuditLog(deps.vaultPath).readAll()).at(-1);
+      assert.equal(last?.operation, "restore");
+      assert.equal(last?.memory_id, "alpha");
+    } finally {
+      await client.close();
+    }
   });
 });
 

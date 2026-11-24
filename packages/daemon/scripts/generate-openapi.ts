@@ -21,6 +21,7 @@ import { SaveDocumentArgs, RecategorizeDocumentArgs, MoveDocumentArgs } from "..
 import { SaveProductDocArgs } from "../src/product-doc-handler.js";
 import { RestoreMemoryArgs } from "../src/restore-memory-handler.js";
 import { ReviewDraftArgs } from "../src/draft-review-handler.js";
+import { OnboardingAnswerArgs } from "../src/onboarding-answer-handler.js";
 import { ValidateArtifactArgs } from "../src/validate-artifact-handler.js";
 import { FindCodeArgs } from "../src/code-graph/find-code.js";
 import { FindAffectedFilesArgs } from "../src/code-graph/find-affected-files.js";
@@ -172,6 +173,7 @@ const inputValidators: Record<string, z.ZodType> = {
   save_product_doc: SaveProductDocArgs,
   review_draft: ReviewDraftArgs,
   review_save_suggestion: ReviewSaveSuggestionArgs,
+  onboarding_answer: OnboardingAnswerArgs,
   validate_artifact: ValidateArtifactArgs,
   find_code: FindCodeArgs,
   find_affected_files: FindAffectedFilesArgs,

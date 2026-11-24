@@ -17,6 +17,7 @@ import { tasksEnabled, TASKS_PREVIEW_HINT } from "./tasks-enabled.js";
  */
 import { taskTools } from "./task-transport.js";
 import { draftReviewTools } from "./draft-review-handler.js";
+import { onboardingAnswerTools } from "./onboarding-answer-handler.js";
 import { validateArtifactTools } from "./validate-artifact-handler.js";
 import { requiredFieldsOf } from "./call-corruption.js";
 import { MEMORY_TOOL_DEFS } from "./tool-handlers.js";
@@ -40,6 +41,7 @@ export const ALL_TOOL_DEFS = [
   ...draftReviewTools,
   ...saveSuggestionTools,
   ...validateArtifactTools,
+  ...onboardingAnswerTools,
 ];
 
 /** The document write switch (Triage #24), read the same way by the daemon and the forwarder. */
@@ -67,10 +69,10 @@ export function servedToolDefs(documentWriteEnabled: boolean): typeof ALL_TOOL_D
  *
  * - `search` — read only: recall, load_memory, find_document, read_document,
  *   find_code
- * - `write`  — search + save_memory, edit_memory, save_document, save_product_doc
+ * - `write`  — search + save, edit, restore and the other tools listed below
  * - `full`   — everything, including the lifecycle operations
  *
- * Lifecycle operations (archive_memory, restore_memory, move_document, recategorize_document)
+ * Lifecycle operations (archive_memory, move_document, recategorize_document)
  * reshape the vault, and an agent reaching them through the same list as
  * `recall` is the whole reason for this: nothing structural made a 47-memory
  * move a deliberate act. They stay `full`-only, and so does anything not
@@ -83,7 +85,7 @@ export type ToolSurface = "search" | "write" | "full";
 
 export const DEFAULT_TOOL_SURFACE: ToolSurface = "full";
 
-/** What a fresh MCP-client install gets: agents save, they do not reorganise. */
+/** What a fresh MCP-client install gets, including undo for archived memories. */
 export const INSTALL_TOOL_SURFACE: ToolSurface = "write";
 
 const SEARCH_SURFACE_TOOLS = [
@@ -114,10 +116,14 @@ const WRITE_SURFACE_TOOLS = [
   // that cannot afford a full overwrite goes back to editing the vault file by
   // hand, past the audit log, the id lock and the index.
   "edit_memory",
+  "restore_memory",
   "save_document",
   "save_product_doc",
   "review_draft",
   "review_save_suggestion",
+  // #1603: the answer to the setup interview offer; the interview itself
+  // saves through save_memory on this same surface.
+  "onboarding_answer",
   // #1309: validate_artifact reads nothing and writes nothing; it belongs
   // wherever an agent delivers copy-ready text, which is the write surface.
   "validate_artifact",
