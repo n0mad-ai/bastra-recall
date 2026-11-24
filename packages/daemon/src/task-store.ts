@@ -31,6 +31,37 @@ export { TaskStoreError } from "./task-store-error.js";
 /** History rows a normal mutation may reach; the rest is kept for control operations. */
 export const TASK_HISTORY_RESERVE = 9900;
 
+function requireEmptyLegacyRows(snapshot: Record<string, unknown>, fields: string[], message: string): void {
+  for (const field of fields) {
+    const rows = snapshot[field];
+    if (!Array.isArray(rows) || rows.length) throw new TaskStoreError("corrupt", message);
+  }
+}
+
+function upgradeTaskSnapshot(snapshot: object): object {
+  if (!("schema_version" in snapshot)) return snapshot;
+  switch (snapshot.schema_version) {
+    case 1:
+      // V1 never carried actions. Check all its restricted rows before upgrading.
+      requireEmptyLegacyRows(
+        snapshot,
+        ["proposals", "challenges", "approvals", "leases", "intents", "receipts"],
+        "v1 actions must be empty"
+      );
+      return { ...snapshot, schema_version: 4 };
+    case 2:
+      requireEmptyLegacyRows(snapshot, ["intents", "receipts"], "v2 execution state must be empty");
+      return { ...snapshot, schema_version: 4 };
+    case 3:
+      // V4 only adds optional pause/expiry/delivery metadata.
+      return { ...snapshot, schema_version: 4 };
+    case 4:
+      return snapshot;
+    default:
+      throw new TaskStoreError("unsupported_version", "unsupported task schema; original preserved");
+  }
+}
+
 export function decodeTaskStore(raw: string): TaskStore {
   if (Buffer.byteLength(raw) > TASK_MAX_BYTES)
     throw new TaskStoreError("capacity", "task snapshot exceeds its hard limit; original preserved");
@@ -40,38 +71,10 @@ export function decodeTaskStore(raw: string): TaskStore {
   } catch {
     throw new TaskStoreError("corrupt", "invalid task JSON; original preserved");
   }
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "schema_version" in value &&
-    value.schema_version !== 1 &&
-    value.schema_version !== 2 &&
-    value.schema_version !== 3 &&
-    value.schema_version !== 4
-  )
-    throw new TaskStoreError("unsupported_version", "unsupported task schema; original preserved");
-  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 1) {
-    // v1 was strictly empty for actions. Never migrate unchecked capabilities.
-    const legacy = value as Record<string, unknown>;
-    if (
-      ["proposals", "challenges", "approvals", "leases", "intents", "receipts"].some(
-        (k) => !Array.isArray(legacy[k]) || (legacy[k] as unknown[]).length
-      )
-    )
-      throw new TaskStoreError("corrupt", "v1 actions must be empty");
-    value = { ...legacy, schema_version: 2 };
+  if (value && typeof value === "object") {
+    value = upgradeTaskSnapshot(value);
+    dropLegacyTaskComparisons(value);
   }
-  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 2) {
-    const legacy = value as Record<string, unknown>;
-    if (["intents", "receipts"].some((k) => !Array.isArray(legacy[k]) || (legacy[k] as unknown[]).length))
-      throw new TaskStoreError("corrupt", "v2 execution state must be empty");
-    value = { ...legacy, schema_version: 3 };
-  }
-  // v4 adds optional pause/expiry/delivery metadata. Preserve all identities,
-  // revisions and action proofs; existing rows need no invented defaults.
-  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 3)
-    value = { ...value, schema_version: 4 };
-  if (value && typeof value === "object") dropLegacyTaskComparisons(value);
   const parsed = taskStoreSchema.safeParse(value);
   if (!parsed.success) throw new TaskStoreError("corrupt", "invalid task schema or references; original preserved");
   return parsed.data;

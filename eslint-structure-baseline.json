@@ -377,7 +377,6 @@
     "[\"packages/daemon/src/task-service.ts\",\"[\\\"function:callTaskCrudInner\\\"]\",\"complexity\"]": 52,
     "[\"packages/daemon/src/task-store.ts\",\"[\\\"function:assertTaskProgress\\\"]\",\"complexity\"]": 51,
     "[\"packages/daemon/src/task-store.ts\",\"[\\\"function:cleanTask\\\"]\",\"complexity\"]": 17,
-    "[\"packages/daemon/src/task-store.ts\",\"[\\\"function:decodeTaskStore\\\"]\",\"complexity\"]": 27,
     "[\"packages/daemon/src/task-store.ts\",\"[\\\"function:recoverTaskStore\\\",\\\"call:withPathLock:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 26,
     "[\"packages/daemon/src/task-store.ts\",\"[\\\"function:transitionTask\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/src/task-ui-session.ts\",\"[\\\"function:dispatchTaskUi\\\",\\\"call:ArrowFunctionExpression:#1\\\",\\\"function:argument:-1#1\\\"]\",\"complexity\"]": 33,
