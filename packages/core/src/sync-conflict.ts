@@ -1,24 +1,21 @@
 /**
- * #1485 — conflict copies of a sync service, recognised by the documented
- * shape of the name, not by its words.
- *
- * Only Syncthing documents its pattern
- * (https://docs.syncthing.net/users/syncing.html, "Conflicting Changes"):
- * `<filename>.sync-conflict-<date>-<time>-<modifiedBy>.<ext>`, e.g.
- * `Alpha.sync-conflict-20261117-101500-ABCDEF1.md`. It holds no translated
- * words. Other services (Dropbox, Nextcloud, OneDrive, iCloud, Google Drive)
- * do not document a pattern in their primary docs, so they are deliberately
- * not guessed here.
- *
- * The name alone is not enough: it counts only together with the second fact
- * every conflict copy has — it carries the SAME memory id as the original,
- * because it is a copy of the same file. The vault already knows that pair
- * (two files, one id); this tells it which of the two is the copy.
+ * #1485 — identify sync conflict copies by filename once the vault has found
+ * two files carrying the same memory ID.
  */
 import { basename, dirname, extname } from "node:path";
 
-/** What Syncthing appends to the name: `.sync-conflict-<YYYYMMDD>-<HHMMSS>-<device>`. */
+// Syncthing's conflict suffix: https://docs.syncthing.net/users/syncing.html#conflicting-changes
 const SYNCTHING_SUFFIX = /^\.sync-conflict-\d{8}-\d{6}-[A-Z0-9]+$/;
+
+// Dropbox desktop adds the editor and save date: https://help.dropbox.com/organize/conflicted-copy
+// Dropbox API WriteMode.update also documents undated suffixes with and without the editor:
+// https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone
+const DROPBOX_SUFFIX = /^ \((?:.+'s conflicted copy(?: \d{4}-\d{2}-\d{2})?|conflicted copy)\)$/;
+
+// Nextcloud desktop allows an optional username before the timestamp:
+// https://docs.nextcloud.com/server/latest/user_manual/en/desktop/conflicts.html
+// https://github.com/nextcloud/desktop/blob/master/src/common/utility.cpp#L478-L496
+const NEXTCLOUD_SUFFIX = /^ \(conflicted copy (?:[^()\r\n]+ )?\d{4}-\d{2}-\d{2} \d{6}\)$/;
 
 /**
  * True when `longerPath` sits next to `shorterPath` with the same extension
@@ -36,14 +33,12 @@ export function extendsName(longerPath: string, shorterPath: string): boolean {
   return longer.length > shorter.length && longer.startsWith(shorter);
 }
 
-/** True when `copyPath` is a Syncthing conflict copy of `originalPath`. */
+/** True when `copyPath` matches a supported conflict filename for `originalPath`. */
 export function isConflictCopyName(copyPath: string, originalPath: string): boolean {
-  if (dirname(copyPath) !== dirname(originalPath)) return false;
+  if (!extendsName(copyPath, originalPath)) return false;
   const ext = extname(originalPath);
-  if (extname(copyPath) !== ext) return false;
-  const original = basename(originalPath, ext);
-  const copy = basename(copyPath, ext);
-  return copy.startsWith(original) && SYNCTHING_SUFFIX.test(copy.slice(original.length));
+  const suffix = basename(copyPath, ext).slice(basename(originalPath, ext).length);
+  return SYNCTHING_SUFFIX.test(suffix) || DROPBOX_SUFFIX.test(suffix) || NEXTCLOUD_SUFFIX.test(suffix);
 }
 
 /** One conflict copy: the file that holds the id twice, and the original it copies. */

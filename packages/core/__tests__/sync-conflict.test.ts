@@ -1,5 +1,5 @@
 /**
- * #1485 — Syncthing conflict copies are recognised by their documented name
+ * #1485 — Sync conflict copies are recognised by their documented name
  * plus the shared id, kept out of the index in favour of the original,
  * and listed for `bastra doctor`.
  */
@@ -20,15 +20,25 @@ async function vaultDir(t: { after: (fn: () => unknown) => void }): Promise<stri
   return dir;
 }
 
-test("the documented Syncthing conflict name is recognised, guesses are not", () => {
+const conflictNames = [
+  "Alpha.sync-conflict-20261117-101500-ABCDEF1.md",
+  "Alpha (Ava Müller Jones's conflicted copy 2026-11-17).md",
+  "Alpha (Panda's conflicted copy).md",
+  "Alpha (conflicted copy).md",
+  "Alpha (conflicted copy 2026-11-17 101500).md",
+  "Alpha (conflicted copy Ava Müller Jones 2026-11-17 101500).md",
+];
+
+test("documented conflict names are recognised, guesses are not", () => {
   const original = "/v/memories/Alpha.md";
-  assert.ok(isConflictCopyName("/v/memories/Alpha.sync-conflict-20261117-101500-ABCDEF1.md", original));
-  // Undocumented service patterns are deliberately not guessed (#1485).
+  for (const name of conflictNames) assert.ok(isConflictCopyName(`/v/memories/${name}`, original), name);
   for (const other of [
     "/v/memories/Alpha (1).md",
     "/v/memories/Alpha 2.md",
     "/v/memories/Alpha-MacBook-Pro.md",
-    "/v/memories/Alpha (conflicted copy 2026-11-17 101500).md",
+    "/v/memories/Alpha (Ava's conflicted copy 20261117).md",
+    "/v/memories/Alpha (conflicted copy 2026-11-17 10150).md",
+    "/v/memories/Alpha (conflicted copy 2026-11-17 101500) (draft).md",
     "/v/memories/Alphabet.md",
     "/v/memories/Alpha.sync-conflict-2026-ABCDEF1.md",
     "/v/other/Alpha.sync-conflict-20261117-101500-ABCDEF1.md",
@@ -39,19 +49,25 @@ test("the documented Syncthing conflict name is recognised, guesses are not", ()
   }
 });
 
-test("the original keeps the id and its conflict copy stays out", async (t) => {
+test("the original keeps the id and the vault reports same-id conflict copies", async (t) => {
   const dir = await vaultDir(t);
-  await writeFile(join(dir, "Alpha.md"), note("alpha", "Corrected claim."));
-  await writeFile(join(dir, "Alpha.sync-conflict-20261117-101500-ABCDEF1.md"), note("alpha", "Old claim."));
+  const original = join(dir, "Alpha.md");
+  await writeFile(original, note("alpha", "Corrected claim."));
+  const copies = conflictNames.map((name) => join(dir, name));
+  for (const copy of copies) await writeFile(copy, note("alpha", "Old claim."));
+  const separateNote = join(dir, "Alpha (Dana's conflicted copy 2026-11-16).md");
+  await writeFile(separateNote, note("bravo", "Has its own id."));
   const vault = new Vault(dir);
   const { skipped } = await vault.init();
   t.after(() => vault.stop());
 
-  assert.equal(vault.get("alpha")?.filePath, join(dir, "Alpha.md"));
-  assert.equal(vault.size(), 1, "indexed once");
-  assert.deepEqual(vault.conflictCopies(), [
-    { id: "alpha", copy: join(dir, "Alpha.sync-conflict-20261117-101500-ABCDEF1.md"), original: join(dir, "Alpha.md") },
-  ]);
+  assert.equal(vault.get("alpha")?.filePath, original);
+  assert.equal(vault.get("bravo")?.filePath, separateNote);
+  assert.equal(vault.size(), 2, "each id is indexed once");
+  assert.deepEqual(
+    vault.conflictCopies().sort((a, b) => a.copy.localeCompare(b.copy)),
+    copies.sort((a, b) => a.localeCompare(b)).map((copy) => ({ id: "alpha", copy, original }))
+  );
   assert.match(
     skipped.find((s) => s.path.endsWith("Alpha.sync-conflict-20261117-101500-ABCDEF1.md"))?.err ?? "",
     /duplicate id 'alpha'/
@@ -100,7 +116,7 @@ test("index precedence: a longer-named copy next to the original never wins at i
   assert.equal(vault.get("alpha")?.fm.summary, "Corrected claim.");
   assert.deepEqual(vault.pathsFor("alpha"), [join(dir, "Alpha.md"), join(dir, "Alpha (1).md")]);
   assert.match(skipped.find((s) => s.path.endsWith("Alpha (1).md"))?.err ?? "", /same id 'alpha' as Alpha\.md/);
-  assert.deepEqual(vault.conflictCopies(), [], "only the documented Syncthing name is called a conflict copy");
+  assert.deepEqual(vault.conflictCopies(), [], "only documented names are called conflict copies");
 });
 
 test("index precedence: the original arriving after a longer-named copy takes the id back", async (t) => {
