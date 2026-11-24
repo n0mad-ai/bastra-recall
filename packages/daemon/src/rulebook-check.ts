@@ -60,6 +60,7 @@ const deferredActors = (s: CheckState) =>
       correspondenceEvidence: false,
       dismissed: [],
       checked: false,
+      roundCheckedCatalog: undefined,
       ids: [],
       denies: 0,
       stops: 0,
@@ -261,15 +262,15 @@ function applyReportedTask(
     );
   if (shape() !== before) delete s.receipts;
 }
-function confirmRulebookCheck(
+function recordCheckReceipt(
   a: ReturnType<typeof actor>,
   reviewedCatalog: string,
   applicable: readonly string[],
-  partial: boolean
+  canCarry: boolean
 ): void {
-  if (partial) return;
   a.checked = true;
-  a.checkedCatalog = reviewedCatalog;
+  a.roundCheckedCatalog = reviewedCatalog;
+  if (canCarry) a.checkedCatalog = reviewedCatalog;
   a.ids = [...new Set(applicable)];
 }
 export async function recordRulebookCheck(
@@ -391,11 +392,11 @@ export async function recordRulebookCheck(
     }
     // Bind the receipt to the snapshot this call read. A hook can have already
     // observed a different catalog by the time this session mutation runs.
-    confirmRulebookCheck(
+    recordCheckReceipt(
       a,
       reviewedCatalog,
       input.applicable,
-      [invalidDismissal, taskError, unknown.length, overlong.length].some(Boolean)
+      ![invalidDismissal, taskError, unknown.length, overlong.length, state.catalog === undefined].some(Boolean)
     );
     context = state.context;
     round = state.round;
@@ -544,6 +545,7 @@ export async function recordRulebookLoad(
       !source
     ) {
       a.checked = true;
+      a.roundCheckedCatalog = state.catalog;
       a.checkedCatalog = state.catalog;
     }
     if (!a.ids.includes(id)) a.ids.push(id);

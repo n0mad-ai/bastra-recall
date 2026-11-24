@@ -10,7 +10,7 @@ import { runStopLane } from "../src/stop-lane.js";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { setPrimaryLanguage } from "../src/settings.js";
 import * as checks from "../src/rulebook-check.js";
-import type { KernelCandidates } from "../src/rulebook-catalog.js";
+import { cachedRulebookCatalog, type KernelCandidates } from "../src/rulebook-catalog.js";
 import { ALL_TOOL_DEFS, toolNamesForSurface } from "../src/tool-defs.js";
 const catalog: KernelCandidates = {
   entries: [
@@ -260,9 +260,14 @@ test("real load and HTTP handlers record the receipt; lean loads and another cal
   );
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "handler", agentId: null });
   assert.equal(denied(await gate("handler")), false);
-  await checks.beginRulebookRound(payload("handler"), changed);
+  // The handler reads the real indexed source. The gate must observe the
+  // same revision here, as it does in production, rather than a synthetic hash.
+  const indexed = await cachedRulebookCatalog(vault, { mode: "ids", active: [], project: null });
+  const indexedGate = async () =>
+    JSON.parse(await runGateLane(payload("handler"), { reflexPool: () => [], kernel: async () => indexed }));
+  await checks.beginRulebookRound(payload("handler"), indexed);
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "elsewhere" });
-  assert.equal(denied(await changedGate("handler")), true);
+  assert.equal(denied(await indexedGate()), true);
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "unknown-load" });
   assert.equal(denied(await gate("unknown-load")), false, "missing actor is main for its known session");
   const receipt = (await dispatchApi(
@@ -271,7 +276,7 @@ test("real load and HTTP handlers record the receipt; lean loads and another cal
     { toolDeps: deps, documentWriteEnabled: false, ccSessionId: "handler" }
   )) as { ok: boolean };
   assert.equal(receipt.ok, true);
-  assert.equal(denied(await changedGate("handler")), false, "transport session wins over supplied session id");
+  assert.equal(denied(await indexedGate()), false, "transport session wins over supplied session id");
   await checks.beginRulebookRound(payload("stale-handler"), catalog);
   const raw = await readFile(saved.file_path, "utf8");
   await writeFile(

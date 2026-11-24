@@ -116,7 +116,9 @@ test("partial declarations do not carry an unconfirmed check", async () => {
   await checks.beginRulebookRound(payload(sid), catalog);
   const partial = await checks.recordRulebookCheck(sid, { applicable: ["unknown-fixture"] }, catalog);
   assert.equal(partial.ok, false);
+  assert.equal(denied(await gate(sid)), false, "the in-round declaration still counts");
   assert.match(await checks.beginRulebookRound(payload(sid), catalog), asksForCheck);
+  assert.equal(denied(await gate(sid)), true, "a partial check does not carry forward");
 });
 
 test("a context reset ends the carried check; another session and another agent never share it", async () => {

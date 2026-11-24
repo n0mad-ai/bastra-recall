@@ -27,6 +27,8 @@ const Actor = z.object({
   // #1591: the catalog fingerprint the actor's last check answered. The check
   // stays valid across rounds while the catalog keeps this fingerprint.
   checkedCatalog: z.string().optional(),
+  // Partial declarations can answer the current round without replacing a complete receipt.
+  roundCheckedCatalog: z.string().optional(),
   ids: z.array(z.string()).default([]),
   denies: z.number().default(0),
   stops: z.number().default(0),
@@ -119,10 +121,15 @@ export function rulebookFingerprint(c: {
     .digest("hex")
     .slice(0, 24);
 }
-/** #1591: a check holds while the catalog it answered is unchanged. A check
- *  recorded before any fingerprint existed holds for its own round only. */
-export function checkHolds(a: { checked: boolean; checkedCatalog?: string }, state: { catalog?: string }): boolean {
-  return a.checkedCatalog === undefined ? a.checked : a.checkedCatalog === state.catalog;
+/** Keep complete checks across rounds. In-round declarations retain their old
+ * effect, including partial ones, but still answer only the catalog they read. */
+export function checkHolds(
+  a: Pick<z.infer<typeof Actor>, "checked" | "checkedCatalog" | "roundCheckedCatalog">,
+  state: { catalog?: string }
+): boolean {
+  if (a.checkedCatalog !== undefined && a.checkedCatalog === state.catalog) return true;
+  const roundCatalog = a.roundCheckedCatalog ?? a.checkedCatalog;
+  return a.checked && (roundCatalog === undefined || roundCatalog === state.catalog);
 }
 export function roundIdentity(p: RulebookPayload): string {
   if (p.agent_id) return `agent:${p.agent_id}`;
