@@ -3,14 +3,17 @@
  * daemon's own /api/v1 recall and save_memory paths, and a save typed in the
  * terminal is recorded as the user's instruction (write_origin: user-directed).
  */
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { Readable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import matter from "gray-matter";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
@@ -45,7 +48,7 @@ function quiet(t: { mock: { method: (o: object, m: string, f: (...a: unknown[]) 
   return out;
 }
 
-test("#1492 bastra save writes a user-directed memory through the daemon, bastra recall finds it", async (t) => {
+async function memoryDaemon(t: TestContext) {
   resetAuditLogCache();
   const vaultRoot = await mkdtemp(join(tmpdir(), "bastra-1492-"));
   const vault = new Vault(vaultRoot);
@@ -71,10 +74,16 @@ test("#1492 bastra save writes a user-directed memory through the daemon, bastra
     if (previousUrl === undefined) delete process.env.BASTRA_DAEMON_URL;
     else process.env.BASTRA_DAEMON_URL = previousUrl;
     await handle.close();
+    search.stop();
     await vault.stop?.();
     resetAuditLogCache();
     await rm(vaultRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   });
+  return { vault, vaultRoot };
+}
+
+test("#1492 bastra save writes a user-directed memory through the daemon, bastra recall finds it", async (t) => {
+  const { vault, vaultRoot } = await memoryDaemon(t);
   const out = quiet(t);
 
   // Seed real audit/index state before comparing every existing file byte.
@@ -245,6 +254,63 @@ test("#1492 bastra save writes a user-directed memory through the daemon, bastra
   assert.ok(Number.isFinite(Date.parse(evidence.at)));
 });
 
+test("#1492 recall --load reads the complete Markdown through REST with the usual access checks", async (t) => {
+  const { vault, vaultRoot } = await memoryDaemon(t);
+  const out = quiet(t);
+  const body = [
+    "Den Wasserkocher entkalken.",
+    "",
+    "## Weitere Schritte",
+    "- Mit klarem Wasser spülen 💧",
+    "",
+    "## Auto-Related <!-- bastra:auto-related:start -->",
+    "- [[bike-tyre-pressure]]",
+    "<!-- bastra:auto-related:end -->",
+    "",
+  ].join("\n");
+  const fm = {
+    id: "kettle-note",
+    title: "Kettle descaling interval",
+    type: "reference",
+    scope: "household",
+    summary: "Descale the kettle every six weeks.",
+    created: "2026-06-01",
+    updated: "2026-06-01",
+  };
+  const publicFile = join(vaultRoot, "kettle-note.md");
+  await writeFile(publicFile, matter.stringify(body, fm));
+  await vault.reindexFile(publicFile);
+  const privateFile = join(vaultRoot, "private-note.md");
+  await writeFile(
+    privateFile,
+    matter.stringify("Body visible only to trusted callers.\n", {
+      ...fm,
+      id: "private-note",
+      title: "Private note",
+      sensitivity: "private",
+    })
+  );
+  await vault.reindexFile(privateFile);
+  assert.equal(vault.get("private-note")?.fm.sensitivity, "private");
+  const beforeLoad = await vaultBytes(vaultRoot);
+
+  const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+  const { stdout } = await promisify(execFile)(process.execPath, ["--import", "tsx", cli, "recall", "--load", fm.id]);
+  assert.equal(stdout, body);
+  assert.equal(await cmdRecall(["recall", `--load=${fm.id}`, "--json"]), 0, out.join("\n"));
+  const loaded = JSON.parse(out[0]);
+  assert.equal(loaded.id, fm.id);
+  assert.equal(loaded.body, body);
+  assert.equal(loaded.frontmatter.title, fm.title);
+
+  for (const id of ["private-note", "absent-note"]) {
+    out.length = 0;
+    assert.equal(await cmdRecall(["recall", "--load", id, "--json"]), 1);
+    assert.deepEqual(out, [`bastra recall: could not load "${id}" (memory not found)`]);
+  }
+  assert.deepEqual(await vaultBytes(vaultRoot), beforeLoad);
+});
+
 test("#1492 bastra save: piped text and the optional fields reach save_memory as given", async (t) => {
   quiet(t);
   const calls: [string, unknown][] = [];
@@ -338,6 +404,11 @@ test("#1492 the options are validated per command before dispatch", () => {
     []
   );
   assert.deepEqual(validateArgs(["recall", "q", "--limit", "3", "--json"]), []);
+  assert.deepEqual(validateArgs(["recall", "--load", "note-id", "--json"]), []);
+  assert.deepEqual(validateArgs(["recall", "--load=note-id"]), []);
+  assert.deepEqual(validateArgs(["recall", "--load"]), ["option '--load' needs a value"]);
+  assert.deepEqual(validateArgs(["recall", "--load="]), ["option '--load' needs a value"]);
+  assert.deepEqual(validateArgs(["save", "--load", "note-id"]), ["option '--load' is not valid for 'bastra save'"]);
   assert.deepEqual(validateArgs(["recall", "q", "--title", "T"]), [
     "option '--title' is not valid for 'bastra recall'",
   ]);
@@ -347,6 +418,18 @@ test("#1492 the options are validated per command before dispatch", () => {
   ]);
   assert.deepEqual(validateArgs(["save", "--title", "T", "--type", "lesson", "--scope", "s", "--dry-run", "x"]), []);
   assert.deepEqual(validateArgs(["recall", "q", "--dry-run"]), ["option '--dry-run' is not valid for 'bastra recall'"]);
+});
+
+test("#1492 recall --load rejects mixed modes and duplicate or empty IDs before contacting the daemon", async (t) => {
+  const out = quiet(t);
+  const calls: string[] = [];
+  const call = async (tool: string) => calls.push(tool);
+  for (const args of [["query"], ["--limit", "3"], ["--scope", "home"], ["--type", "lesson"], ["--load=another-id"]]) {
+    assert.equal(await cmdRecall(["recall", "--load", "note-id", ...args], call), 2);
+  }
+  assert.equal(await cmdRecall(["recall", "--load=  "], call), 2);
+  assert.deepEqual(calls, []);
+  assert.match(out.join("\n"), /bastra recall --load <id>/);
 });
 
 test("bastra save --dry-run sends dry_run: true and names a held save as not to be saved", async (t) => {

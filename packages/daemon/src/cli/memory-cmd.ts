@@ -1,7 +1,6 @@
 /**
- * `bastra recall "<question>"` and `bastra save` (#1492) — search and save
- * from the terminal, without an agent. Both are thin: they send the call to
- * the running daemon's /api/v1/recall and /api/v1/save_memory, the same
+ * `bastra recall` and `bastra save` (#1492) — search, read and save from
+ * the terminal. They call /api/v1/recall, /api/v1/load_memory and /api/v1/save_memory, the same
  * handlers MCP and REST use, so validation, claim gate, redaction, audit and
  * indexing stay where they are.
  *
@@ -20,6 +19,7 @@ import { rulebookCliCall } from "./helpers.js";
 
 /** Value options of these two commands (flag-spec.ts registers them). */
 export const MEMORY_VALUE_FLAGS = [
+  "--load",
   "--limit",
   "--scope",
   "--type",
@@ -101,16 +101,36 @@ function printHits(out: { hits: Hit[]; weak_result?: boolean }, w: MemoryCmdWord
   }
 }
 
+async function loadNote(o: Options, w: MemoryCmdWords, call: Call): Promise<number> {
+  const id = one(o, "--load");
+  if (!id || o.words.length || o.values.size > 1) {
+    console.error(`${id ? w.loadMixed : w.loadValueMissing}\n${w.usage.recallLoad}`);
+    return 2;
+  }
+  try {
+    const out = await call("load_memory", { id, verbosity: "full" });
+    if (o.json) console.log(JSON.stringify(out));
+    else process.stdout.write(out.body);
+    return 0;
+  } catch (e) {
+    const message = (e as Error).message;
+    console.error(w.loadFailed(id, message === `memory not found: ${id}` ? w.loadNotFound : message));
+    return 1;
+  }
+}
+
 export async function cmdRecall(argv: string[], call: Call = rulebookCliCall): Promise<number> {
   const w = await memoryCmdWords();
   let input: Record<string, unknown> | string;
   let json = false;
   try {
     const o = readOptions(argv, w);
+    if (o.values.has("--load")) return loadNote(o, w, call);
     json = o.json;
     input = recallInput(o, w);
   } catch (e) {
-    input = `${(e as Error).message}\n${w.usage.recall}`;
+    const message = (e as Error).message;
+    input = `${message}\n${message === w.givenTwice("--load") ? w.usage.recallLoad : w.usage.recall}`;
   }
   if (typeof input === "string") {
     console.error(input);

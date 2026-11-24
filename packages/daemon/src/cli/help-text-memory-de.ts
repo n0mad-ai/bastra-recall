@@ -222,6 +222,7 @@ zurückgelegt; das geht im Memory-Browser. --json gibt die Liste als JSON aus.
 
 Aufruf:
   bastra recall "<question>" [--limit N] [--scope S] [--type T] [--json]
+  bastra recall --load <ID> [--json]
 
 Fragt den laufenden Daemon mit derselben Suche, die Agenten nutzen (MCP recall /
 REST /api/v1/recall), und zeigt die passenden Memories: ID, Typ und Bereich,
@@ -229,6 +230,10 @@ Titel, Zusammenfassung. --limit begrenzt die Treffer (1–20, Standard 5); --sco
 und --type grenzen auf einen Bereich oder Memory-Typ ein. --json gibt die Antwort
 des Daemons unverändert aus, für Skripte. Private Memories erscheinen hier
 nicht, genau wie über REST.
+
+Mit --load und einer ID aus der Trefferliste zeigt der Daemon über load_memory
+den vollständigen Markdown-Text an. Mit --json erhältst du die Antwort des
+Daemons unverändert.
 `,
 
   save: `bastra save — selbst ein Memory speichern

@@ -91,7 +91,7 @@ exports[`#1532 golden master — bastra patches --help 1`] = `
 `;
 
 exports[`#1532 golden master — bastra recall --help 1`] = `
-"bastra recall — search the vault from the terminal\\n\\nUsage:\\n  bastra recall \\"<question>\\" [--limit N] [--scope S] [--type T] [--json]\\n\\nAsks the running daemon the same recall agents use (MCP recall /\\nREST /api/v1/recall) and prints the matching memories: id, type and area,\\ntitle, summary. --limit caps the hits (1-20, default 5); --scope and --type\\nnarrow to one area or memory type. --json prints the daemon's answer as is,\\nfor scripts. Private memories are not shown here, the same as over REST.\\n\\nMore: bastra help\\n"
+"bastra recall — search the vault from the terminal\\n\\nUsage:\\n  bastra recall \\"<question>\\" [--limit N] [--scope S] [--type T] [--json]\\n  bastra recall --load <id> [--json]\\n\\nAsks the running daemon the same recall agents use (MCP recall /\\nREST /api/v1/recall) and prints the matching memories: id, type and area,\\ntitle, summary. --limit caps the hits (1-20, default 5); --scope and --type\\nnarrow to one area or memory type. --json prints the daemon's answer as is,\\nfor scripts. Private memories are not shown here, the same as over REST.\\n\\nUse --load with an id from the hit list to print the complete Markdown body\\nthrough the daemon's load_memory handler. Add --json for the raw load response.\\n\\nMore: bastra help\\n"
 `;
 
 exports[`#1532 golden master — bastra reconcile --help 1`] = `

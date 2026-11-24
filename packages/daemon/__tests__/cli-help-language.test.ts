@@ -127,16 +127,18 @@ test("an unreadable settings file still answers --help, in English", async () =>
   }
 });
 
-function runCli(args: string[], home: string): Promise<{ stdout: string; code: number }> {
+function runCli(args: string[], home: string): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((ok, ko) => {
     const child = spawn("npx", ["tsx", CLI_PATH, ...args], {
       env: { ...process.env, HOME: home, USERPROFILE: home, BASTRA_TELEMETRY: "off" },
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
+    let stderr = "";
     child.stdout.on("data", (c) => (stdout += c.toString()));
+    child.stderr.on("data", (c) => (stderr += c.toString()));
     child.on("error", ko);
-    child.on("close", (code) => ok({ stdout, code: code ?? -1 }));
+    child.on("close", (code) => ok({ stdout, stderr, code: code ?? -1 }));
   });
 }
 
@@ -150,6 +152,28 @@ test("the real CLI: `bastra tasks --help` follows language.primary", async () =>
     const english = await runCli(["tasks", "--help"], unset);
     assert.equal(english.code, 0);
     assert.equal(english.stdout, helpText("tasks", "en"));
+  } finally {
+    await rm(de, { recursive: true, force: true });
+    await rm(unset, { recursive: true, force: true });
+  }
+});
+
+test("the real CLI: `bastra recall --load` reports the missing ID in language.primary", async () => {
+  const de = await homeWith("de");
+  const unset = await homeWith(null);
+  try {
+    const german = await runCli(["recall", "--load", "--json"], de);
+    assert.deepEqual(german, {
+      code: 2,
+      stdout: "",
+      stderr: "Die Option '--load' braucht eine ID\nAufruf: bastra recall --load <ID> [--json]\n",
+    });
+    const english = await runCli(["recall", "--load="], unset);
+    assert.deepEqual(english, {
+      code: 2,
+      stdout: "",
+      stderr: "option '--load' needs a value\nusage: bastra recall --load <id> [--json]\n",
+    });
   } finally {
     await rm(de, { recursive: true, force: true });
     await rm(unset, { recursive: true, force: true });
@@ -327,6 +351,21 @@ test("recall/save, completion, archive and skills messages follow language.prima
       () => cmdRecall(["recall", "q", "--limit", "0"], noDaemon),
       `--limit muss eine ganze Zahl von 1 bis 20 sein\n${usageWordsIn("de").recall}\n`,
       `--limit must be a whole number from 1 to 20\n${usageWordsIn("en").recall}\n`,
+    ],
+    [
+      "recall --load mixed modes",
+      () => cmdRecall(["recall", "--load", "note-id", "--type", "lesson"], noDaemon),
+      `--load lässt sich nicht mit einer Suchfrage, --limit, --scope oder --type kombinieren\n${usageWordsIn("de").recallLoad}\n`,
+      `--load cannot be combined with a search question, --limit, --scope or --type\n${usageWordsIn("en").recallLoad}\n`,
+    ],
+    [
+      "recall --load missing memory",
+      () =>
+        cmdRecall(["recall", "--load", "missing"], async () => {
+          throw new Error("memory not found: missing");
+        }),
+      'bastra recall: "missing" konnte nicht geladen werden (Notiz nicht gefunden)\n',
+      'bastra recall: could not load "missing" (memory not found)\n',
     ],
     [
       "save required",

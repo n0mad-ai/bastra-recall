@@ -216,12 +216,16 @@ listed or restored here; restore them in the memory browser.
 
 Usage:
   bastra recall "<question>" [--limit N] [--scope S] [--type T] [--json]
+  bastra recall --load <id> [--json]
 
 Asks the running daemon the same recall agents use (MCP recall /
 REST /api/v1/recall) and prints the matching memories: id, type and area,
 title, summary. --limit caps the hits (1-20, default 5); --scope and --type
 narrow to one area or memory type. --json prints the daemon's answer as is,
 for scripts. Private memories are not shown here, the same as over REST.
+
+Use --load with an id from the hit list to print the complete Markdown body
+through the daemon's load_memory handler. Add --json for the raw load response.
 `,
 
   save: `bastra save — save a memory yourself

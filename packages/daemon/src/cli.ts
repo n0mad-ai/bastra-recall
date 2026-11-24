@@ -30,6 +30,7 @@ import { cmdFeedback } from "./cli/feedback-cmd.js";
 import { cmdArchive } from "./cli/archive-cmd.js";
 import { cmdTrash } from "./cli/trash-cmd.js";
 import { cmdRecall, cmdSave } from "./cli/memory-cmd.js";
+import { MEMORY_CMD_WORDS, memoryCmdWords } from "./cli/memory-cmd-words.js";
 import { cmdReconcile } from "./cli/reconcile-cmd.js";
 import { cmdLogs, logsWordsIn, parseSince } from "./cli/logs.js";
 import { cmdConventions } from "./cli/log-conventions.js";
@@ -239,6 +240,11 @@ async function main(): Promise<number> {
   // 0. Validation deliberately wins over --help (see flag-spec.ts).
   const errors = args.errors ?? [];
   if (errors.length > 0) {
+    if (args.command === "recall" && errors.length === 1 && errors[0] === MEMORY_CMD_WORDS.en.loadValueMissing) {
+      const w = await memoryCmdWords();
+      process.stderr.write(`${w.loadValueMissing}\n${w.usage.recallLoad}\n`);
+      return 2;
+    }
     for (const e of errors) process.stderr.write(`error: ${e}\n`);
     process.stderr.write(
       `run 'bastra ${args.command ? `${args.command} --help` : "help"}' for the options this command takes\n`

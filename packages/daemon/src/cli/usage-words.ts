@@ -19,6 +19,7 @@ const en = {
   rulesDecide:
     "usage: bastra rules confirm|reject <id> <revision> user-directed — only after the user's explicit decision on the displayed proposal",
   recall: 'usage: bastra recall "<question>" [--limit N] [--scope S] [--type T] [--json]',
+  recallLoad: "usage: bastra recall --load <id> [--json]",
   save: "usage: bastra save --title T --type T --scope S [--summary S] [--recall-when W]... [--tag X]... [--topic a/b] [text | stdin] [--dry-run] [--json]",
 };
 export type UsageWords = typeof en;
@@ -38,6 +39,7 @@ const de: UsageWords = {
   rulesDecide:
     "Aufruf: bastra rules confirm|reject <id> <revision> user-directed — erst nach der ausdrücklichen Entscheidung des Nutzers zum angezeigten Vorschlag",
   recall: 'Aufruf: bastra recall "<frage>" [--limit N] [--scope S] [--type T] [--json]',
+  recallLoad: "Aufruf: bastra recall --load <ID> [--json]",
   save: "Aufruf: bastra save --title T --type T --scope S [--summary S] [--recall-when W]... [--tag X]... [--topic a/b] [text | stdin] [--dry-run] [--json]",
 };
 

@@ -10,6 +10,10 @@ import { usageWordsIn } from "./usage-words.js";
 const en = {
   givenTwice: (flag: string) => `${flag} given twice`,
   limitRange: "--limit must be a whole number from 1 to 20",
+  loadValueMissing: "option '--load' needs a value",
+  loadMixed: "--load cannot be combined with a search question, --limit, --scope or --type",
+  loadNotFound: "memory not found",
+  loadFailed: (id: string, reason: string) => `bastra recall: could not load ${JSON.stringify(id)} (${reason})`,
   required: "--title, --type and --scope are required",
   typeOneOf: (types: string) => `--type must be one of ${types}`,
   textMissing: "the memory text is missing: give it as words or pipe it in",
@@ -33,6 +37,11 @@ export type MemoryCmdWords = typeof en & { usage: ReturnType<typeof usageWordsIn
 const de: typeof en = {
   givenTwice: (flag: string) => `${flag} doppelt angegeben`,
   limitRange: "--limit muss eine ganze Zahl von 1 bis 20 sein",
+  loadValueMissing: "Die Option '--load' braucht eine ID",
+  loadMixed: "--load lässt sich nicht mit einer Suchfrage, --limit, --scope oder --type kombinieren",
+  loadNotFound: "Notiz nicht gefunden",
+  loadFailed: (id: string, reason: string) =>
+    `bastra recall: ${JSON.stringify(id)} konnte nicht geladen werden (${reason})`,
   required: "--title, --type und --scope sind Pflicht",
   typeOneOf: (types: string) => `--type muss einer dieser Werte sein: ${types}`,
   textMissing: "der Text des Memorys fehlt: als Wörter angeben oder per Pipe übergeben",
