@@ -43,6 +43,14 @@ function ccTurnHeaders(): Record<string, string> {
   return h;
 }
 
+// These tools keep their client permission hints. The first records a
+// rulebook check or workflow stage, the second appends a validation receipt.
+function readOnlyForRetry(tool: string): boolean {
+  return (
+    tool !== "rulebook_check" && tool !== "validate_artifact" && TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly === true
+  );
+}
+
 /**
  * #1677 (owner decision B): a call the daemon may have received is repeated
  * only for a tool that declares `readOnlyHint` (tool-defs.ts); a tool without
@@ -56,9 +64,7 @@ function throwIfNotRepeatable(tool: string, err: unknown): void {
   // #1676: once the response had begun, the daemon received the call and
   // may have run a write tool. Report the failure as it is.
   if (responseStarted(err)) throw err;
-  // rulebook_check keeps its client permission hint, but it records a check
-  // in the current round and can update the session's reported workflow stage.
-  if (tool !== "rulebook_check" && TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly === true) return;
+  if (readOnlyForRetry(tool)) return;
   if ((err as { cause?: { code?: unknown } } | null)?.cause?.code === "ECONNREFUSED") return;
   throw Object.assign(new Error(unknownOutcomeText(tool, err)), { outcomeUnknown: true });
 }
@@ -80,7 +86,7 @@ function unknownOutcomeText(tool: string, err: unknown): string {
 export function toolErrorText(tool: string, err: unknown): string {
   const outcomeUnknown = (err as { outcomeUnknown?: unknown } | null)?.outcomeUnknown === true;
   if (!isTaskTool(tool) || outcomeUnknown) return (err as Error).message;
-  if (responseStarted(err) && TOOL_ARG_EXPECTATIONS.get(tool)?.readOnly !== true) {
+  if (responseStarted(err) && !readOnlyForRetry(tool)) {
     return unknownOutcomeText(tool, err);
   }
   return JSON.stringify(taskFailure(err).body);
