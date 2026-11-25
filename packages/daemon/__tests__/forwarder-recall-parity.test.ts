@@ -10,7 +10,7 @@
  */
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
@@ -238,4 +238,10 @@ test("#1727: hook lanes send neither field and keep their payload", async () => 
   assert.ok(lane.hits.length > 0);
   assert.equal("stages" in lane, false);
   for (const hit of lane.hits) assert.equal("matched_terms" in hit, false, hit.id);
+});
+
+test("the architecture guide describes the MCP marker as caller-supplied", async () => {
+  const guide = await readFile(new URL("../../../docs/architecture.md", import.meta.url), "utf8");
+  assert.match(guide, /caller-supplied lane marker/);
+  assert.match(guide, /Kennzeichen, das der Aufrufer mitsendet/);
 });
