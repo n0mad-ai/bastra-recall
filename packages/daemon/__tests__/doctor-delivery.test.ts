@@ -71,7 +71,7 @@ test("#1472: one line per client, with the start value, the full value, or the r
   // Start: (names 2000 + instructions 2200) / 4; full: (102000 + 2200) / 4.
   assert.match(
     lines[1],
-    /✓ claude-code: MCP lists 57 tools \(surface write\), ~1050 tokens at session start \(tool names \+ server instructions; descriptions load when needed\) — ~26050 tokens for a client that loads every description at start/
+    /✓ claude-code: MCP lists 57 tools \(surface write\); estimate from the catalog .*: ~1050 tokens if the client defers definitions \(tool names \+ server instructions at start\), ~26050 tokens if it loads every definition at start; the client's actual mode is not verified/
   );
   assert.match(lines[2], /⚠ codex: MCP tool list not delivered.*daemon not reachable.*falls back to the bundled list/);
   assert.deepEqual(deliveryLines([]), [], "no client, no block");
@@ -81,7 +81,7 @@ test("#1472: one line per client, with the start value, the full value, or the r
       "de",
       0
     )[1],
-    /~10 Tokens beim Sitzungsstart \(Werkzeugnamen \+ Server-Anleitung; .*\) — ~100 Tokens bei einem Client, der alle Beschreibungen sofort lädt/
+    /~10 Tokens, wenn der Client Definitionen nachlädt \(beim Start nur Werkzeugnamen \+ Server-Anleitung\), ~100 Tokens, wenn er alle Definitionen sofort lädt; die tatsächliche Ladeart des Clients ist nicht geprüft/
   );
 });
 
@@ -121,6 +121,9 @@ test("#1472: the printer skips clients without a registered MCP entry and never 
   });
   process.stdout.write = write;
   assert.deepEqual(asked, ["search"]);
-  assert.match(out.join(""), /claude-code: MCP lists 8 tools \(surface search\), ~300 tokens at session start/);
+  assert.match(
+    out.join(""),
+    /claude-code: MCP lists 8 tools \(surface search\); estimate from the catalog.*~300 tokens if the client defers definitions/
+  );
   assert.ok(!out.join("").includes("cursor"));
 });

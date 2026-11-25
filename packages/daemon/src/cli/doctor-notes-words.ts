@@ -56,8 +56,9 @@ const en = {
     `✓ ok: ${runs} mint run(s) in ${days} days, no recall needed a bridge (last: ${reaches} acted-on reach(es))`,
   deliveryHeader: "→ delivery per client (what the daemon hands each client right now)",
   deliveryOk: (surface: string, tools: number, mcpSurface: string, start: number, full: number) =>
-    `  ✓ ${surface}: MCP lists ${tools} tools (surface ${mcpSurface}), ~${start} tokens at session start ` +
-    `(tool names + server instructions; descriptions load when needed) — ~${full} tokens for a client that loads every description at start`,
+    `  ✓ ${surface}: MCP lists ${tools} tools (surface ${mcpSurface}); estimate from the catalog (~4 characters per token): ` +
+    `~${start} tokens if the client defers definitions (tool names + server instructions at start), ` +
+    `~${full} tokens if it loads every definition at start; the client's actual mode is not verified`,
   deliveryMissing: (surface: string, detail: string) =>
     `  ⚠ ${surface}: MCP tool list not delivered by the daemon: ${detail}; the client falls back to the bundled list until it is reachable`,
   deliveryHttp: (status: number) => `daemon answered HTTP ${status}`,
@@ -117,8 +118,9 @@ const de: DoctorNotesWords = {
     `✓ ok: ${runs} Bildungslauf/-läufe in ${days} Tagen, keine Suche brauchte eine Brücke (zuletzt: ${reaches} genutzte(r) Treffer)`,
   deliveryHeader: "→ Auslieferung je Client (was der Daemon jedem Client gerade übergibt)",
   deliveryOk: (surface, tools, mcpSurface, start, full) =>
-    `  ✓ ${surface}: MCP listet ${tools} Werkzeuge (Oberfläche ${mcpSurface}), ~${start} Tokens beim Sitzungsstart ` +
-    `(Werkzeugnamen + Server-Anleitung; Beschreibungen werden bei Bedarf geladen) — ~${full} Tokens bei einem Client, der alle Beschreibungen sofort lädt`,
+    `  ✓ ${surface}: MCP listet ${tools} Werkzeuge (Oberfläche ${mcpSurface}); Schätzung aus dem Katalog (~4 Zeichen je Token): ` +
+    `~${start} Tokens, wenn der Client Definitionen nachlädt (beim Start nur Werkzeugnamen + Server-Anleitung), ` +
+    `~${full} Tokens, wenn er alle Definitionen sofort lädt; die tatsächliche Ladeart des Clients ist nicht geprüft`,
   deliveryMissing: (surface, detail) =>
     `  ⚠ ${surface}: die MCP-Werkzeugliste kam nicht vom Daemon: ${detail}; der Client nutzt die mitgelieferte Liste, bis er erreichbar ist`,
   deliveryHttp: (status) => `der Daemon antwortete mit HTTP ${status}`,
