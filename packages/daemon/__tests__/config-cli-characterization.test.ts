@@ -209,6 +209,136 @@ const CASES: Case[] = [
       ["get", "daemon.env"],
     ],
   },
+  // Remaining registry keys (#1510): where the CLI refuses a key, the refusal is the golden value.
+  ...bool("commons.enabled"),
+  ...bool("sharedRecall.enabled"),
+  ...bool("sharedRecall.live"),
+  ...bool("evidenceGate.enabled", "BASTRA_EVIDENCE_GATE"),
+  ...bool("ui.backdropBlur"),
+  ...bool("tasks.notifications"),
+  ...bool("redaction.enabled"),
+  ...bool("telemetry.enabled", "BASTRA_TELEMETRY"),
+  {
+    name: "cors.origins",
+    runs: [
+      ["get", "cors.origins"],
+      ["set", "cors.origins", '["http://localhost:3000/"]'],
+      ["set", "cors.origins", '["not a url"]'],
+      ["get", "cors.origins"],
+    ],
+  },
+  { name: "cors.origins with env", env: { BASTRA_CORS_ORIGIN: "http://a.example" }, runs: [["get", "cors.origins"]] },
+  {
+    name: "sharedRecall.language",
+    runs: [
+      ["get", "sharedRecall.language"],
+      ["set", "sharedRecall.language", " DE "],
+      ["set", "sharedRecall.language", "xx-not-supported"],
+      ["get", "sharedRecall.language"],
+    ],
+  },
+  {
+    name: "experiment keys",
+    runs: [
+      ["get", "experiment.name"],
+      ["set", "experiment.name", "exp-1"],
+      ["set", "experiment.arms", '["a","b"]'],
+      ["set", "experiment.registration", "reg-1"],
+      ["set", "experiment.registration_version", "2"],
+      ["set", "experiment.registration_version", "x"],
+      ["get", "experiment.arms"],
+    ],
+  },
+  {
+    name: "generation.model",
+    runs: [
+      ["get", "generation.model"],
+      ["set", "generation.model", " llama3:8b "],
+      ["set", "generation.model", "  "],
+      ["get", "generation.model"],
+    ],
+  },
+  { name: "generation.model with env", env: { BASTRA_EXPAND_MODEL: "qwen3:4b" }, runs: [["get", "generation.model"]] },
+  {
+    name: "modelRecommendation keys",
+    runs: [
+      ["get", "modelRecommendation.id"],
+      ["set", "modelRecommendation.answer", "later"],
+      ["get", "modelRecommendation.answer"],
+    ],
+  },
+  {
+    name: "ui.backdrop keys",
+    runs: [
+      ["get", "ui.backdrop"],
+      ["set", "ui.backdrop", "aurora"],
+      ["set", "ui.backdrop", "nope"],
+      ["get", "ui.backdropDim"],
+      ["set", "ui.backdropDim", "65"],
+      ["set", "ui.backdropDim", "52"],
+      ["get", "ui.backdrop"],
+    ],
+  },
+  {
+    name: "assistant.displayName",
+    runs: [
+      ["get", "assistant.displayName"],
+      ["set", "assistant.displayName", "Ruby"],
+    ],
+  },
+  {
+    name: "soul.direction",
+    runs: [
+      ["get", "soul.direction"],
+      ["set", "soul.direction", "warm"],
+      ["set", "soul.direction", "bogus"],
+      ["get", "soul.direction"],
+    ],
+  },
+  {
+    name: "size.critical",
+    runs: [
+      ["get", "size.critical"],
+      ["set", "size.critical", "900"],
+      ["set", "size.critical", "x"],
+      ["get", "size.critical"],
+    ],
+  },
+  { name: "size.critical with env", env: { BASTRA_SIZE_CRITICAL: "1200" }, runs: [["get", "size.critical"]] },
+  {
+    name: "code.repos",
+    runs: [
+      ["get", "code.repos"],
+      ["set", "code.repos", '["/tmp/repo"]'],
+      ["set", "code.repos", "[]"],
+      ["get", "code.repos"],
+    ],
+  },
+  {
+    name: "tasks.chatActiveMinutes",
+    runs: [
+      ["get", "tasks.chatActiveMinutes"],
+      ["set", "tasks.chatActiveMinutes", "45"],
+      ["set", "tasks.chatActiveMinutes", "0"],
+      ["get", "tasks.chatActiveMinutes"],
+    ],
+  },
+  {
+    name: "tasks.reportUndo",
+    runs: [
+      ["get", "tasks.reportUndo"],
+      ["set", "tasks.reportUndo", " 2H "],
+      ["set", "tasks.reportUndo", "bogus"],
+      ["get", "tasks.reportUndo"],
+    ],
+  },
+  {
+    name: "tasks.chatConsent",
+    runs: [
+      ["get", "tasks.chatConsent"],
+      ["set", "tasks.chatConsent", "accepted"],
+    ],
+  },
   {
     name: "env-backed keys",
     runs: [

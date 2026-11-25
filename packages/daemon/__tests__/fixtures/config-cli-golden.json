@@ -1477,6 +1477,1228 @@
       }
     }
   },
+  "commons.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "commons.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ commons.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "commons.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "commons.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ commons.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "commons.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for commons.enabled\n"
+      },
+      {
+        "argv": [
+          "set",
+          "commons.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for commons.enabled\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "commons": {
+        "enabled": false
+      }
+    }
+  },
+  "sharedRecall.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "sharedRecall.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ sharedRecall.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "sharedRecall.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ sharedRecall.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for sharedRecall.enabled\n"
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for sharedRecall.enabled\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "sharedRecall": {
+        "enabled": false
+      }
+    }
+  },
+  "sharedRecall.live on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "sharedRecall.live",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ sharedRecall.live updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "sharedRecall.live"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.live",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ sharedRecall.live updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.live",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for sharedRecall.live\n"
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.live"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for sharedRecall.live\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "sharedRecall": {
+        "live": false
+      }
+    }
+  },
+  "evidenceGate.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "evidenceGate.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ evidenceGate.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "evidenceGate.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "evidenceGate.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ evidenceGate.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "evidenceGate.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for evidenceGate.enabled\n"
+      },
+      {
+        "argv": [
+          "set",
+          "evidenceGate.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for evidenceGate.enabled\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "evidenceGate": {
+        "enabled": false
+      }
+    }
+  },
+  "evidenceGate.enabled with env override": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "evidenceGate.enabled",
+          "yes"
+        ],
+        "code": 0,
+        "stdout": "✓ evidenceGate.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "evidenceGate.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_EVIDENCE_GATE overrides this setting at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "evidenceGate": {
+        "enabled": true
+      }
+    }
+  },
+  "ui.backdropBlur on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "ui.backdropBlur",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.backdropBlur updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "ui.backdropBlur"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.backdropBlur",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.backdropBlur updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.backdropBlur",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for ui.backdropBlur\n"
+      },
+      {
+        "argv": [
+          "set",
+          "ui.backdropBlur"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for ui.backdropBlur\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "ui": {
+        "backdropBlur": false
+      }
+    }
+  },
+  "tasks.notifications on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "tasks.notifications",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ tasks.notifications updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "tasks.notifications"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.notifications",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ tasks.notifications updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.notifications",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for tasks.notifications\n"
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.notifications"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for tasks.notifications\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "tasks": {
+        "notifications": false
+      }
+    }
+  },
+  "redaction.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "redaction.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ redaction.enabled updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "redaction.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "redaction.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ redaction.enabled updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "redaction.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for redaction.enabled\n"
+      },
+      {
+        "argv": [
+          "set",
+          "redaction.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for redaction.enabled\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "redaction": {
+        "enabled": false
+      }
+    }
+  },
+  "telemetry.enabled on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "telemetry.enabled",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ telemetry.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "telemetry.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "telemetry.enabled",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ telemetry.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "telemetry.enabled",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for telemetry.enabled\n"
+      },
+      {
+        "argv": [
+          "set",
+          "telemetry.enabled"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for telemetry.enabled\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "telemetry": {
+        "enabled": false
+      }
+    }
+  },
+  "telemetry.enabled with env override": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "telemetry.enabled",
+          "yes"
+        ],
+        "code": 0,
+        "stdout": "✓ telemetry.enabled updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "telemetry.enabled"
+        ],
+        "code": 0,
+        "stdout": "true\n  note: BASTRA_TELEMETRY overrides this setting at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "telemetry": {
+        "enabled": true
+      }
+    }
+  },
+  "cors.origins": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "cors.origins"
+        ],
+        "code": 0,
+        "stdout": "[]\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "cors.origins",
+          "[\"http://localhost:3000/\"]"
+        ],
+        "code": 0,
+        "stdout": "✓ cors.origins updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "cors.origins",
+          "[\"not a url\"]"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for cors.origins\n"
+      },
+      {
+        "argv": [
+          "get",
+          "cors.origins"
+        ],
+        "code": 0,
+        "stdout": "[\"http://localhost:3000\"]\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "cors": {
+        "origins": [
+          "http://localhost:3000"
+        ]
+      }
+    }
+  },
+  "cors.origins with env": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "cors.origins"
+        ],
+        "code": 0,
+        "stdout": "[]\n  note: BASTRA_CORS_ORIGIN overrides this setting at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": null
+  },
+  "sharedRecall.language": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "sharedRecall.language"
+        ],
+        "code": 0,
+        "stdout": "null\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.language",
+          " DE "
+        ],
+        "code": 0,
+        "stdout": "✓ sharedRecall.language updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "sharedRecall.language",
+          "xx-not-supported"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for sharedRecall.language\n"
+      },
+      {
+        "argv": [
+          "get",
+          "sharedRecall.language"
+        ],
+        "code": 0,
+        "stdout": "de\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "sharedRecall": {
+        "language": "de"
+      }
+    }
+  },
+  "experiment keys": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "experiment.name"
+        ],
+        "code": 0,
+        "stdout": "null\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "experiment.name",
+          "exp-1"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for experiment.name\n"
+      },
+      {
+        "argv": [
+          "set",
+          "experiment.arms",
+          "[\"a\",\"b\"]"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for experiment.arms\n"
+      },
+      {
+        "argv": [
+          "set",
+          "experiment.registration",
+          "reg-1"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for experiment.registration\n"
+      },
+      {
+        "argv": [
+          "set",
+          "experiment.registration_version",
+          "2"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for experiment.registration_version\n"
+      },
+      {
+        "argv": [
+          "set",
+          "experiment.registration_version",
+          "x"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for experiment.registration_version\n"
+      },
+      {
+        "argv": [
+          "get",
+          "experiment.arms"
+        ],
+        "code": 0,
+        "stdout": "[]\n",
+        "stderr": ""
+      }
+    ],
+    "stored": null
+  },
+  "generation.model": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "generation.model"
+        ],
+        "code": 0,
+        "stdout": "gemma3:4b\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "generation.model",
+          " llama3:8b "
+        ],
+        "code": 0,
+        "stdout": "✓ generation.model updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "generation.model",
+          "  "
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for generation.model\n"
+      },
+      {
+        "argv": [
+          "get",
+          "generation.model"
+        ],
+        "code": 0,
+        "stdout": "llama3:8b\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "generation": {
+        "model": "llama3:8b"
+      }
+    }
+  },
+  "generation.model with env": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "generation.model"
+        ],
+        "code": 0,
+        "stdout": "gemma3:4b\n  note: BASTRA_EXPAND_MODEL overrides this setting at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": null
+  },
+  "modelRecommendation keys": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "modelRecommendation.id"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'modelRecommendation.id'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      },
+      {
+        "argv": [
+          "set",
+          "modelRecommendation.answer",
+          "later"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'modelRecommendation.answer'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      },
+      {
+        "argv": [
+          "get",
+          "modelRecommendation.answer"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'modelRecommendation.answer'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      }
+    ],
+    "stored": null
+  },
+  "ui.backdrop keys": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "ui.backdrop"
+        ],
+        "code": 0,
+        "stdout": "none\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.backdrop",
+          "aurora"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.backdrop updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.backdrop",
+          "nope"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for ui.backdrop\n"
+      },
+      {
+        "argv": [
+          "get",
+          "ui.backdropDim"
+        ],
+        "code": 0,
+        "stdout": "80\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.backdropDim",
+          "65"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.backdropDim updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.backdropDim",
+          "52"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for ui.backdropDim\n"
+      },
+      {
+        "argv": [
+          "get",
+          "ui.backdrop"
+        ],
+        "code": 0,
+        "stdout": "aurora\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "ui": {
+        "backdrop": "aurora",
+        "backdropDim": 65
+      }
+    }
+  },
+  "assistant.displayName": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "assistant.displayName"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'assistant.displayName'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      },
+      {
+        "argv": [
+          "set",
+          "assistant.displayName",
+          "Ruby"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'assistant.displayName'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      }
+    ],
+    "stored": null
+  },
+  "soul.direction": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "soul.direction"
+        ],
+        "code": 0,
+        "stdout": "balanced\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "soul.direction",
+          "warm"
+        ],
+        "code": 0,
+        "stdout": "✓ soul.direction updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "soul.direction",
+          "bogus"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for soul.direction\n"
+      },
+      {
+        "argv": [
+          "get",
+          "soul.direction"
+        ],
+        "code": 0,
+        "stdout": "warm\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "soul": {
+        "direction": "warm"
+      }
+    }
+  },
+  "size.critical": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "size.critical"
+        ],
+        "code": 0,
+        "stdout": "800\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "size.critical",
+          "900"
+        ],
+        "code": 0,
+        "stdout": "✓ size.critical updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "size.critical",
+          "x"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for size.critical\n"
+      },
+      {
+        "argv": [
+          "get",
+          "size.critical"
+        ],
+        "code": 0,
+        "stdout": "900\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "size": {
+        "critical": 900
+      }
+    }
+  },
+  "size.critical with env": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "size.critical"
+        ],
+        "code": 0,
+        "stdout": "800\n  note: BASTRA_SIZE_CRITICAL overrides this setting at runtime\n",
+        "stderr": ""
+      }
+    ],
+    "stored": null
+  },
+  "code.repos": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "code.repos"
+        ],
+        "code": 0,
+        "stdout": "[]\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "code.repos",
+          "[\"/tmp/repo\"]"
+        ],
+        "code": 0,
+        "stdout": "✓ code.repos updated; restart the daemon and clients to apply\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "code.repos",
+          "[]"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for code.repos\n"
+      },
+      {
+        "argv": [
+          "get",
+          "code.repos"
+        ],
+        "code": 0,
+        "stdout": "[\"/tmp/repo\"]\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "code": {
+        "repos": [
+          "/tmp/repo"
+        ]
+      }
+    }
+  },
+  "tasks.chatActiveMinutes": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "tasks.chatActiveMinutes"
+        ],
+        "code": 0,
+        "stdout": "30\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.chatActiveMinutes",
+          "45"
+        ],
+        "code": 0,
+        "stdout": "✓ tasks.chatActiveMinutes updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.chatActiveMinutes",
+          "0"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for tasks.chatActiveMinutes\n"
+      },
+      {
+        "argv": [
+          "get",
+          "tasks.chatActiveMinutes"
+        ],
+        "code": 0,
+        "stdout": "45\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "tasks": {
+        "chatActiveMinutes": 45
+      }
+    }
+  },
+  "tasks.reportUndo": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "tasks.reportUndo"
+        ],
+        "code": 0,
+        "stdout": "10m\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.reportUndo",
+          " 2H "
+        ],
+        "code": 0,
+        "stdout": "✓ tasks.reportUndo updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.reportUndo",
+          "bogus"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for tasks.reportUndo\n"
+      },
+      {
+        "argv": [
+          "get",
+          "tasks.reportUndo"
+        ],
+        "code": 0,
+        "stdout": "2h\n",
+        "stderr": ""
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "tasks": {
+        "reportUndo": "2h"
+      }
+    }
+  },
+  "tasks.chatConsent": {
+    "results": [
+      {
+        "argv": [
+          "get",
+          "tasks.chatConsent"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'tasks.chatConsent'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      },
+      {
+        "argv": [
+          "set",
+          "tasks.chatConsent",
+          "accepted"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: unknown config key 'tasks.chatConsent'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+      }
+    ],
+    "stored": null
+  },
   "env-backed keys": {
     "results": [
       {
