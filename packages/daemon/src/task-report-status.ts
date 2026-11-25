@@ -62,11 +62,13 @@ function* proseQuestions(md: string) {
     const line = raw.trimEnd();
     if (code[i] || HEADING.test(line) || ((!i || !lines[i - 1]?.trim()) && RULE.test(line))) {
       previous = "";
-      if (!code[i]) yield { line, asks: false };
+      if (!code[i]) yield { line, asks: false, before: line };
     } else if (line.trim()) {
       const text = ITEM.exec(line)?.[1] ?? line;
-      const ask = askOf(text, previous);
-      yield { line, asks: ask !== null && formattedUntil(text) <= ask.at };
+      const ask = askOf(text, previous),
+        asks = ask !== null && formattedUntil(text) <= ask.at;
+      // `before`: the text in front of the shown marker, where another "[?" is still plain text (#1718)
+      yield { line, asks, before: asks ? text.slice(0, ask.at) : line };
       previous = text;
     }
   }
@@ -89,7 +91,8 @@ const INLINE_CODE = /`[^`]*`/g;
 
 /** What task_report_save tells the agent about a report's questions (Daniel 25.11.2026): `asks`
  *  counts the questions the reader shows with answer buttons; `unread` lists the lines that open a
- *  marker "[?" but are not read as answer options, so the owner would see them as plain text. */
+ *  marker "[?" but are not read as answer options, so the owner would see them as plain text — also
+ *  a line whose last marker shows buttons while an earlier one on it stays text (#1718). */
 export function questionCheck(body: string): { asks: number; unread: string[] } {
   let asks = 0;
   const unread: string[] = [];
@@ -97,10 +100,10 @@ export function questionCheck(body: string): { asks: number; unread: string[] } 
     const lines =
       b.kind === "md"
         ? proseQuestions(b.text)
-        : [b.head, ...b.rows].map((cells) => ({ line: cells.join(" | "), asks: false }));
-    for (const { line, asks: shown } of lines) {
+        : [b.head, ...b.rows].map((cells) => ({ line: cells.join(" | "), asks: false, before: cells.join(" | ") }));
+    for (const { line, asks: shown, before } of lines) {
       if (shown) asks++;
-      else if (OPENS.test(line.replace(INLINE_CODE, ""))) unread.push(line.trim());
+      if (OPENS.test(before.replace(INLINE_CODE, ""))) unread.push(line.trim());
     }
   }
   return { asks, unread };

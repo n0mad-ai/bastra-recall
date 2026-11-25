@@ -214,12 +214,15 @@ test("Daniel 25.11.2026: questionCheck counts the questions and names every mark
     "| Ship it? | [? Yes | No] |",
     "",
     "Literal \\[? Yes | No] and `[? code]` stay quiet",
+    "First question [? Yes] and second question [? Yes | No]",
+    "Read the Matrix[?a|b]",
     "```",
     "[? in code | stays quiet]",
     "```",
   ].join("\n");
   const { asks, unread } = questionCheck(body);
-  assert.equal(asks, 2);
+  // #1718: the line's last marker asks, its earlier one is named; #1717: a joined marker is named
+  assert.equal(asks, 3);
   assert.deepEqual(unread, [
     "[? Yes | No]",
     "Ship it? [? Yes | No].",
@@ -229,6 +232,8 @@ test("Daniel 25.11.2026: questionCheck counts the questions and names every mark
     "Ship it? [? **Yes** | No]",
     "## Ship it? [? Yes | No]",
     "Ship it? | [? Yes | No]",
+    "First question [? Yes] and second question [? Yes | No]",
+    "Read the Matrix[?a|b]",
   ]);
 });
 
@@ -447,6 +452,9 @@ test("Daniel 25.11.2026: task_report_save hints at unread markers and more than 
   assert.match(broken.hints[0], /plain text without answer buttons: "\[\? Yes \| No\]"/);
   assert.match(broken.hints[1], /"- Later\? \[\? Yes \| Yes\]"/);
   assert.match(broken.hints[2], /2-6 different options of at most 120 characters/);
+  const mixed = await f.save({ body: "First question [? Yes] and second question [? Yes | No]" });
+  assert.equal(mixed.hints.length, 2, "#1718: the earlier marker is named although the line asks");
+  assert.match(mixed.hints[0], /"First question \[\? Yes\] and second question \[\? Yes \| No\]"/);
   const many = await f.save({ body: Array.from({ length: 21 }, (_, i) => `- Q${i}? [? Yes | No]`).join("\n") });
   assert.deepEqual(many.hints, [
     "21 questions with answer options; keep at most 20 per report and put the rest in a part 2.",
@@ -454,5 +462,5 @@ test("Daniel 25.11.2026: task_report_save hints at unread markers and more than 
   const twenty = await f.save({ body: Array.from({ length: 20 }, (_, i) => `- Q${i}? [? Yes | No]`).join("\n") });
   assert.equal(twenty.hints, undefined);
   const ids = (await f.list()).reports.map((r: any) => r.id);
-  for (const r of [clean, broken, many, twenty]) assert.ok(ids.includes(r.id), "every report is stored");
+  for (const r of [clean, broken, mixed, many, twenty]) assert.ok(ids.includes(r.id), "every report is stored");
 });

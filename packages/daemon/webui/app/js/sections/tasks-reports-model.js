@@ -202,7 +202,8 @@ export function noteRows(answer) {
 // paragraph out of a button. An option is never cut: past the limit the whole line stays plain
 // text, and task_report_save names such lines to the agent (task-report-status.ts questionCheck).
 // A backslash before the marker ("\[? Yes | No]") makes it text too (#1652); the reader then shows
-// it without the backslash. The daemon's question status reads the same options (#1656).
+// it without the backslash. So does a marker joined to the text before it ("Matrix[?a|b]", #1717): it
+// needs a space before it or a line of its own. The daemon's question status reads the same options (#1656).
 const ASK = /\[\?([^[\]]*)\]\s*$/;
 const ASK_MAX = 6;
 export const OPTION_MAX = 120;
@@ -220,7 +221,7 @@ export function optionsOf(inner) {
  * own can use the preceding prose block as its question. A second marker cannot reuse that block. */
 export function askOf(text, previous = "") {
   const m = ASK.exec(String(text ?? ""));
-  if (!m || text[m.index - 1] === "\\") return null;
+  if (!m || (m.index > 0 && !/\s/.test(text[m.index - 1]))) return null;
   const options = optionsOf(m[1]);
   const question = text.slice(0, m.index).trim() || (ASK.test(previous) ? "" : previous.trim());
   return options && question ? { question, options, at: m.index } : null;

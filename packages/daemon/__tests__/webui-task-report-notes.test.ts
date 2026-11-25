@@ -801,6 +801,14 @@ test("#1656/#1652: the daemon's question status and the reader's answer buttons 
     ["Open http://127.0.0.1:6723/ui/, then: ship it? [? Yes | No]", true],
     ["Ship it, see http://a/b? [? Yes | No]", true],
     ["Ship it? http://a/b[? Yes | No]", false],
+    // #1717: a marker joined to the text before it is a literal; a space or a line of its own asks
+    ["Use Matrix[?a|b] here: Matrix[?a|b]", false],
+    ["Ship it?[? Yes | No]", false],
+    ["**Ship it?**[? Yes | No]", false],
+    ["**Ship it?** [? Yes | No]", true],
+    ["Ship it? [?a|b]", true],
+    ["Ship it?\n[? Yes | No]", true],
+    ["Ship it?\n\n[? Yes | No]", true],
   ];
   for (const [body, want] of corpus) {
     const shown = m.annotateReport(renderer.render(body), noUi).toc.asks.length > 0;
@@ -825,4 +833,15 @@ test("#1652: an escaped marker stays text, shown without its backslash; a normal
   assert.equal(asked.find("tk-ask").length, 1, "a normal marker still asks");
   assert.equal(out.toc.asks.length, 1);
   assert.equal(m.askOf("Literal \\[? Yes | No]"), null);
+});
+
+test("#1717: a marker joined to the word before it is shown as written, without buttons or outline entry", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
+  const out = m.annotateReport(renderer.render(["Read the Matrix[?a|b]", "", "- Item[? A | B]"].join("\n")), noUi);
+  const [literal, list] = out.nodes;
+  assert.equal(literal.find("tk-ask").length + list.find("tk-ask").length, 0, "no answer buttons");
+  assert.match(literal.textContent, /^Read the Matrix\[\?a\|b\]tk\.rep\.note\.add$/, "the literal stays in the text");
+  assert.equal(out.toc.asks.length, 0, "no outline entry");
+  assert.deepEqual(plain(m.askOf("Read the Matrix [?a|b]")).options, ["a", "b"], "with a space it asks");
 });
