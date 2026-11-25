@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import ts from "typescript";
 
@@ -17,12 +18,12 @@ try {
   process.exit(1);
 }
 
-const files = [
-  "eslint-structure-baseline.json",
-  "eslint-any-baseline.json",
-  ".lint-cycle-baseline.json",
-  "clone-baseline.json",
-];
+const anyBaseline = "eslint-any-baseline.json";
+// Reviewed initial #1533 inventory. Until a trusted CI SHA contains the file,
+// the new gate must protect that exact inventory from first-push inflation.
+const initialAnyDigest = "1d13d0b2ec6c253e61ea0b917f7479c18c904e675d639f7244aa084e17bdbf3b";
+
+const files = ["eslint-structure-baseline.json", anyBaseline, ".lint-cycle-baseline.json", "clone-baseline.json"];
 
 // #1572 is a single mechanical tree rename, not transferable function debt.
 const oldUi = "packages/daemon/webui/v22/";
@@ -149,9 +150,23 @@ async function isVerifiedMigration(file, previous, candidate) {
   return true;
 }
 
+function initialAnyBaselineAllowed() {
+  if (!existsSync(anyBaseline)) return true;
+  const bytes = readFileSync(anyBaseline);
+  const snapshot = JSON.parse(bytes.toString());
+  if (snapshot.schema === 1 && snapshot.files && Object.keys(snapshot.files).length === 0) return true;
+  return createHash("sha256").update(bytes).digest("hex") === initialAnyDigest;
+}
+
 for (const file of files) {
   const source = readBase(file);
-  if (!source) continue;
+  if (!source) {
+    if (file === anyBaseline && !initialAnyBaselineAllowed()) {
+      console.error(`${file}: the initial explicit-any baseline must match the reviewed inventory.`);
+      process.exitCode = 1;
+    }
+    continue;
+  }
   const previous = JSON.parse(source);
   const candidate = JSON.parse(readFileSync(file, "utf8"));
   if (await isVerifiedMigration(file, previous, candidate)) continue;

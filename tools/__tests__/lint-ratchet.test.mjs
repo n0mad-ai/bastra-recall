@@ -538,6 +538,21 @@ test("the Git guard refuses a new or increased any count (#1533)", async (t) => 
   assert.equal(tool(root, "check-lint-baselines.mjs").status, 0);
 });
 
+test("the first explicit-any baseline accepts only the reviewed snapshot when the trusted SHA has no copy", async (t) => {
+  const root = await fixture(t);
+  await rm(join(root, "eslint-any-baseline.json"));
+  await commitBaselines(root);
+  const baseline = await readFile(join(repository, "eslint-any-baseline.json"), "utf8");
+  await put(root, "eslint-any-baseline.json", baseline);
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 0);
+  const widened = JSON.parse(baseline);
+  widened.files[Object.keys(widened.files)[0]]++;
+  await put(root, "eslint-any-baseline.json", widened);
+  const result = tool(root, "check-lint-baselines.mjs");
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /initial explicit-any baseline/);
+});
+
 test("cycle exceptions shrink and workspace package names resolve to source", async (t) => {
   const root = await fixture(t);
   for (const workspace of ["daemon", "eval", "statusline"]) {
