@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Vault, SearchIndex } from "@bastra-recall/core";
+import { AuditLog, Vault, SearchIndex } from "@bastra-recall/core";
 import { mutateSettings, readSettings, settingsFilePath } from "../src/settings.js";
 import { applySettingChanges, settingEntry } from "../src/settings-registry.js";
 import { redactionEnabled, redactUserText } from "../src/user-text-redaction.js";
@@ -20,6 +20,8 @@ import { Telemetry } from "../src/telemetry.js";
 import { saveMemoryHandler, type SaveMemoryResult } from "../src/save-memory-handler.js";
 import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-handler.js";
 import { saveDocument } from "../src/documents-write-handler.js";
+import { saveProductDocHandler } from "../src/product-doc-handler.js";
+import { createBridgeMethods } from "../src/bridge-methods.js";
 import { resetAuditLogCache } from "../src/audit-trail.js";
 import { cleanDraftLine, cleanDraftText } from "../src/draft-text.js";
 import { draftFingerprint, draftId, listDrafts, upsertDraft, type Draft } from "../src/draft-store.js";
@@ -129,6 +131,57 @@ test("edit_memory: off appends the text byte for byte", (t) =>
     const raw = await readFile(saved.file_path, "utf8");
     assert.equal(raw.includes(TOKEN), !on, raw);
     assert.equal(edited.secrets_redacted === undefined, !on);
+  }));
+
+test("turning redaction back on keeps older credentials out of new audit entries", async (t) => {
+  const { deps, vaultRoot } = await vaultFixture(t);
+  t.after(() => setRedaction(null));
+  await setRedaction(false);
+  const saved = (await saveMemoryHandler(deps, memory({ summary: TEXT }))) as SaveMemoryResult;
+  await setRedaction(true);
+  await editMemoryHandler(deps, { id: saved.id, append: "Deployment succeeded." });
+
+  assert.ok((await readFile(saved.file_path, "utf8")).includes(TOKEN), "existing note keeps its original summary");
+  const audit = await readFile(join(vaultRoot, ".bastra", "audit-log.ndjson"), "utf8");
+  assert.ok(!audit.includes(TOKEN), "new entries redact old content too");
+});
+
+test("Mac bridge saves follow the switch while audit reasons and snapshots stay redacted", (t) =>
+  bothWays(async (on) => {
+    const { deps, vault, vaultRoot } = await vaultFixture(t);
+    const bridge = createBridgeMethods({
+      vault,
+      search: deps.search,
+      auditLog: new AuditLog(vaultRoot),
+      vaultPath: vaultRoot,
+      learnedBridges: null,
+      sharedRecallLang: null,
+    });
+    const result = (await bridge.save_memory(
+      memory({ summary: TEXT, body: TEXT, body_ends_with: TEXT, audit_context: { actor: "user", reason: TEXT } })
+    )) as SaveMemoryResult;
+    assert.equal((await readFile(result.file_path, "utf8")).includes(TOKEN), !on);
+    assert.equal(result.secrets_redacted === undefined, !on);
+    await bridge.delete_memory({ id: result.id });
+    await bridge.restore_memory({ id: result.id });
+    assert.equal((await readFile(result.file_path, "utf8")).includes(TOKEN), !on);
+    const audit = await readFile(join(vaultRoot, ".bastra", "audit-log.ndjson"), "utf8");
+    assert.ok(!audit.includes(TOKEN));
+    assert.ok(audit.includes("[REDACTED]"));
+  }));
+
+test("product documentation honors the same switch and reports redacted fields", (t) =>
+  bothWays(async (on) => {
+    const { deps } = await vaultFixture(t);
+    const result = await saveProductDocHandler(deps, {
+      project: "ops",
+      area: "deploy",
+      title: "Deploy notes",
+      summary: TEXT,
+      body: TEXT,
+    });
+    assert.equal((await readFile(result.file_path, "utf8")).includes(TOKEN), !on);
+    assert.equal("secrets_redacted" in result, on);
   }));
 
 test("save_document: off keeps the sidecar text byte for byte", (t) =>

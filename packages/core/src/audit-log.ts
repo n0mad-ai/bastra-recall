@@ -7,6 +7,7 @@ import { assertRealClaim, type IdClaim } from "./id-transaction.js";
 import matter from "gray-matter";
 import { occupantOfRaw } from "./memory-locator.js";
 import { ensureVaultDir } from "./vault-root-guard.js";
+import { redactSecrets } from "./scrub.js";
 
 /**
  * Audit-Log: jede Memory-Mutation wird als JSON-Zeile in
@@ -65,6 +66,18 @@ export interface AuditEntry {
 const AUDIT_DIR = ".bastra";
 const AUDIT_FILE = "audit-log.ndjson";
 
+function redactAuditValue(value: unknown): unknown {
+  if (typeof value === "string") return redactSecrets(value).text;
+  if (Array.isArray(value)) return value.map(redactAuditValue);
+  if (value === null || typeof value !== "object" || value instanceof Date) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactAuditValue(item)]));
+}
+
+/** Snapshots are evidence. The entry's ID and path still drive restore. */
+function redactAuditSnapshot(snapshot: AuditEntry["diff_before"]): AuditEntry["diff_before"] {
+  return redactAuditValue(snapshot) as AuditEntry["diff_before"];
+}
+
 export class AuditLog {
   private cache: AuditEntry[] | null = null;
   /** `<mtimeMs>:<size>` der Datei, aus der `cache` stammt — siehe `readAll()`. */
@@ -86,12 +99,12 @@ export class AuditLog {
       memory_id: input.memory_id,
       timestamp: input.timestamp ?? new Date().toISOString(),
       actor: input.actor,
-      ...(input.actor_detail ? { actor_detail: input.actor_detail } : {}),
+      ...(input.actor_detail ? { actor_detail: redactSecrets(input.actor_detail).text } : {}),
       operation: input.operation,
-      diff_before: input.diff_before,
-      diff_after: input.diff_after,
+      diff_before: redactAuditSnapshot(input.diff_before),
+      diff_after: redactAuditSnapshot(input.diff_after),
       ...(input.file_path ? { file_path: input.file_path } : {}),
-      ...(input.reason ? { reason: input.reason } : {}),
+      ...(input.reason ? { reason: redactSecrets(input.reason).text } : {}),
       ...(input.session_id ? { session_id: input.session_id } : {}),
       ...(input.transport ? { transport: input.transport, client: input.client ?? null } : {}),
       ...(input.transport ? { caller_session: input.caller_session ?? null } : {}),

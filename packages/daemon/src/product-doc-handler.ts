@@ -30,6 +30,7 @@ import type { ToolDeps } from "./tool-handlers.js";
 import { recordAudit } from "./audit-trail.js";
 import { vaultLocator } from "./vault-locator.js";
 import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
+import { redactSaveInput, withRedactionReceipt, type SecretsRedacted } from "./save-redaction.js";
 
 export const SaveProductDocArgs = z.object({
   project: z.string().min(1).refine(isPathSafeComponent, {
@@ -48,6 +49,8 @@ export interface SaveProductDocResult {
   file_path: string;
   created: boolean;
   updated: boolean;
+  warning?: string;
+  secrets_redacted?: SecretsRedacted;
 }
 
 /**
@@ -136,31 +139,30 @@ export async function saveProductDocHandler(
     throw new Error(`memory not found: ${id}`);
   }
   const existed = before !== undefined;
-  const result = await saveMemory(
-    deps.vaultPath,
-    {
-      id,
-      title,
-      type: "doc",
-      summary: truncateSummaryTo(summary, SUMMARY_MAX),
-      body,
-      topic_path: ["doku", projectKey, areaSlug],
-      tags: parsed.data.tags ?? ["product-doc", projectKey],
-      scope: projectKey,
-      recall_when: parsed.data.recall_when ?? [`how to use ${title}`, `${project} ${area} user guide`],
-      overwrite: true,
+  const input = {
+    id,
+    title,
+    type: "doc" as const,
+    summary,
+    body,
+    topic_path: ["doku", projectKey, areaSlug],
+    tags: parsed.data.tags ?? ["product-doc", projectKey],
+    scope: projectKey,
+    recall_when: parsed.data.recall_when ?? [`how to use ${title}`, `${project} ${area} user guide`],
+    overwrite: true,
+  };
+  const redacted = redactSaveInput(input);
+  input.summary = truncateSummaryTo(input.summary, SUMMARY_MAX);
+  const result = await saveMemory(deps.vaultPath, input, {
+    locator: vaultLocator(deps.vault),
+    // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX; dieser Pfad
+    // schreibt mit fest verdrahtetem `overwrite: true`. War die Datei auf der
+    // Platte inzwischen privat, ersetzte er sie trotzdem (5 von 5 Läufen).
+    // Dieselbe Frage an die Bytes, unter dem Claim des Saves.
+    precondition: (prevFm) => {
+      if (hiddenFromCaller(access, prevFm)) throw new Error(`memory not found: ${id}`);
     },
-    {
-      locator: vaultLocator(deps.vault),
-      // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX; dieser Pfad
-      // schreibt mit fest verdrahtetem `overwrite: true`. War die Datei auf der
-      // Platte inzwischen privat, ersetzte er sie trotzdem (5 von 5 Läufen).
-      // Dieselbe Frage an die Bytes, unter dem Claim des Saves.
-      precondition: (prevFm) => {
-        if (hiddenFromCaller(access, prevFm)) throw new Error(`memory not found: ${id}`);
-      },
-    }
-  );
+  });
   // Watcher is unreliable on cloud mounts — index now so find_document sees it.
   await deps.vault.reindexFile(result.file_path);
 
@@ -182,15 +184,18 @@ export async function saveProductDocHandler(
     sessionId: deps.telemetry.runId(),
   });
 
-  return {
-    id: result.id,
-    file_path: result.file_path,
-    created: !existed,
-    updated: existed,
-    // #380: bis hierher sah dieser Pfad wie ein glatter Erfolg aus, auch wenn
-    // kein Beleg geschrieben wurde.
-    ...(auditWarning ? { warning: auditWarning } : {}),
-  };
+  return withRedactionReceipt(
+    {
+      id: result.id,
+      file_path: result.file_path,
+      created: !existed,
+      updated: existed,
+      // #380: bis hierher sah dieser Pfad wie ein glatter Erfolg aus, auch wenn
+      // kein Beleg geschrieben wurde.
+      ...(auditWarning ? { warning: auditWarning } : {}),
+    },
+    redacted
+  );
 }
 
 export const productDocTools = [

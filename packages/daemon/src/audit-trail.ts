@@ -45,8 +45,7 @@ import {
   type WriteOriginEvidence,
 } from "@bastra-recall/core";
 import { writeCallerStore } from "./caller-session.js";
-import { redactSaveInput, withRedactionReceipt, WriteRedaction, type RedactionReceipt } from "./save-redaction.js";
-import { redactionEnabled } from "./user-text-redaction.js";
+import { redactSaveInput, withRedactionReceipt, type RedactionReceipt } from "./save-redaction.js";
 
 /** One AuditLog per vault — it caches reads, and re-creating it per write
  *  would throw that cache away on every save. */
@@ -123,19 +122,14 @@ export interface AuditTrailInput {
  * geschriebenen Zustand.
  */
 export async function recordAudit(input: AuditTrailInput): Promise<string | undefined> {
-  // The log is append-only: with the owner's redaction switched off, the note
-  // keeps its text, but the content fields copied into this log stay redacted.
-  const sealed = redactionEnabled() ? undefined : new WriteRedaction(true);
-  const diff = (snapshot: Record<string, unknown> | null, prefix: string) =>
-    sealed ? auditContentSnapshot(snapshot, prefix, sealed) : snapshot;
   try {
     await logFor(input.vaultRoot).record({
       memory_id: input.memoryId,
       actor: input.actor,
       actor_detail: input.actorDetail,
       operation: input.operation,
-      diff_before: diff(input.diffBefore, "audit_before"),
-      diff_after: diff(input.diffAfter, "audit_after"),
+      diff_before: input.diffBefore,
+      diff_after: input.diffAfter,
       ...(input.filePath ? { file_path: input.filePath } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
       ...(input.sessionId ? { session_id: input.sessionId } : {}),
@@ -174,29 +168,6 @@ export async function recordAudit(input: AuditTrailInput): Promise<string | unde
     );
   }
   return undefined;
-}
-
-/** Sanitize only the NEW audit append, retaining the authoritative result and
- * identity/provenance fields verbatim. Update snapshots are evidence, not a
- * rollback payload (restore reads delete entries and the actual trash file).
- * Existing ledger bytes and the preimage used for CAS are never rewritten.
- */
-function auditContentSnapshot(
-  snapshot: Record<string, unknown> | null,
-  prefix: string,
-  redaction: WriteRedaction
-): Record<string, unknown> | null {
-  if (snapshot === null) return null;
-  const copy = { ...snapshot };
-  for (const field of ["title", "summary", "applies_when", "verify_cmd"]) {
-    if (typeof copy[field] === "string") copy[field] = redaction.text(`${prefix}.${field}`, copy[field]);
-  }
-  if (Array.isArray(copy.recall_when)) {
-    copy.recall_when = copy.recall_when.map((value: unknown) =>
-      typeof value === "string" ? redaction.text(`${prefix}.recall_when`, value) : value
-    );
-  }
-  return copy;
 }
 
 export interface SaveMemoryWithAuditTrailInput {
@@ -246,23 +217,18 @@ export async function saveMemoryWithAuditTrail(
   // `update`-Ereignis mit identischem `diff_before`/`diff_after` an das
   // append-only Log — ein Beleg für eine Änderung, die es nicht gab.
   if (result.unchanged) return result;
-  const auditRedaction = new WriteRedaction();
-  const diffBefore = auditContentSnapshot(result.audit_before, "audit_before", auditRedaction);
-  const diffAfter = auditContentSnapshot(result.audit_after, "audit_after", auditRedaction);
   await recordAudit({
     vaultRoot: args.vaultRoot,
     memoryId: result.id,
     operation: result.created ? "create" : "update",
     actor: args.actor,
     actorDetail: args.actorDetail,
-    diffBefore,
-    diffAfter,
+    diffBefore: result.audit_before,
+    diffAfter: result.audit_after,
     filePath: result.file_path,
     sessionId: args.sessionId,
   });
-  const auditReceipt = auditRedaction.receipt();
-  auditReceipt.fields.secrets_redacted = { ...result.secrets_redacted, ...auditReceipt.fields.secrets_redacted };
-  return withRedactionReceipt(result, auditReceipt);
+  return result;
 }
 
 /** Test seam — the module-level cache would otherwise leak between vaults. */

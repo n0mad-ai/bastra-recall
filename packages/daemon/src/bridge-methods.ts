@@ -8,6 +8,7 @@ import {
   type SearchIndex,
   type AuditLog,
   SaveMemoryInput,
+  assertBodyTail,
   AuditContext,
   auditedSave,
   auditedSoftDelete,
@@ -26,6 +27,7 @@ import {
 import { expandQuery, type BridgePool } from "./learned-recall/bridges.js";
 import type { SupportedLanguage } from "./learned-recall/language.js";
 import { isDryRun } from "./save-preview-request.js";
+import { redactSaveInput, withRedactionReceipt } from "./save-redaction.js";
 
 export interface BridgeMethodDeps {
   vault: Vault;
@@ -105,6 +107,8 @@ export function createBridgeMethods(d: BridgeMethodDeps): Record<string, BridgeM
       const context = auditContext(params);
       const parsed = SaveMemoryInput.safeParse(rest);
       if (!parsed.success) throw new Error(parsed.error.message);
+      assertBodyTail(parsed.data.body, parsed.data.body_ends_with);
+      const redacted = redactSaveInput(parsed.data);
       const { result, audit, audit_warning } = await auditedSave({
         vault,
         auditLog,
@@ -117,7 +121,7 @@ export function createBridgeMethods(d: BridgeMethodDeps): Record<string, BridgeM
       // full frontmatter images incl. `sensitivity: private`; the MCP path drops
       // them (tool-handlers.ts), so the bridge does too.
       const { audit_before: _b, audit_after: _a, ...payload } = result;
-      return { ...payload, ...auditFields(audit, audit_warning) };
+      return withRedactionReceipt({ ...payload, ...auditFields(audit, audit_warning) }, redacted);
     },
 
     delete_memory: async (params) => {
