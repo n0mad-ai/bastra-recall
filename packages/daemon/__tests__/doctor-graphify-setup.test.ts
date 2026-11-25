@@ -56,7 +56,10 @@ test("no Graphify signal: no note", async () => {
 test("hook-guard in the repo settings is reported", async () => {
   await withDirs(async (home, repo) => {
     const file = join(repo, ".claude", "settings.json");
-    await writeFile(file, '{"hooks":{"PreToolUse":[{"command":"graphify hook-guard"}]}}');
+    await writeFile(
+      file,
+      '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"graphify hook-guard search"}]}]}}'
+    );
     assert.deepEqual(await findGraphifySetup(repo, home), [file]);
     const out = await capture("en", home, repo);
     assert.match(out, /existing Graphify setup found/);
@@ -67,7 +70,20 @@ test("hook-guard in the repo settings is reported", async () => {
 test("hook-guard in the home settings is reported", async () => {
   await withDirs(async (home, repo) => {
     const file = join(home, ".claude", "settings.json");
-    await writeFile(file, '{"x":"hook-guard"}');
+    await writeFile(
+      file,
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                { type: "command", command: '"C:\\Program Files\\Graphify\\graphify.EXE" hook-guard read --strict' },
+              ],
+            },
+          ],
+        },
+      })
+    );
     assert.deepEqual(await findGraphifySetup(repo, home), [file]);
   });
 });
@@ -96,5 +112,29 @@ test("German words by language, and nothing on disk changes", async () => {
     const out = await capture("de", home, repo);
     assert.match(out, /vorhandene Graphify-Einrichtung gefunden/);
     assert.equal(await readFile(file, "utf8"), before);
+  });
+});
+
+test("ordinary settings text and other tools' pre-tool commands do not declare Graphify", async () => {
+  await withDirs(async (home, repo) => {
+    const file = join(repo, ".claude", "settings.json");
+    await writeFile(
+      file,
+      JSON.stringify({
+        description: "hook-guard monitoring",
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                { type: "command", command: "node /tools/hook-guard.js" },
+                { type: "command", command: 'echo "graphify hook-guard search"' },
+              ],
+            },
+          ],
+        },
+      })
+    );
+    assert.deepEqual(await findGraphifySetup(repo, home), []);
+    assert.equal(await capture("en", home, repo), "");
   });
 });

@@ -15,6 +15,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import { doctorNotesWordsIn } from "./doctor-notes-words.js";
 
 async function readText(file: string): Promise<string> {
@@ -22,6 +23,33 @@ async function readText(file: string): Promise<string> {
     return await readFile(file, "utf8");
   } catch {
     return "";
+  }
+}
+
+const preToolUseSettings = z.object({
+  hooks: z.object({
+    PreToolUse: z.array(
+      z
+        .object({
+          hooks: z.array(z.object({ command: z.string().optional() }).catch({})).optional(),
+        })
+        .catch({})
+    ),
+  }),
+});
+
+// Installs use either the bare executable or its absolute path, quoted if needed.
+const graphifyGuard =
+  /^\s*(?:"(?:[^"]*[\\/])?graphify(?:\.exe)?"|'(?:[^']*[\\/])?graphify(?:\.exe)?'|(?:\S*[\\/])?graphify(?:\.exe)?)\s+hook-guard(?:\s|$)/i;
+
+function hasGraphifyGuard(text: string): boolean {
+  try {
+    const settings = preToolUseSettings.parse(JSON.parse(text));
+    return settings.hooks.PreToolUse.some((group) =>
+      group.hooks?.some((hook) => graphifyGuard.test(hook.command ?? ""))
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -38,7 +66,7 @@ export async function findGraphifySetup(repo: string, home: string): Promise<str
   const found: string[] = [];
   for (const base of [repo, home]) {
     const settings = join(base, ".claude", "settings.json");
-    if ((await readText(settings)).includes("hook-guard")) found.push(settings);
+    if (hasGraphifyGuard(await readText(settings))) found.push(settings);
   }
   const claudeMd = join(home, ".claude", "CLAUDE.md");
   if (/^#\s+graphify\b/im.test(await readText(claudeMd))) found.push(claudeMd);
