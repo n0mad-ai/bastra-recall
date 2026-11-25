@@ -213,7 +213,8 @@ export async function holdForDaemon<T>(fn: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (!String((err as Error).message).startsWith("daemon unreachable at ")) throw err;
     daemonReady = ensureDaemonRunning();
-    const ok = await daemonReady;
+    // A failed restart must not replace the call's own error (it carries the MCP text).
+    const ok = await daemonReady.catch(() => false);
     if (!ok) throw err;
     return await fn();
   }

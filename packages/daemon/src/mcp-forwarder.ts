@@ -75,13 +75,7 @@ import {
   primeDaemon,
   awaitDaemonReady,
 } from "./forwarder-daemon-client.js";
-import {
-  callDaemon,
-  callRecallStreaming,
-  maybeSessionContextItem,
-  setForwarderClient,
-  toolErrorText,
-} from "./mcp-forwarder-calls.js";
+import { callDaemon, callRecallStreaming, maybeSessionContextItem, setForwarderClient } from "./mcp-forwarder-calls.js";
 import { mcpClientLabel } from "./caller-session.js";
 import { liveStatusline, syncStatuslineTurn, flushStatusline } from "./mcp-forwarder-statusline.js";
 
@@ -360,7 +354,7 @@ async function main(): Promise<void> {
         content: [
           {
             type: "text" as const,
-            text: toolErrorText(name, err),
+            text: (err as { toolText: string }).toolText,
           },
         ],
       };

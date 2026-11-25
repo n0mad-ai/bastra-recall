@@ -83,7 +83,7 @@ function unknownOutcomeText(tool: string, err: unknown): string {
  * answers with its task failure body, which says `unavailable, retryable`; a
  * task action that may have run gets the message that says to check first.
  */
-export function toolErrorText(tool: string, err: unknown): string {
+function toolErrorText(tool: string, err: unknown): string {
   const outcomeUnknown = (err as { outcomeUnknown?: unknown } | null)?.outcomeUnknown === true;
   if (!isTaskTool(tool) || outcomeUnknown) return (err as Error).message;
   if (responseStarted(err) && !readOnlyForRetry(tool)) {
@@ -92,7 +92,19 @@ export function toolErrorText(tool: string, err: unknown): string {
   return JSON.stringify(taskFailure(err).body);
 }
 
+/**
+ * POST one tool call. A failure carries `toolText`, the text the MCP client
+ * answers with (#1677), so the request handler needs no second lookup.
+ */
 export async function callDaemon(tool: string, args: unknown): Promise<unknown> {
+  try {
+    return await postToDaemon(tool, args);
+  } catch (err) {
+    throw Object.assign(err instanceof Error ? err : new Error(String(err)), { toolText: toolErrorText(tool, err) });
+  }
+}
+
+async function postToDaemon(tool: string, args: unknown): Promise<unknown> {
   const url = `${DAEMON_URL}/api/v1/${tool}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

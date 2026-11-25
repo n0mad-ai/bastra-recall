@@ -82,10 +82,12 @@ await new Promise<void>((ok) => server.listen(0, "127.0.0.1", () => ok()));
 const port = (server.address() as { port: number }).port;
 process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${port}`;
 // The endpoint is resolved at import, so the import follows the env.
-const { callDaemon, toolErrorText } = await import("../src/mcp-forwarder-calls.js");
+const { callDaemon } = await import("../src/mcp-forwarder-calls.js");
 const { holdForDaemon, REQUEST_TIMEOUT_MS } = await import("../src/forwarder-daemon-client.js");
 const { TOOL_ARG_EXPECTATIONS } = await import("../src/tool-defs.js");
 const RETRY_PAUSE_MS = 300;
+/** The text the MCP client gets for a failed callDaemon. */
+const toolText = (error: Error | undefined): string => (error as unknown as { toolText: string }).toolText;
 const UNREACHABLE = new RegExp(`^daemon unreachable at http://127\\.0\\.0\\.1:${port}: `);
 const READ = "load_memory";
 const WRITE = "save_memory";
@@ -241,6 +243,20 @@ for (const tool of [WRITE, READ]) {
   });
 }
 
+test("#1703 a daemon restart that itself throws still ends with the call's own error and its text", async (t) => {
+  await reset(t, "refuse");
+  const timers = handTimers(t);
+  // The restart path logs "spawning…" right before it spawns; make it throw instead.
+  t.mock.method(console, "error", (message: unknown) => {
+    if (String(message).includes("spawning")) throw new Error("restart exploded");
+  });
+  const call = track(holdForDaemon(() => callDaemon(READ, { id: "x" })));
+  await timers.fire(RETRY_PAUSE_MS);
+  await until(() => call.done, "the call settles");
+  assert.match(String(call.error?.message), UNREACHABLE);
+  assert.equal(toolText(call.error), call.error?.message);
+});
+
 test("#1677 (a) a reset on connect is not a refusal: a write call is not repeated", async (t) => {
   await reset(t, "reset-on-connect");
   const timers = handTimers(t);
@@ -285,10 +301,18 @@ test("#1677 a task action that may have run answers with the check-first message
   await until(() => arrivals === 1, "first arrival");
   await timers.fire(REQUEST_TIMEOUT_MS);
   await until(() => call.done, "the call settles");
-  assert.match(toolErrorText("task_create", call.error), unclear("task_create", "This operation was aborted"));
+  assert.match(toolText(call.error), unclear("task_create", "This operation was aborted"));
   assert.equal(arrivals, 1);
-  // Any other task failure keeps its task failure body.
-  assert.equal(JSON.parse(toolErrorText("task_create", new Error("x"))).code, "unavailable");
+});
+
+test("#1677 a task failure that never reached the daemon keeps its task failure body", async (t) => {
+  await reset(t, "refuse");
+  const timers = handTimers(t);
+  const call = track(callDaemon("task_create", {}));
+  await timers.fire(RETRY_PAUSE_MS);
+  await until(() => call.done, "the call settles");
+  assert.equal(JSON.parse(toolText(call.error)).code, "unavailable");
+  assert.equal(arrivals, 0);
 });
 
 test("#1677 (a) a tool this build does not know counts as writing: it arrives once", async (t) => {
@@ -434,12 +458,17 @@ test("#1677 an interrupted task write response asks to check whether the action 
   await until(() => call.done, "the call settles");
   assert.equal(arrivals, 1);
   assert.ok(call.error);
-  assert.match(toolErrorText(tool, call.error), /Check whether it took effect before calling task_report_save again/);
+  assert.match(toolText(call.error), /Check whether it took effect before calling task_report_save again/);
 });
 
-test("#1677 an interrupted read-only task response keeps the structured retryable error", () => {
-  const error = Object.assign(new Error("terminated"), { responseStarted: true });
-  assert.equal(JSON.parse(toolErrorText("task_report_read", error)).retryable, true);
+test("#1677 an interrupted read-only task response keeps the structured retryable error", async (t) => {
+  await reset(t, "stall-body");
+  const seen = watchHeaders(t);
+  const call = track(callDaemon("task_report_read", {}));
+  await until(() => seen.headers === 1, "response headers");
+  stalled?.socket?.destroy();
+  await until(() => call.done, "the call settles");
+  assert.equal(JSON.parse(toolText(call.error)).retryable, true);
 });
 
 test("#1677 (d) the connection drops after the daemon received a write call, before any header: it arrives once", async (t) => {
