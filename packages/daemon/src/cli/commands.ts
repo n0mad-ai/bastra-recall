@@ -38,6 +38,7 @@ import { adapterDetailLabel, adapterDisplayLanguage } from "./adapter-words.js";
 import { autostartWordsIn } from "./autostart-words.js";
 import { canAutoSpawnAt } from "../forwarder-daemon-client.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
+import { printGraphifySetupNote } from "./graphify-setup-note.js";
 import { bridgesPath } from "../learned-recall/pool-path.js";
 import { readLastMint } from "../learned-recall/mint-job.js";
 import { defaultLogDir } from "../learned-recall/harvest.js";
@@ -579,6 +580,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath), language);
   await printDerivedClaimsNote(resolveVaultPath(args.vaultPath), w, language);
   await printCodeGraphNote(w, language);
+  await printGraphifySetupNote(scriptOutputLanguage(language, args.json));
   await printBridgeLearningNote(w, language);
   await printClientMemoryNote(resolveVaultPath(args.vaultPath), w, language);
   const rulebookVault = await resolveVault({ dryRun: true, vaultPath: resolveVaultPath(args.vaultPath) });

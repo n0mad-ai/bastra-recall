@@ -64,6 +64,10 @@ const en = {
   deliveryHttp: (status: number) => `daemon answered HTTP ${status}`,
   deliveryNoList: "daemon sent no tool list",
   deliveryUnreachable: (message: string) => `daemon not reachable (${message})`,
+  graphifySetupHeader: "→ existing Graphify setup found\n",
+  graphifySetupHint:
+    "Graphify's own hooks, CLAUDE.md block and skill overlap with Recall's code awareness, which uses its own pinned copy " +
+    "and never touches these. Recall and 'doctor --fix' change nothing here; remove them yourself if you do not want both.",
 };
 export type DoctorNotesWords = typeof en;
 
@@ -126,6 +130,10 @@ const de: DoctorNotesWords = {
   deliveryHttp: (status) => `der Daemon antwortete mit HTTP ${status}`,
   deliveryNoList: "der Daemon schickte keine Werkzeugliste",
   deliveryUnreachable: (message) => `Daemon nicht erreichbar (${message})`,
+  graphifySetupHeader: "→ vorhandene Graphify-Einrichtung gefunden\n",
+  graphifySetupHint:
+    "Die eigenen Hooks, der CLAUDE.md-Block und der Skill von Graphify überschneiden sich mit der Code-Erkennung von Recall, die eine eigene festgelegte Kopie nutzt " +
+    "und diese Stellen nie anfasst. Recall und 'doctor --fix' ändern hier nichts; entferne sie selbst, wenn du nicht beides willst.",
 };
 
 export const DOCTOR_NOTES_WORDS: Readonly<Record<string, DoctorNotesWords>> = { en, de };
