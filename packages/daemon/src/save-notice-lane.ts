@@ -152,6 +152,10 @@ export async function runSaveNoticeLane(
   return stdout;
 }
 
+function isFailedToolResult(result: Record<string, unknown>): boolean {
+  return result.isError === true || result.is_error === true || result.error !== undefined;
+}
+
 /**
  * The tool's result object out of `tool_response`. Claude Code hands an MCP
  * result over as its content blocks; the forwarder puts the result there as
@@ -176,7 +180,7 @@ export function readToolResult(value: unknown): Record<string, unknown> | null {
   }
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  if (record.isError === true || record.is_error === true || record.error !== undefined) return null;
+  if (isFailedToolResult(record)) return null;
   if (typeof record.id === "string" && record.id.trim().length > 0) return record;
   if (Array.isArray(record.content)) return readToolResult(record.content);
   return null;
