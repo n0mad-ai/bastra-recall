@@ -14,7 +14,7 @@
 // sits at a negative offset inside a clipping box that covers the stage; the
 // part under the rail and header is clipped away. getInsets() tells the
 // engines which part is visible, so every fit centres in the stage.
-import { createSimulation } from "../../engines/simulation.js";
+import { createSimulation, collisionRadius } from "../../engines/simulation.js";
 import { createRenderer } from "../../engines/renderer.js";
 import { createInteractions } from "../../engines/interactions.js";
 import { clusterHues } from "../../engines/graph-data.js";
@@ -488,7 +488,7 @@ onUpdates((list) => {
 onData(() => {
   if (!eng || !data.graph || eng.src === data.graph || eng.kindsFrom === data.graph) return;
   eng.kindsFrom = data.graph;
-  if (adoptKinds(eng.sim.byId, data.graph.nodes) && eng.stage) awake(eng);
+  if (adoptKinds(eng.sim.byId, data.graph.nodes, collisionRadius) && eng.stage) awake(eng);
 });
 
 function detachAll(e) {

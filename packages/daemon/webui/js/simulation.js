@@ -8,6 +8,10 @@ import { nodeRadius } from "./graph-data.js";
 
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 
+/** Collision radius: drawn radius + bridge halo + breathing room, so the
+ *  no-overlap guarantee covers the halo rings too. */
+export const collisionRadius = (n) => nodeRadius(n) + (n.bridge ? 6.5 : 0) + 3.5;
+
 export function createSimulation(graph, width, height, savedAnchors = null) {
   const cx = width / 2;
   const cy = height / 2;
@@ -77,8 +81,7 @@ export function createSimulation(graph, width, height, savedAnchors = null) {
   }
 
   // Node particles, seeded in a disc around their cluster anchor. `cr` is the
-  // collision radius: drawn radius + bridge halo + breathing room, so the
-  // no-overlap guarantee covers the halo rings too.
+  // collision radius (collisionRadius above).
   const nodes = graph.nodes.map((n, i) => {
     const c = centers.get(n.cluster) ?? { x: cx, y: cy, count: 1 };
     const a = i * GOLDEN * 7.3;
@@ -89,7 +92,7 @@ export function createSimulation(graph, width, height, savedAnchors = null) {
       y: c.y + Math.sin(a) * rr,
       vx: 0,
       vy: 0,
-      cr: nodeRadius(n) + (n.bridge ? 6.5 : 0) + 3.5,
+      cr: collisionRadius(n),
     };
   });
   const byId = new Map(nodes.map((n) => [n.id, n]));
