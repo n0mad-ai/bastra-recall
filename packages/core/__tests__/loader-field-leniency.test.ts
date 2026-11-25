@@ -313,6 +313,16 @@ const datedNote = (field: string, line: string) =>
     "body",
   ].join("\n");
 
+test("valid date-only frontmatter needs just one YAML parse", (t) => {
+  const { yaml } = (matter as unknown as { engines: { yaml: { parse: (input: string) => unknown } } }).engines;
+  const parseYaml = t.mock.method(yaml, "parse");
+  const raw = datedNote("last_reviewed_at", '"last_reviewed_at" : 2024-02-29 # leap day');
+  const memory = parse(raw);
+  assert.equal(memory.fm.last_reviewed_at, "2024-02-29");
+  assert.equal(memory.damaged, undefined);
+  assert.equal(parseYaml.mock.callCount(), 1);
+});
+
 for (const [field, fallback] of [
   ["updated", "2026-05-17"],
   ["created", "2026-05-17"],

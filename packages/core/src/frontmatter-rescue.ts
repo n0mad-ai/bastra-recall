@@ -259,11 +259,22 @@ function writtenDateExists(text: string): boolean {
  *  expired today again, so its fallback is an open product decision. */
 const CHECKED_DATE_FIELDS = ["created", "updated", "last_reviewed_at"] as const;
 
+/** An implicit YAML Date needs either a literal YYYY-MM-DD or a clock. Explicit tags
+ * can also construct timestamps from quoted or folded text. Leave those forms to YAML. */
+function mayContainRolledDate(block: string): boolean {
+  if (/!|\d{1,2}:\d{2}:\d{2}/.test(block)) return true;
+  for (const [day] of block.matchAll(/\d{4}-\d{2}-\d{2}/g)) {
+    if (!writtenDateExists(day)) return true;
+  }
+  return false;
+}
+
 /** The source text of each checked field js-yaml turned into a Date, whatever the key's quoting,
- *  spacing or trailing comment. A second parse of the block hands every Date node back as the
- *  text it was read from; a block that only loads through the rescue is read entry by entry. */
+ *  spacing or trailing comment. The check skips the second parse when every date spelling in
+ *  the block is a valid calendar day. A block that only loads through the rescue is read entry by entry. */
 function writtenDates(raw: string): Record<string, unknown> {
   const block = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(raw)?.[1] ?? "";
+  if (!mayContainRolledDate(block)) return {};
   const starts: number[] = [];
   const listener: YamlListener = (event, state) => {
     if (event === "open") {
