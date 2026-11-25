@@ -65,6 +65,7 @@ export function recordActiveConventions(
       id: e.id,
       revision: e.revision,
       setAt: now,
+      ...(old?.vaultIdentity ? { vaultIdentity: old.vaultIdentity } : {}),
       ...(scope ? { scope } : {}),
       ...(e.validator ? { validator: e.validator } : {}),
     });

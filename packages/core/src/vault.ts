@@ -90,6 +90,11 @@ export class Vault {
    * Licht. Ein Verzeichnis, das man nicht öffnen kann, und eine Datei, die man
    * nicht lesen kann, verbergen beide eine id.
    */
+  private rootIdentity?: string;
+  private reconciling = 0;
+  // Watcher unlinks may be the first half of a rename. Only a later complete
+  // scan can settle them. The pathname also protects notes being edited in place.
+  private unsettledRemovals = new Map<string, { path: string }>();
   private unreadableFiles = new Set<string>();
   private cloudOnlyFiles = new Set<string>();
   private readFailureLogged = new Map<string, string>();
@@ -126,6 +131,8 @@ export class Vault {
     // #892: a root found present is recorded outside the vault, so a later
     // start with the drive not mounted knows not to recreate it.
     vaultRootPresent(this.root);
+    this.rootIdentity = undefined;
+    const rootIdentity = await this.readRootIdentity();
     // Reihenfolge stabil halten: nach Pfad sortieren bevor wir parallel laden.
     // So bleibt die Map-Iterationsordnung deterministisch (Maps iterieren in
     // Insertion-Order; wir setzen die Ergebnisse in Pfad-Sortierreihenfolge).
@@ -182,6 +189,7 @@ export class Vault {
       const refused = this.claimAtInit(r.memory, r.file);
       if (refused) skipped.push(refused);
     }
+    this.rootIdentity = rootIdentity;
     return { loaded: this.memorys.size, skipped };
   }
 
@@ -264,6 +272,16 @@ export class Vault {
    * it is not on any hot path.
    */
   async reconcile(): Promise<number> {
+    this.reconciling++;
+    try {
+      return await this.reconcileIndex();
+    } finally {
+      this.reconciling--;
+    }
+  }
+
+  private async reconcileIndex(): Promise<number> {
+    const pending = new Map(this.unsettledRemovals);
     const BATCH = 32;
     const scan = await this.listMarkdownFiles();
     this.unreadablePaths = scan.unreadable;
@@ -314,7 +332,48 @@ export class Vault {
         })
       );
     }
+    this.settleRemovals(pending, onDisk);
     return this.memorys.size;
+  }
+
+  private settleRemovals(pending: ReadonlyMap<string, { path: string }>, onDisk: ReadonlySet<string>): void {
+    if (this.unreadablePaths.length || this.unreadableFiles.size) return;
+    for (const [id, removal] of pending) {
+      if (this.unsettledRemovals.get(id) === removal && !onDisk.has(removal.path)) {
+        this.unsettledRemovals.delete(id);
+      }
+    }
+  }
+
+  private async readRootIdentity(): Promise<string | undefined> {
+    try {
+      const root = await stat(this.root);
+      return root.isDirectory() ? `${root.dev}:${root.ino}:${this.root}` : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Identity of the directory used to build this index. */
+  indexRootIdentity(): string | undefined {
+    return this.rootIdentity;
+  }
+
+  private hasAuthoritativeMiss(id: string): boolean {
+    return (
+      this.reconciling === 0 &&
+      this.memorys.size > 0 &&
+      !this.memorys.has(id) &&
+      !this.unsettledRemovals.has(id) &&
+      !this.unreadablePaths.length &&
+      !this.unreadableFiles.size
+    );
+  }
+
+  /** A watcher gap, partial scan or replaced mount cannot prove deletion. */
+  async confirmsAbsent(id: string): Promise<boolean> {
+    if (!this.rootIdentity || !this.hasAuthoritativeMiss(id)) return false;
+    return (await this.readRootIdentity()) === this.rootIdentity && this.hasAuthoritativeMiss(id);
   }
 
   async stop(): Promise<void> {
@@ -545,6 +604,7 @@ export class Vault {
       const oldId = this.filePathToId.get(filePath);
       if (oldId && oldId !== m.fm.id) {
         this.memorys.delete(oldId);
+        this.unsettledRemovals.set(oldId, { path: filePath });
         this.emit({ kind: "remove", id: oldId, filePath });
       }
       // Codex-Gegenreview (P1): Eine Datei, die als Duplikat quarantänisiert
@@ -559,6 +619,7 @@ export class Vault {
       this.cloudOnlyFiles.delete(filePath);
       this.readFailureLogged.delete(filePath);
       this.memorys.set(m.fm.id, m);
+      this.unsettledRemovals.delete(m.fm.id);
       this.filePathToId.set(filePath, m.fm.id);
       // A file this vault already knows under the same id is a CHANGE, whatever
       // the caller asked for. The save path indexes its own write immediately
@@ -594,6 +655,7 @@ export class Vault {
       const staleId = this.filePathToId.get(filePath);
       if (staleId) {
         this.memorys.delete(staleId);
+        this.unsettledRemovals.set(staleId, { path: filePath });
         this.filePathToId.delete(filePath);
         this.fileStats.delete(filePath);
         this.emit({ kind: "remove", id: staleId, filePath });
@@ -631,6 +693,7 @@ export class Vault {
     const owner = this.memorys.get(id);
     if (owner && owner.filePath !== filePath) return;
     this.memorys.delete(id);
+    this.unsettledRemovals.set(id, { path: filePath });
     this.emit({ kind: "remove", id, filePath });
   }
 

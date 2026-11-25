@@ -209,6 +209,8 @@ export interface ActiveConvention {
   /** `memoryRevision` when it was set; null when the file was not readable. */
   revision: string | null;
   setAt: number;
+  /** Directory identity from the index that last verified this rule. */
+  vaultIdentity?: string;
   /** #1306: "task" when a correspondence task put it in force — it ends with
    *  the task. Absent: in force for the session (#1305 gate and load paths). */
   scope?: "task";

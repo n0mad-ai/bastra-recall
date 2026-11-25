@@ -5,9 +5,9 @@
  */
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, unlink } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rename, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Vault, saveMemory } from "@bastra-recall/core";
 import { vaultConventionOf } from "../src/convention-source.js";
 import { runTaskStep } from "../src/prompt-task.js";
@@ -52,6 +52,7 @@ async function fixture(name: string) {
       setAt: 1,
     }));
   });
+  await block(sessionId, vaultConventionOf(vault));
   return { vault, files, sessionId };
 }
 
@@ -64,6 +65,7 @@ test("a note removed from a ready index leaves the active-conventions block", as
   const f = await fixture("removed");
   await unlink(f.files["doomed-rule"]);
   f.vault.forgetFile(f.files["doomed-rule"]);
+  await f.vault.reconcile();
   const out = await block(f.sessionId, vaultConventionOf(f.vault));
   assert.doesNotMatch(out ?? "", /doomed-rule/);
   assert.match(out ?? "", /- kept-rule revision=/);
@@ -82,15 +84,64 @@ test("a source read error keeps the id with revision=unknown", async () => {
 
 test("an index that cannot be trusted keeps the id", async () => {
   const f = await fixture("untrusted");
-  const gone = { get: () => undefined };
   const cases: [string, Parameters<typeof vaultConventionOf>[0]][] = [
-    ["index empty", { ...gone, size: () => 0, scanBlindSpots: () => [], root: f.vault.root }],
-    ["unreadable files", { ...gone, size: () => 5, scanBlindSpots: () => ["/cloud-only.md"], root: f.vault.root }],
-    ["vault not mounted", { ...gone, size: () => 5, scanBlindSpots: () => [], root: join(f.vault.root, "missing") }],
+    ["index empty", new Vault(join(f.vault.root, "empty"))],
+    [
+      "unreadable files",
+      { get: () => undefined, indexRootIdentity: () => f.vault.indexRootIdentity(), confirmsAbsent: async () => false },
+    ],
+    ["vault not mounted", new Vault(join(f.vault.root, "missing"))],
   ];
   for (const [label, vault] of cases) {
     const out = await block(f.sessionId, vaultConventionOf(vault));
     assert.match(out ?? "", /- doomed-rule revision=unknown/, label);
     assert.deepEqual(await ids(f.sessionId), ["doomed-rule", "kept-rule"], label);
   }
+});
+
+test("a watcher unlink before the matching add keeps the moved rule in force", async () => {
+  const f = await fixture("move");
+  const path = join(f.vault.root, "renamed-rule.md");
+  await rename(f.files["doomed-rule"], path);
+  f.vault.forgetFile(f.files["doomed-rule"]);
+  const out = await block(f.sessionId, vaultConventionOf(f.vault));
+  assert.match(out ?? "", /- doomed-rule revision=unknown/);
+  await f.vault.reconcile();
+  await block(f.sessionId, vaultConventionOf(f.vault));
+  assert.deepEqual(await ids(f.sessionId), ["doomed-rule", "kept-rule"]);
+  assert.equal(f.vault.get("doomed-rule")?.filePath, path);
+});
+
+test("a populated index in another vault cannot confirm the original rule was removed", async () => {
+  const original = await fixture("first-profile");
+  const other = await fixture("second-profile");
+  await unlink(other.files["doomed-rule"]);
+  await other.vault.reconcile();
+  await other.vault.reconcile();
+  assert.equal(await other.vault.confirmsAbsent("doomed-rule"), true);
+  await block(original.sessionId, vaultConventionOf(other.vault));
+  assert.deepEqual(await ids(original.sessionId), ["doomed-rule", "kept-rule"]);
+});
+
+test("a different directory mounted at the vault path cannot confirm a removal", async () => {
+  const f = await fixture("replaced-root");
+  const displaced = `${f.vault.root}-displaced`;
+  await rename(f.vault.root, displaced);
+  after(() => rm(displaced, { recursive: true, force: true }));
+  await mkdir(dirname(f.files["kept-rule"]), { recursive: true });
+  await copyFile(join(displaced, f.files["kept-rule"].slice(f.vault.root.length + 1)), f.files["kept-rule"]);
+  f.vault.forgetFile(f.files["doomed-rule"]);
+  await f.vault.reconcile();
+  const out = await block(f.sessionId, vaultConventionOf(f.vault));
+  assert.match(out ?? "", /- doomed-rule revision=unknown/);
+  assert.deepEqual(await ids(f.sessionId), ["doomed-rule", "kept-rule"]);
+});
+
+test("a source removed while the daemon was stopped can be retired after reopening the same vault", async () => {
+  const f = await fixture("restart");
+  await unlink(f.files["doomed-rule"]);
+  const reopened = new Vault(f.vault.root);
+  await reopened.init();
+  await block(f.sessionId, vaultConventionOf(reopened));
+  assert.deepEqual(await ids(f.sessionId), ["kept-rule"]);
 });

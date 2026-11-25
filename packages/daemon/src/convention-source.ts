@@ -1,6 +1,7 @@
 /** Hook projections use the Vault index; direct MCP reads retain byte-source
  * validation. Both pair revision, validator and rulebook metadata coherently. */
-import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   parseMemory,
   pastValidUntil,
@@ -26,6 +27,7 @@ export interface ConventionSource {
   expired?: true;
   /** #1696: the note is authoritatively gone from a complete, reachable index (not a read failure). */
   absent?: true;
+  vaultIdentity?: string;
   summary?: string;
   write_origin?: "user-directed" | "agent-session" | "capture-review";
   rulebookMetadata?: RulebookMetadata;
@@ -137,23 +139,17 @@ export async function readRulebookSources(
   return new Map([...new Set(ids)].map((id) => [id, indexedConventionSource(vault.get(id), true, contextOf(id))]));
 }
 
-type HookVault = Pick<Vault, "get" | "size" | "scanBlindSpots" | "root">;
-
-/** An absent id only counts as deleted when the index can be trusted: the vault
- * root is a reachable directory, no file is unreadable (e.g. cloud-only) and the
- * index is not empty (an unmounted drive reconciles to an empty index). */
-async function indexIsAuthoritative(vault: HookVault): Promise<boolean> {
-  if (vault.size() === 0 || vault.scanBlindSpots().length > 0) return false;
-  return stat(vault.root).then(
-    (s) => s.isDirectory(),
-    () => false
-  );
-}
+type HookVault = Pick<Vault, "get"> & Partial<Pick<Vault, "indexRootIdentity" | "confirmsAbsent">>;
 
 export function vaultConventionOf(vault: HookVault): (id: string) => Promise<ConventionSource> {
+  const root = vault.indexRootIdentity?.();
+  const vaultIdentity = root ? createHash("sha256").update(root).digest("hex") : undefined;
   return async (id) => {
-    const memory = vault.get(id);
-    if (!memory && (await indexIsAuthoritative(vault))) return { revision: null, absent: true };
-    return indexedConventionSource(memory);
+    let memory = vault.get(id);
+    if (vaultIdentity && !memory) {
+      if (await vault.confirmsAbsent?.(id)) return { revision: null, absent: true, vaultIdentity };
+      memory = vault.get(id);
+    }
+    return { ...indexedConventionSource(memory), vaultIdentity };
   };
 }

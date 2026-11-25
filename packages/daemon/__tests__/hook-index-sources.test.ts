@@ -90,7 +90,9 @@ test("fix8: prompt convention/revision adapters and reflex gate never reopen the
   const result = await Promise.race([
     (async () => {
       assert.equal(await vaultRevisionOf(f.vault)(f.m.fm.id), f.m.revision);
-      assert.deepEqual((await vaultConventionOf(f.vault)(f.m.fm.id)).validator, f.m.fm.validator);
+      const sourceOf = vaultConventionOf(f.vault);
+      assert.deepEqual((await sourceOf(f.m.fm.id)).validator, f.m.fm.validator);
+      assert.equal((await sourceOf("unindexed-rule")).absent, undefined);
       return runGateLane(
         {
           session_id: "indexed-reflex",

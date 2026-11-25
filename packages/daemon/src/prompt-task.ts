@@ -6,7 +6,7 @@ import { indexedConventionSource, type ConventionSource } from "./convention-sou
 import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
 import { compactContextNotice } from "./context-notice.js";
 import { currentReceipt } from "./receipt-store.js";
-import { mutateSessionState, type ReadonlySessionState } from "./session-state.js";
+import { mutateSessionState, type ActiveConvention, type ReadonlySessionState } from "./session-state.js";
 
 export interface TaskStepInput {
   sessionId: string;
@@ -38,6 +38,14 @@ export async function runTaskStep(input: TaskStepInput): Promise<string | null> 
     return null;
   }
 }
+function matchesVault(c: Readonly<ActiveConvention>, source: ConventionSource): boolean {
+  return !c.vaultIdentity || !source.vaultIdentity || c.vaultIdentity === source.vaultIdentity;
+}
+
+function sourceRemoves(c: Readonly<ActiveConvention>, source: ConventionSource): boolean {
+  return !!source.expired || (!!source.absent && !!c.vaultIdentity && c.vaultIdentity === source.vaultIdentity);
+}
+
 async function step(input: TaskStepInput): Promise<string | null> {
   const { snapshot, sessionId } = input;
   if (!sessionId) return null;
@@ -57,23 +65,42 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const drift = active.some((c) => {
     const source = sources.get(c.id)!;
     return (
-      source.expired ||
-      source.absent ||
-      c.revision !== source.revision ||
-      (input.conventionOf !== undefined && JSON.stringify(c.validator) !== JSON.stringify(source.validator))
+      matchesVault(c, source) &&
+      (sourceRemoves(c, source) ||
+        c.revision !== source.revision ||
+        (input.conventionOf !== undefined && JSON.stringify(c.validator) !== JSON.stringify(source.validator)))
     );
   });
-  if (!drift) return render(view(snapshot), input);
+  const binding = active.some((c) => {
+    const source = sources.get(c.id)!;
+    return !c.vaultIdentity && source.matchesIndex && !!source.vaultIdentity;
+  });
+  if (!drift && !binding) return render(view(snapshot), input);
+  const sampled = new Map(active.map((c) => [c.id, c]));
   let updated: ActiveConventionsView | null = null;
   const persisted = await mutateSessionState(sessionId, (s) => {
     const changed: string[] = [];
-    s.activeConventions = s.activeConventions?.filter((c) => {
+    const currentSource = (c: ActiveConvention) => {
       const source = sources.get(c.id);
-      return !source?.expired && !source?.absent;
+      const prior = sampled.get(c.id);
+      if (
+        source &&
+        prior?.setAt === c.setAt &&
+        prior.revision === c.revision &&
+        prior.vaultIdentity === c.vaultIdentity &&
+        matchesVault(c, source)
+      )
+        return source;
+      return undefined;
+    };
+    s.activeConventions = s.activeConventions?.filter((c) => {
+      const source = currentSource(c);
+      return !source || !sourceRemoves(c, source);
     });
     for (const c of s.activeConventions ?? []) {
-      const source = sources.get(c.id);
+      const source = currentSource(c);
       if (!source) continue;
+      if (source.matchesIndex && source.vaultIdentity) c.vaultIdentity ??= source.vaultIdentity;
       if (c.revision !== source.revision && c.revision !== null) changed.push(c.id);
       const revisionChanged = c.revision !== source.revision;
       c.revision = source.revision;
@@ -82,7 +109,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
         else delete c.validator;
       } else if (revisionChanged) delete c.validator;
     }
-    delete s.receipts;
+    if (drift) delete s.receipts;
     updated = view(s, changed);
   });
   return render(persisted && updated ? updated : view(snapshot), input);
