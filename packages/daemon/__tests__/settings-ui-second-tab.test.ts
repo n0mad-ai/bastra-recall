@@ -74,7 +74,7 @@ async function setup(t: { after: (fn: () => Promise<void>) => void }) {
       Promise,
       Date,
     }) as Tab;
-  return { path, tab, log };
+  return { path, tab, log, origin };
 }
 
 test("settings: Apply in the first tab saves after a second tab opened its session (#1699)", async (t) => {
@@ -95,6 +95,57 @@ test("settings: Apply in the first tab saves after a second tab opened its sessi
   await b.apply();
   assert.equal(b.store.error, "");
   assert.equal((await readSettings(path)).docs?.language, "en");
+});
+
+test("settings: alternating Apply in two tabs never reaches the session cap (#1733)", async (t) => {
+  const { path, tab, log } = await setup(t);
+  const a = tab(),
+    b = tab();
+  await a.load();
+  await b.load();
+  // Each Apply renews once; well past the 100-session cap of the old behaviour.
+  for (let i = 0; i < 150; i++) {
+    const next = i % 2 ? b : a;
+    next.store.changes.set("docs.language", i % 2 ? "en" : "de");
+    log.length = 0;
+    await next.apply();
+    assert.equal(next.store.error, "", `Apply ${i + 1}`);
+    assert.equal(next.store.changes.size, 0);
+    assert.deepEqual(
+      log.filter((line) => line.includes(" /ui/settings")),
+      ["POST /ui/settings 403", "POST /ui/settings/session 200", "POST /ui/settings 200"],
+      `Apply ${i + 1} retries exactly once`
+    );
+  }
+  assert.equal((await readSettings(path)).docs?.language, "en");
+});
+
+test("settings: only the presenting browser's own session is freed on renewal (#1733)", async (t) => {
+  const { origin } = await setup(t);
+  const open = (headers: Record<string, string> = {}) =>
+    fetch(origin + "/ui/settings/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin, ...headers },
+      body: "{}",
+    });
+  const grant = async (headers?: Record<string, string>) => ({
+    Cookie: (await open(headers)).headers.get("set-cookie")!.split(";")[0],
+  });
+  const status = async (headers: Record<string, string>) => (await fetch(origin + "/ui/settings", { headers })).status;
+  const own = await grant(),
+    other = await grant();
+  // A foreign origin is refused before any session is touched.
+  assert.equal((await open({ ...own, Origin: "https://evil.example" })).status, 403);
+  assert.equal(await status(own), 200);
+  // An unknown cookie value frees nothing and still gets a fresh session.
+  assert.equal((await open({ Cookie: "bastra_settings_session=guess" })).status, 200);
+  assert.equal(await status(own), 200);
+  assert.equal(await status(other), 200);
+  // Renewing with its own cookie frees exactly that session.
+  const renewed = await grant(own);
+  assert.equal(await status(own), 401);
+  assert.equal(await status(renewed), 200);
+  assert.equal(await status(other), 200);
 });
 
 test("settings: an origin 403 on Apply is neither renewed nor repeated and keeps the draft", async (t) => {

@@ -315,7 +315,7 @@
     "[\"packages/daemon/src/settings-effective.ts\",\"[\\\"function:effectiveSetting\\\"]\",\"complexity\"]": 55,
     "[\"packages/daemon/src/settings-env.ts\",\"[\\\"function:decode\\\"]\",\"complexity\"]": 19,
     "[\"packages/daemon/src/settings-env.ts\",\"[\\\"function:validateEnvPinChanges\\\"]\",\"complexity\"]": 17,
-    "[\"packages/daemon/src/settings-ui.ts\",\"[\\\"function:dispatchSettingsUi\\\",\\\"call:ArrowFunctionExpression:#1\\\",\\\"function:argument:-1#1\\\"]\",\"complexity\"]": 57,
+    "[\"packages/daemon/src/settings-ui.ts\",\"[\\\"function:dispatchSettingsUi\\\",\\\"call:ArrowFunctionExpression:#1\\\",\\\"function:argument:-1#1\\\"]\",\"complexity\"]": 54,
     "[\"packages/daemon/src/settings-ui.ts\",\"[\\\"function:dispatchSettingsUi\\\",\\\"call:ArrowFunctionExpression:#1\\\",\\\"function:argument:-1#1\\\"]\",\"max-depth\"]": 5,
     "[\"packages/daemon/src/settings.ts\",\"[\\\"function:resolveEmbeddingChoice\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/src/stats-governor.ts\",\"[\\\"function:noAnswerDivergence\\\"]\",\"complexity\"]": 19,

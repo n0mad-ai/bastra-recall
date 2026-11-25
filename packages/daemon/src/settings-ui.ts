@@ -33,6 +33,13 @@ const capacity = 100,
   reclaimIdleMs = 10 * 60_000;
 const cookie = (id: string) =>
   `${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/ui/settings; Max-Age=${ttl / 1000}`;
+/** The session id from the request cookie; "" (never a session key) when absent. */
+const presentedSession = (req: IncomingMessage) =>
+  req.headers.cookie
+    ?.split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${cookieName}=`))
+    ?.slice(cookieName.length + 1) ?? "";
 export interface SettingsUiOptions {
   path?: string;
   oauthPath?: string;
@@ -121,9 +128,14 @@ export function dispatchSettingsUi(
       )
         failure(403);
       for (const [id, session] of sessions) if (session.expires <= Date.now()) sessions.delete(id);
+      const id = presentedSession(req);
       if (url === "/ui/settings/session" && method === "POST") {
         const body = await readJsonBody(req, 256);
         if (Object.keys(body).length) failure(400);
+        // The new cookie replaces this browser's old one, so the old session can
+        // no longer be presented: free its slot (#1733). Only the cookie holder
+        // knows its id, so no other browser's session can be pushed out this way.
+        sessions.delete(id);
         if (sessions.size >= capacity) {
           let lru: string | undefined,
             lruAt = Infinity;
@@ -135,19 +147,14 @@ export function dispatchSettingsUi(
           if (lru && Date.now() - lruAt >= reclaimIdleMs) sessions.delete(lru);
         }
         if (sessions.size >= capacity) failure(429);
-        const id = randomBytes(32).toString("base64url"),
+        const fresh = randomBytes(32).toString("base64url"),
           csrf = randomBytes(32).toString("base64url");
-        sessions.set(id, { csrf, expires: Date.now() + ttl, path, host: req.headers.host!, lastUsed: Date.now() });
-        res.setHeader("Set-Cookie", cookie(id));
+        sessions.set(fresh, { csrf, expires: Date.now() + ttl, path, host: req.headers.host!, lastUsed: Date.now() });
+        res.setHeader("Set-Cookie", cookie(fresh));
         sendJson(res, 200, { csrf, expiresIn: ttl / 1000 });
         return;
       }
-      const id = req.headers.cookie
-        ?.split(";")
-        .map((c) => c.trim())
-        .find((c) => c.startsWith(`${cookieName}=`))
-        ?.slice(cookieName.length + 1);
-      const session = id ? sessions.get(id) : undefined;
+      const session = sessions.get(id);
       if (!session || session.path !== path || session.host !== req.headers.host) failure(401);
       if (method === "GET" && url === "/ui/settings") {
         session.lastUsed = Date.now();
