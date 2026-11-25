@@ -5,7 +5,8 @@ After a successful `save_memory`, `edit_memory`, `save_document` or
 PostToolUse hook. Reads and refused writes stay silent. The existing formatter,
 write acknowledgement parser and local route are shared with Claude Code.
 
-Codex defaults to a plain fixed prefix. Example formatting:
+Codex and hook payloads without a client marker default to a plain fixed prefix.
+Example formatting:
 
 ```text
 bastra-recall saved: “Synthetic fixture” (lesson)
@@ -67,7 +68,8 @@ PostToolUse-Hook. Leseaufrufe und verweigerte Schreibvorgänge bleiben still.
 Formatter, Parser der Schreibbestätigung und lokale Route werden mit Claude Code
 geteilt.
 
-Codex nutzt standardmäßig ein farbloses festes Präfix. Formatbeispiele:
+Codex und Hooks ohne Client-Kennung nutzen standardmäßig ein farbloses festes
+Präfix. Formatbeispiele:
 
 ```text
 bastra-recall saved: “Synthetic fixture” (lesson)

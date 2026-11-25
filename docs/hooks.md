@@ -89,7 +89,7 @@ slow answer.
 | `UserPromptSubmit` — retrieval / generic / none | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — assertion | **1000 ms** | 900 ms | 5 % |
 | `PreToolUse` plan | 600 ms | — | — |
-| `PreToolUse` / `PostToolUse` Bash | 500 ms | — | — |
+| `PreToolUse` / `PostToolUse` Bash | 500 ms | 200 ms | zero observed failures to evaluate |
 | `SessionStart` | 1500 ms | — | — |
 | `PreToolUse` gate (every tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
@@ -123,6 +123,15 @@ waiting.
 `bastra logs --stats` checks each lane against this table and prints a
 per-lane PASS/FAIL plus an overall `gate: MET / NOT MET`. Lanes with fewer
 than 30 calls in the window get no verdict — and no free pass either.
+
+For Bash, the detail rows cover selected hook activity. The **Bash delivery**
+section compares attributable hook failures with observed Bash command
+completions (`hook_act`) per client. The ratio is diagnostic because the two
+counts may describe different invocations. The release gate marks Bash as
+`NOT EVALUABLE` when coverage is insufficient or failures occur. With
+attributable coverage and zero failures it needs at least 30 observed
+completions and 30 detail latency samples per lane before judging the p90
+target of 200 ms (#1739).
 
 Below the per-lane block comes one more verdict, `prompt-total` (#545): every
 `prompt_hook_call` row of the window, whatever trigger class it carries,
@@ -1202,6 +1211,11 @@ save of the session that got the block, so it bounds the harvest's effect from
 above. Switch it off with `BASTRA_SESSION_HARVEST=0` in the daemon's
 environment.
 
+The pending relay skips a live writer during session start. An aged lease can
+be recovered when its local owner is known to have ended. The Stop hook
+hands a blocked write back to the running daemon. Its retry timer alone
+does not keep a process alive (#1114).
+
 ### Agent review of local candidates (#157, steps 1–2)
 
 At SessionStart, Claude Code and Codex can receive a separate `<draft-review>`
@@ -1357,6 +1371,10 @@ confirmed draft makes room for the new capture. `bastra drafts list` says when
 the store is full.
 Draft writes respect a live writer's lock. If a writer cannot acquire the lock,
 it skips the new write and preserves existing decisions (#1114).
+On a local filesystem the non-waiting write can recover the lock when the
+previous holder is confirmed dead. On macOS and Linux, a recorded identifier
+from a previous boot can establish this even if the process ID is already in
+use again (#1691).
 Capture writes at most once per session in each pass. Cleanup writes only when it changes
 the stored rows.
 Within one session, equal normalized fingerprints or bigram Dice >= 0.6 append
@@ -1972,7 +1990,6 @@ change. File parity proves neither runtime delivery nor rule compliance; nearby
 project guidance and host restrictions still apply. Claude `/context` can help
 verify what loaded.
 
-
 ## Deutsch
 
 bastra-recall liefert eine Reihe von Claude-Code-Hook-CLIs mit, die passende
@@ -2066,7 +2083,7 @@ langsame Antwort.
 | `UserPromptSubmit` — Retrieval / generisch / keine | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — Assertion | **1000 ms** | 900 ms | 5 % |
 | `PreToolUse` Plan | 600 ms | — | — |
-| `PreToolUse` / `PostToolUse` Bash | 500 ms | — | — |
+| `PreToolUse` / `PostToolUse` Bash | 500 ms | 200 ms | Bewertung nur bei null beobachteten Fehlern |
 | `SessionStart` | 1500 ms | — | — |
 | `PreToolUse` Gate (jedes Tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
@@ -2105,6 +2122,15 @@ zusätzliche Wartezeit.
 PASS/FAIL sowie ein Gesamtergebnis `gate: MET / NOT MET` aus. Lanes mit weniger
 als 30 Aufrufen im Zeitfenster bekommen kein Urteil — und auch keinen
 Freifahrtschein.
+
+Für Bash halten die Detailzeilen ausgewählte Hook-Aktivität fest. Der Abschnitt
+**Bash delivery** stellt je Client die zuordenbaren Hook-Fehler den beobachteten
+Befehlsabschlüssen (`hook_act`) gegenüber. Das Verhältnis dient der Diagnose,
+denn die beiden Zähler können unterschiedliche Aufrufe erfassen. Bei lückenhafter
+Abdeckung oder Fehlern meldet die Freigabeprüfung für Bash `NOT EVALUABLE`.
+Bei zuordenbarer Abdeckung und null Fehlern braucht sie je Lane mindestens
+30 beobachtete Abschlüsse und 30 gemessene Detail-Laufzeiten, bevor sie das
+p90-Ziel von 200 ms bewertet (#1739).
 
 Unter dem Block pro Lane folgt ein weiteres Urteil, `prompt-total` (#545): jede
 `prompt_hook_call`-Zeile des Zeitfensters, egal welche Trigger-Klasse sie
@@ -3222,6 +3248,12 @@ this host)". „Saved afterwards" zählt jeden Save der Session, die den Block
 bekam, und ist damit eine Obergrenze für die Wirkung des Harvests. Abschalten
 mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
 
+Beim Sitzungsstart überspringt das Relay eine belegte Sperre eines lebenden
+Schreibers. Eine alte Sperre kann es übernehmen, wenn ihr lokaler Besitzer
+nachweislich beendet ist. Der Stop-Hook überlässt einen blockierten
+Schreibvorgang dem laufenden Daemon. Der Timer für Wiederholungsversuche
+allein hält einen Prozess nicht offen (#1114).
+
 ### Agent prüft lokale Kandidaten (#157, Schritte 1–2)
 
 Bei SessionStart können Claude Code und Codex einen eigenen `<draft-review>`-
@@ -3312,6 +3344,10 @@ Ablage voll mit bestätigten Entwürfen, macht der älteste Platz für die neue
 Erfassung. `bastra drafts list` zeigt an, wenn die Ablage voll ist.
 Solange ein anderer Prozess die Schreibsperre hält, kann ein neuer
 Schreibversuch ausfallen. Gespeicherte Entscheidungen bleiben erhalten (#1114).
+Auf einem lokalen Dateisystem kann der Schreibversuch ohne Wartezeit die Sperre
+übernehmen, wenn der bisherige Prozess nachweislich beendet ist. Unter macOS und
+Linux kann eine gespeicherte Kennung eines früheren Systemstarts das auch dann
+belegen, wenn die Prozess-ID schon wieder vergeben ist (#1691).
 Die Erfassung schreibt höchstens einmal je Session und Durchlauf. Das
 Aufräumen schreibt nur, wenn es gespeicherte Zeilen verändert.
 Innerhalb einer Session hängen gleiche normalisierte Fingerprints oder eine

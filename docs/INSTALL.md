@@ -50,10 +50,14 @@ locally and sends nothing anywhere. Recall calls only its `extract` command in
 code-only mode and reads the `graph.json` it writes — never its own installers,
 which would edit your global `CLAUDE.md` and register competing hooks.
 
-If you already have Graphify installed yourself, Recall reports it and leaves
-it completely alone: it is never upgraded, downgraded or removed, and Recall
-uses its own pinned copy. See [USAGE.md](./USAGE.md) for turning the feature on
-and off.
+If you have set up Graphify yourself, `bastra doctor` reports where it finds
+a registered `graphify hook-guard` command in the project's or your home
+directory's `.claude/settings.json`, a Graphify section in `~/.claude/CLAUDE.md`, or
+the `~/.claude/skills/graphify` directory. The note explains that Graphify
+and Recall's code awareness can both look up code relationships. It leaves
+your setup and Doctor's exit status untouched, including with `--fix`.
+Recall uses its own pinned copy. See [USAGE.md](./USAGE.md) for turning the
+feature on and off.
 
 ### Local models and post-update checks (1.1.0)
 
@@ -142,10 +146,15 @@ Recall. Es läuft lokal und schickt nichts irgendwohin. Recall ruft davon nur
 dessen eigene Installer, die deine globale `CLAUDE.md` verändern und
 konkurrierende Hooks eintragen würden.
 
-Hast du Graphify bereits selbst installiert, meldet Recall das und lässt es
-vollständig in Ruhe: Es wird nie aktualisiert, herabgestuft oder entfernt, und
-Recall benutzt seine eigene festgelegte Kopie. Wie man die Funktion ein- und
-ausschaltet, steht in [USAGE.md](./USAGE.md).
+Hast du Graphify selbst eingerichtet, meldet `bastra doctor` die Fundstellen.
+Doctor sucht einen eingetragenen Befehl `graphify hook-guard` in der
+Datei `.claude/settings.json` des Projekts oder deines Home-Verzeichnisses, einen
+Graphify-Abschnitt in `~/.claude/CLAUDE.md` oder das Verzeichnis
+`~/.claude/skills/graphify`. Der Hinweis erklärt, dass Graphify und Recalls
+Code-Awareness beide Beziehungen im Code nachschlagen können. Deine
+Einrichtung und der Exit-Status von Doctor bleiben auch mit `--fix`
+unverändert. Recall nutzt seine eigene festgelegte Kopie. Wie man die
+Funktion ein- und ausschaltet, steht in [USAGE.md](./USAGE.md).
 
 ### Lokale Modelle und Prüfung nach Updates (1.1.0)
 

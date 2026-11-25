@@ -57,6 +57,11 @@ The action/Stop check evidence and bounded enforcement contract (C) is implement
 
 A rule past its own `valid_until` is neither hidden nor in force (#1468, owner decision 24.11.2026). The kernel leaves it out of the Always texts and the index and names it in a short block of its own ("Expired – please decide with the user", in the user's `language.primary`), with its end date. The block returns at every session start until the user changes or removes the end date or archives the rule. `list_rules` marks such a rule with `expired_on`.
 
+A deleted or archived rule leaves the per-turn **Conventions in force**
+block after the complete, reachable index of the vault bound to that rule
+confirms its absence. An incomplete scan, a move in progress or a different
+vault does not clear the active rule (#1696).
+
 ## Deutsch: Zustellung
 
 Always-Regeln kommen bei Start, Resume und Kontextwechsel vollständig an, soweit sie ins feste Budget passen. Zu große oder nicht lesbare Regeltexte werden ausdrücklich gemeldet; Doctor nennt alle betroffenen IDs. Der vollständige Katalog bleibt ohne Suchfilter über list_rules(cursor) erreichbar. Seine letzte Seite trägt end=true, Gesamtzahl und Hash. Ändert sich der Katalog, beginnt die nächste Antwort mit neuem Hash von vorn.
@@ -65,6 +70,11 @@ Der Hook bleibt unter der Host-Grenze. Vollständige Regeltexte werden nie abges
 
 
 Eine Regel nach ihrem eigenen `valid_until` wird weder still ausgeblendet noch gilt sie weiter (#1468). Der Regelkern nennt sie in einem kurzen eigenen Block „Abgelaufen – bitte mit dem Nutzer entscheiden“ mit Enddatum, bei jedem Sitzungsstart, bis der Nutzer das Enddatum ändert oder entfernt oder die Regel archiviert.
+
+Eine gelöschte oder archivierte Regel fällt aus dem Block der geltenden
+Konventionen, sobald der vollständige und erreichbare Index des Vaults, zu dem
+die Regel gehört, ihr Fehlen bestätigt. Ein unvollständiger Scan, eine laufende
+Verschiebung oder ein anderer Vault lassen die Regel aktiv (#1696).
 
 ## Round check and bounded action/Stop control
 

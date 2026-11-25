@@ -183,6 +183,12 @@ These optional fields affect staleness and recall ranking:
 
 Staleness is computed lazily during recall. Stale and expired memories are downranked; obsolete memories are removed from normal search results.
 
+For impossible calendar dates the loader reports the affected field. It
+uses the file's modification date for `created` and `updated` and omits
+`last_reviewed_at`. An impossible `valid_until` is reported while keeping
+its existing expiry behavior. Valid quoted ISO dates keep the year as written.
+The loader leaves the note file as it was (#1731, #1737).
+
 #### Verification anchor (#235)
 
 `verify_cmd` is an optional command that could prove what a memory claims —
@@ -874,6 +880,13 @@ Diese optionalen Felder beeinflussen Veralterung und Recall-Ranking:
 | `siblings` | Erinnerungs-IDs, neben denen diese bewusst steht – gesetzt über `sibling_of` von `save_memory` |
 
 Veralterung wird beim Recall bei Bedarf berechnet. Veraltete und abgelaufene Erinnerungen werden im Ranking herabgestuft; obsolete Erinnerungen werden aus normalen Suchergebnissen entfernt.
+
+Bei einem unmöglichen Kalenderdatum meldet der Loader das betroffene Feld.
+Für `created` und `updated` verwendet er das Änderungsdatum der Datei,
+`last_reviewed_at` lässt er weg. Ein unmögliches `valid_until` wird gemeldet,
+das bisherige Ablaufverhalten bleibt erhalten. Gültige ISO-Daten in
+Anführungszeichen behalten das geschriebene Jahr. Die Notizdatei bleibt
+unverändert (#1731, #1737).
 
 #### Verifikationsanker (#235)
 

@@ -169,7 +169,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         min_score: {
           type: "number",
           description:
-            "Drop hits below this score (default 30). On the hybrid path the score is a rank sum (~164 = rank 1 in both arms, ~82 = in one), so the floor mostly bites in BM25-only mode.",
+            "Drop hits below this score. Direct stdio and remote MCP calls default to 30. The local MCP forwarder applies a floor only when supplied. The floor is mainly useful in BM25-only mode because hybrid scores are rank sums.",
         },
       },
       required: ["query"],
