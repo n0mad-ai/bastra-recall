@@ -154,9 +154,9 @@ export async function listSkills(path: string = skillsFilePath()): Promise<Skill
 }
 
 /**
- * GET/POST /ui/skills — the map's declare-a-skill surface ("mark as skill" on
- * a ghost node). GET lists the registry; POST {id, label?, note?} declares.
- * ui-gated + loopback-only like the rest of /ui.
+ * POST /ui/skills — the map's declare-a-skill surface ("mark as skill" on a
+ * ghost node): {id, label?, note?} declares. `bastra skills` lists the
+ * registry. ui-gated + loopback-only like the rest of /ui.
  */
 export async function handleUiSkills(
   req: IncomingMessage,
@@ -166,10 +166,6 @@ export async function handleUiSkills(
 ): Promise<void> {
   if (!(await getUiEnabled(settingsPath))) {
     sendJsonPlain(res, 404, { error: "ui disabled" });
-    return;
-  }
-  if (req.method === "GET") {
-    sendJsonPlain(res, 200, { skills: await listSkills(registryPath ?? skillsFilePath()) });
     return;
   }
   let raw = "";

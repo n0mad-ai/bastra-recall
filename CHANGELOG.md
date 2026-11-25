@@ -388,6 +388,9 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Removed
 
+- **`GET /ui/skills` is gone.** Nothing called it anymore: the map only
+  declares skills (`POST /ui/skills`, unchanged), and `bastra skills` lists
+  them. The address now answers like any unknown `/ui` route (#1561).
 - Removed the retired `bastra tasks keys`, `approve` and `deny` subcommands.
   They now return the normal unknown-subcommand error (#1514).
 - Removed the README banner (#1565).
