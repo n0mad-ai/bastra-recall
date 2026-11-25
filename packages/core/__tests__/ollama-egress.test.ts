@@ -6,6 +6,8 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
+import http from "node:http";
+import { syncBuiltinESMExports } from "node:module";
 
 import { assertLocalOrOptIn } from "../src/ollama-egress.js";
 import { OllamaEmbeddingProvider } from "../src/embeddings.js";
@@ -86,6 +88,48 @@ test("OllamaEmbeddingProvider: a remote baseURL is refused unless opted in (#125
   withOptIn(() => {
     assert.doesNotThrow(() => new OllamaEmbeddingProvider({ baseURL: "http://10.0.0.5:11434" }));
   });
+});
+
+test("OllamaEmbeddingProvider redacts the body of an opted-in remote request", async (t) => {
+  const server = http.createServer(async (req, res) => {
+    req.setEncoding("utf8");
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    observed = JSON.parse(body).input;
+    res.end(JSON.stringify({ embeddings: [[1]] }));
+  });
+  let observed: unknown;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => {
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const request = http.request;
+  t.mock.method(
+    http,
+    "request",
+    (url: URL, options: http.RequestOptions, callback: (res: http.IncomingMessage) => void) => {
+      // Keep endpoint classification remote, but put the recorded request on loopback.
+      assert.equal(url.hostname, "remote.example");
+      return request(new URL(`http://127.0.0.1:${address.port}${url.pathname}`), options, callback);
+    }
+  );
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  const original = process.env.BASTRA_ALLOW_REMOTE_OLLAMA;
+  process.env.BASTRA_ALLOW_REMOTE_OLLAMA = "1";
+  t.after(() => {
+    if (original === undefined) delete process.env.BASTRA_ALLOW_REMOTE_OLLAMA;
+    else process.env.BASTRA_ALLOW_REMOTE_OLLAMA = original;
+  });
+  const text = "GITHUB_TOKEN=" + ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
+  const provider = new OllamaEmbeddingProvider({ baseURL: "http://remote.example", dim: 1 });
+  await provider.embed([text]);
+  assert.deepEqual(observed, ["GITHUB_TOKEN=[REDACTED]"]);
 });
 
 // ─── #365 item 8: the guard classifies the HOST, not a string prefix ──────

@@ -121,7 +121,10 @@ test("assertLocalOrOptIn lets a malformed URL through (fetch reports it, behavio
 });
 
 /** Capture the request body ollamaChat sends, without a live Ollama. */
-async function captureChatBody(opts: Parameters<typeof ollamaChat>[0]): Promise<Record<string, unknown>> {
+async function captureChatBody(
+  opts: Parameters<typeof ollamaChat>[0],
+  prompt = "prompt"
+): Promise<Record<string, unknown>> {
   const real = globalThis.fetch;
   let body: Record<string, unknown> = {};
   globalThis.fetch = (async (_url: string, init: { body: string }) => {
@@ -129,12 +132,27 @@ async function captureChatBody(opts: Parameters<typeof ollamaChat>[0]): Promise<
     return { ok: true, json: async () => ({ message: { content: "1" } }) };
   }) as unknown as typeof fetch;
   try {
-    await ollamaChat(opts)("prompt");
+    await ollamaChat(opts)(prompt);
   } finally {
     globalThis.fetch = real;
   }
   return body;
 }
+
+test("Ollama chat retains credentials on loopback and redacts them on an opted-in remote endpoint", async () => {
+  const previous = process.env.BASTRA_ALLOW_REMOTE_OLLAMA;
+  process.env.BASTRA_ALLOW_REMOTE_OLLAMA = "1";
+  try {
+    const text = "GITHUB_TOKEN=" + ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
+    const local = await captureChatBody({ baseURL: "http://localhost:11434" }, text);
+    const remote = await captureChatBody({ baseURL: "http://remote.example:11434" }, text);
+    assert.deepEqual(local.messages, [{ role: "user", content: text }]);
+    assert.deepEqual(remote.messages, [{ role: "user", content: "GITHUB_TOKEN=[REDACTED]" }]);
+  } finally {
+    if (previous === undefined) delete process.env.BASTRA_ALLOW_REMOTE_OLLAMA;
+    else process.env.BASTRA_ALLOW_REMOTE_OLLAMA = previous;
+  }
+});
 
 test("ollamaChat sends think:false and an explicit num_ctx (#366, #367)", async () => {
   // think:false — a thinking model otherwise answers into `message.thinking`

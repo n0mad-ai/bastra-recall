@@ -9,7 +9,8 @@
  * unit-testable without a running model.
  */
 
-import { assertLocalOrOptIn } from "@bastra-recall/core";
+import { assertLocalOrOptIn, isLoopbackHost } from "@bastra-recall/core";
+import { redactSecrets } from "@bastra-recall/core/scrub";
 
 // Re-exported so existing importers (and tests) keep resolving it from here,
 // while the embedding path shares the same assertion. See #124/#125.
@@ -63,6 +64,8 @@ export function ollamaChat(
 ): ChatFn {
   const baseURL = (opts.baseURL ?? process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
   assertLocalOrOptIn(baseURL);
+  const local = URL.canParse(baseURL) && isLoopbackHost(new URL(baseURL).hostname);
+  const clean = (text: string) => (local ? text : redactSecrets(text).text);
   const model = opts.model ?? process.env.BASTRA_RERANK_MODEL ?? DEFAULT_RERANK_MODEL;
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const envCtx = Number.parseInt(process.env.BASTRA_OLLAMA_NUM_CTX ?? "", 10);
@@ -76,7 +79,10 @@ export function ollamaChat(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
-          messages: [...(system ? [{ role: "system", content: system }] : []), { role: "user", content: prompt }],
+          messages: [
+            ...(system ? [{ role: "system", content: clean(system) }] : []),
+            { role: "user", content: clean(prompt) },
+          ],
           stream: false,
           // A thinking model otherwise puts its whole answer in
           // `message.thinking` and returns an empty `content` — 0 phrases, no
@@ -87,9 +93,8 @@ export function ollamaChat(
           options: { temperature: 0, num_ctx: numCtx },
         }),
         signal: ctrl.signal,
-        // The base URL was checked, a redirect target was not: a caller that
-        // must stay on loopback refuses to follow one.
-        redirect: opts.redirect ?? "follow",
+        // A redirect could send the unredacted local request body off-box.
+        redirect: local ? "error" : (opts.redirect ?? "follow"),
       });
       if (!resp.ok) throw new Error(`Ollama chat HTTP ${resp.status}`);
       const json = (await resp.json()) as { message?: { content?: string } };

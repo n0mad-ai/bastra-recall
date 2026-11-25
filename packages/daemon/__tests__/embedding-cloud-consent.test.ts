@@ -60,6 +60,7 @@ async function withFetchRecorder<T>(fn: (calls: Captured[]) => Promise<T>): Prom
 }
 
 const VAULT_TEXT = "PRIVATE VAULT MEMORY — must never reach a third party";
+const VAULT_CREDENTIAL = "GITHUB_TOKEN=" + ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
 
 test("#520: a generic OPENAI_API_KEY alone produces no embedding provider and no outbound request", async () => {
   await withTempFile(async (path) => {
@@ -97,11 +98,11 @@ test("#520: the explicit provider choice still enables cloud embeddings and stil
 
       const provider = cloudEmbeddingProvider(viaFile, { OPENAI_API_KEY: "sk-test" });
       assert.ok(provider, "an explicit choice must still build the OpenAI provider");
-      await provider.embed([VAULT_TEXT]);
+      await provider.embed([VAULT_TEXT, VAULT_CREDENTIAL]);
 
       assert.equal(calls.length, 1);
       assert.equal(calls[0].url, "https://api.openai.com/v1/embeddings");
-      assert.deepEqual(calls[0].body.input, [VAULT_TEXT]);
+      assert.deepEqual(calls[0].body.input, [VAULT_TEXT, "GITHUB_TOKEN=[REDACTED]"]);
     });
   });
 });

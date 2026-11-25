@@ -11,7 +11,8 @@
  */
 import * as http from "node:http";
 import * as https from "node:https";
-import { assertLocalOrOptIn } from "./ollama-egress.js";
+import { assertLocalOrOptIn, isLoopbackHost } from "./ollama-egress.js";
+import { redactSecrets } from "./scrub.js";
 
 // ─── Provider Interface ──────────────────────────────────────────
 
@@ -138,14 +139,15 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         },
         body: JSON.stringify({
           model: this.model,
-          input: texts,
+          // The vault switch applies to stored content. Cloud requests always redact credentials.
+          input: texts.map((text) => redactSecrets(text).text),
           encoding_format: "float",
         }),
         signal: ctrl.signal,
       });
       if (!resp.ok) {
-        const body = await resp.text().catch(() => "<binary>");
-        throw new Error(`OpenAI embed HTTP ${resp.status}: ${body.slice(0, 200)}`);
+        // An upstream error body can echo submitted text or credentials.
+        throw new Error(`OpenAI embed HTTP ${resp.status}`);
       }
       json = (await resp.json()) as typeof json;
     } finally {
@@ -214,8 +216,7 @@ const keepAliveHttps = new https.Agent({ keepAlive: true });
  * opens a fresh one for the next call, so the keep-alive design above is
  * unaffected on the normal path.
  */
-function postJsonKeepAlive(url: string, body: string, timeoutMs: number): Promise<{ status: number; body: string }> {
-  const target = new URL(url);
+function postJsonKeepAlive(target: URL, body: string, timeoutMs: number): Promise<{ status: number; body: string }> {
   const secure = target.protocol === "https:";
   const request = secure ? https.request : http.request;
   return new Promise<{ status: number; body: string }>((resolve, reject) => {
@@ -249,7 +250,7 @@ function postJsonKeepAlive(url: string, body: string, timeoutMs: number): Promis
       }
     );
     tid = setTimeout(() => {
-      req.destroy(new Error(`Ollama embed timed out after ${timeoutMs} ms (${url})`));
+      req.destroy(new Error(`Ollama embed timed out after ${timeoutMs} ms (${target.origin})`));
     }, timeoutMs);
     req.on("error", fail);
     req.end(body);
@@ -305,12 +306,13 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
    */
   async embedWithMeta(texts: string[]): Promise<EmbedWithMeta> {
     if (texts.length === 0) return { vectors: [], loadMs: null };
-    const url = this.baseURL.replace(/\/+$/, "") + "/api/embed";
-    const body: Record<string, unknown> = { model: this.model, input: texts };
+    const url = new URL(this.baseURL.replace(/\/+$/, "") + "/api/embed");
+    const input = isLoopbackHost(url.hostname) ? texts : texts.map((text) => redactSecrets(text).text);
+    const body: Record<string, unknown> = { model: this.model, input };
     if (this.keepAlive !== undefined) body.keep_alive = this.keepAlive;
     const resp = await postJsonKeepAlive(url, JSON.stringify(body), embedDeadlineMs(this.timeoutMs, texts.length));
     if (resp.status < 200 || resp.status >= 300) {
-      throw new Error(`Ollama embed HTTP ${resp.status} (${url}): ${resp.body.slice(0, 200)}`);
+      throw new Error(`Ollama embed HTTP ${resp.status} (${url.origin})`);
     }
     const json = JSON.parse(resp.body) as { embeddings: number[][]; load_duration?: number };
     if (!Array.isArray(json.embeddings) || json.embeddings.length !== texts.length) {
