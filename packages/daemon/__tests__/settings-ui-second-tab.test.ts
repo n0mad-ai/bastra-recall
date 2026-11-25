@@ -11,7 +11,12 @@ import { runInNewContext } from "node:vm";
 import { dispatchSettingsUi } from "../src/settings-ui.js";
 import { mutateSettings, readSettings } from "../src/settings-file.js";
 
-type Init = { method?: string; credentials?: string; headers?: Record<string, string>; body?: string };
+type Init = {
+  method?: string;
+  credentials?: RequestInit["credentials"];
+  headers?: Record<string, string>;
+  body?: string;
+};
 type Tab = {
   store: { error: string; changes: Map<string, unknown> };
   load: () => Promise<void>;
