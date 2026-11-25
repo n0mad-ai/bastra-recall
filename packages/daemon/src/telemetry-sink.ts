@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { redactSecrets } from "@bastra-recall/core/scrub";
 import type { TelemetryEvent } from "./telemetry-events.js";
 import { evalRunMark } from "./training-signal.js"; // #1128-capture
 import { telemetrySession } from "./telemetry-session.js";
@@ -28,6 +29,20 @@ export function eventLogFile(
   return join(logDir, `${replay ? "replay" : "events"}-${ts.slice(0, 10)}.jsonl`);
 }
 
+function redactEventContent(event: TelemetryEvent): TelemetryEvent {
+  const clean = (text: string) => redactSecrets(text).text;
+  if (event.kind === "save_memory") return { ...event, title: clean(event.title) };
+  if (event.kind !== "recall" && event.kind !== "hook_recall") return event;
+  return {
+    ...event,
+    query: clean(event.query),
+    ...(event.kind === "hook_recall" && event.topics ? { topics: event.topics.map(clean) } : {}),
+    ...(event.bridge_expansion
+      ? { bridge_expansion: { ...event.bridge_expansion, added: event.bridge_expansion.added.map(clean) } }
+      : {}),
+  };
+}
+
 export class EventSink {
   private readonly logDir: string;
   /** #436: the daemon run id stays as it is; every other session id is coded. */
@@ -49,7 +64,7 @@ export class EventSink {
   async write(raw: TelemetryEvent): Promise<void> {
     try {
       await this.ensureDir();
-      const event = this.coded(raw);
+      const event = redactEventContent(this.coded(raw));
       const file = eventLogFile(this.logDir, event.ts, event);
       // #1128-capture: a row a measurement run wrote says so.
       await appendFile(file, JSON.stringify({ ...event, ...evalRunMark(event) }) + "\n", "utf8");

@@ -6,6 +6,7 @@ import { recordRulebookLoad } from "./rulebook-check.js";
  */
 import { z } from "zod";
 import { stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
+import { redactSecrets } from "@bastra-recall/core/scrub";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
 import { indexedConventionSource, readCurrentRulebookSources } from "./convention-source.js";
@@ -296,9 +297,11 @@ export async function loadMemoryHandler(
 // core/stopwords.ts) instead of an English-only list here. A language without
 // a list drops no word — its function words then count toward the overlap.
 export function distinctiveTokensForActedOn(text: string): string[] {
+  // Redact before case-folding and splitting can obscure credential syntax.
+  const clean = redactSecrets(text).text.replaceAll("[REDACTED]", "");
   return Array.from(
     new Set(
-      words(text)
+      words(clean)
         .filter((token) => token.length >= 4)
         .filter((token) => !FUNCTION_WORDS.has(token))
         .filter((token) => !GENERIC_TRIGGER_WORDS.has(token))

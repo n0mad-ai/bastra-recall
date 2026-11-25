@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Telemetry } from "../src/telemetry.js";
+import { distinctiveTokensForActedOn } from "../src/load-memory-handler.js";
 import { telemetrySession } from "../src/telemetry-session.js";
 
 type Arg<K extends keyof Telemetry> = Telemetry[K] extends (p: infer P, ...rest: never[]) => unknown ? P : never;
@@ -218,6 +219,36 @@ test("event log and join-state snapshot keep their byte format (#1039)", async (
     mock.timers.reset();
     await rm(logDir, { recursive: true, force: true });
   }
+});
+
+test("telemetry redacts credentials before persisting recall text, save titles and distinctive tokens", async (t) => {
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-telemetry-redaction-"));
+  t.after(() => rm(logDir, { recursive: true, force: true }));
+  const telemetry = new Telemetry({ logDir });
+  const token = ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
+  const text = `Deploy with GITHUB_TOKEN=${token}`;
+  const bridge_expansion = { lang: "en", added: [text] };
+  await telemetry.logRecall({ query: text, hits: [], bridge_expansion } as unknown as Arg<"logRecall">);
+  await telemetry.logHookRecall({
+    query: text,
+    topics: [token],
+    hits: [],
+    bridge_expansion,
+  } as unknown as Arg<"logHookRecall">);
+  await telemetry.logSaveMemory({ title: text } as Arg<"logSaveMemory">);
+  assert.ok(!distinctiveTokensForActedOn(text).includes(token.toLowerCase()));
+  const [file] = await readdir(logDir);
+  const rows = (await readFile(join(logDir, file), "utf8"))
+    .trim()
+    .split("\n")
+    .map((row) => JSON.parse(row));
+  assert.deepEqual(
+    rows.map(({ kind }) => kind),
+    ["recall", "hook_recall", "save_memory"]
+  );
+  assert.ok(!JSON.stringify(rows).includes(token));
+  assert.deepEqual(rows[1].topics, ["[REDACTED]"]);
+  assert.deepEqual(rows[1].bridge_expansion.added, ["Deploy with GITHUB_TOKEN=[REDACTED]"]);
 });
 
 const EXPECTED_LOG: string[] = [
