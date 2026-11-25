@@ -33,6 +33,24 @@
   outline: 1px solid var(--accent);
   outline-offset: -3px;
 }
+/* Ghost card (unwritten memory): its own row above the shared one. */
+.vcard__acts.is-ghost {
+  margin-bottom: 0;
+}
+.vcard__acts.is-ghost button {
+  color: var(--accent);
+  text-overflow: ellipsis;
+}
+.vcard__acts.is-ghost button:disabled {
+  color: var(--muted);
+  cursor: default;
+  background-color: transparent;
+}
+.vcard__gnote {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--amber);
+}
 .vcard__acts button::after {
   content: "";
   position: absolute;

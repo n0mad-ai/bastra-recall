@@ -7,6 +7,7 @@ import { ask } from "../agent.js";
 import { vault, areaCol, recentIn, ago } from "./vault-data.js";
 import { openMemoryBrowser } from "./memory-browser.js";
 import { dockGeometry, ZB_W, ZB_H } from "./dock-geometry.js";
+import { ghostActions } from "./ghost-actions.js";
 
 export const ACC = "#38d9f5",
   AMB = "#d9a441",
@@ -177,7 +178,8 @@ export function areaCard(key, { compact, onMemory }) {
 /**
  * Memory card: one memory, opened by a click in a lens or in the ring card.
  * An unwritten memory (kind "ghost") has no text: the card says so and, with
- * `onMemory`, lists the memories that link to it.
+ * `onMemory`, lists the memories that link to it; its own action row queues
+ * it for writing or marks it as a skill (ghost-actions.js).
  */
 export function memoryCard(m, { onClose, onMemory }) {
   const c = TC[m.cls] || INK;
@@ -198,6 +200,7 @@ export function memoryCard(m, { onClose, onMemory }) {
       m.kind === "ghost" && h("p.vcard__sum", { text: t("ev.ghostSum") }),
       m.summary && h("p.vcard__sum", { text: m.summary }),
       m.kind === "ghost" && onMemory && referrers(m, onMemory),
+      ...(m.kind === "ghost" ? ghostActions(m, actionButton) : []),
     ].filter(Boolean),
     h(
       "div.vcard__acts",

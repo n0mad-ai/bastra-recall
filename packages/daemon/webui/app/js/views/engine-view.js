@@ -34,8 +34,10 @@ function memOf(n) {
     id: n.id,
     title: n.title,
     area: base(n),
-    cls: n.kind === "ghost" ? "note" : typeClass(n.type),
-    summary: n.kind === "ghost" ? t("ev.ghostSum") : n.summary,
+    kind: n.kind,
+    cls: n.kind === "ghost" ? "ghost" : typeClass(n.type),
+    // a ghost's card says "unwritten" itself (chrome.js memoryCard)
+    summary: n.kind === "ghost" ? "" : n.summary,
     at: Number.isFinite(at) ? at : NaN,
     recalled: 0,
     links,

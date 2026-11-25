@@ -11,6 +11,13 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
+- **Web UI: ghost actions are back** — the card of an unwritten note (a ghost
+  in the Ring or in Mindspace/Clouds/Semantic) offers **Request note**, which
+  puts a `write` flag on the vault care list (`vault-care.md`) so the next
+  session writes it, and **Is a skill**, which declares the link target in the
+  skills registry (`POST /ui/skills`, like `bastra skills add`) so it no
+  longer counts as unwritten. An already requested ghost opens as requested.
+  The engine views' card now labels a ghost "unwritten" instead of "note".
 - Daemon background jobs log their name and wall-clock duration when a run takes at least one second. Draft shadow skips opening drafts or its vector cache when no eligible local embedding provider is configured. Thanks @zzallirog for the report and measurements (#1683).
 - Reports can be marked outdated (`task_report_mark` `outdated`, a switch in the Reports reader): an outdated report shows a muted Outdated tag, leaves the unread count, sorts last and no longer puts its parent into Question (#1678).
 - Add a mandatory post-build Knip check with a frozen per-finding budget; new or increased unused-code findings fail CI (#1534).
@@ -374,6 +381,16 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- **Report questions no longer lose their answer buttons over a long
+  option.** An answer option may now hold up to 120 characters (was 40) and
+  wraps inside its button; questions whose options were longer than 40
+  characters, in reports already saved too, now show their buttons and appear
+  in the jump list. `task_report_save` answers with `hints` naming every line
+  that opens `[?` but is not read as answer options, and when a report holds
+  more than 20 questions; the report is stored either way. The tool
+  description now also asks for at most 20 questions per report, a separate
+  report (`follow_up_of`) per clarification, plain words without jargon or
+  issue numbers, and only questions that need a decision.
 - Tasks: a time reminder that becomes due while the task store is above its
   normal limit now fires from the owner's reserve instead of staying silent.
   The rest of the automatic evaluation still stops at the normal limit (#1599).
