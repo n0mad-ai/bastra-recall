@@ -335,6 +335,12 @@ export function mountMemoryBrowser(stage, { showMemory, ready = (cb) => cb() } =
   function arrive() {
     const p = pending;
     if (dead || !p || arriving === p || (!vault() && !data.graphError)) return;
+    // The first graph request failed: the view never stands (its ready needs the graph) and the
+    // stage shows the vault error (sections/loading.js). Drop the link; a later click retries (#1721).
+    if (!vault()) {
+      pending = null;
+      return;
+    }
     arriving = p;
     const grow = () => {
       if (dead || pending !== p) return;

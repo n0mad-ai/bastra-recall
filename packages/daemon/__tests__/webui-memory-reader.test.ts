@@ -734,3 +734,43 @@ test("Escape during a linked memory's flight cancels the browser opening", async
     assert.ok(!root.classes.has("is-on"));
   });
 });
+
+test("#1721: a memory link after a failed first graph request is dropped, and a later click works", async () => {
+  await withBrowser(async (mb, env) => {
+    env.lastView = "ring";
+    env.state.view = "tasks";
+    env.vault = null;
+    env.data.graph = null;
+    mb.openMemoryBrowser("all", "full", RECT);
+    const calls: string[] = [];
+    const opts = {
+      showMemory: (id: string, done?: () => void) => (calls.push(`show ${id}`), done?.(), true),
+      ready: (cb: () => void) => (calls.push("ready"), cb()),
+    };
+    // the vault view's ready needs the graph: without one it never calls back
+    const unmount = mb.mountMemoryBrowser(new FakeEl("div"), { ...opts, ready: () => calls.push("ready") });
+    await settle();
+    assert.deepStrictEqual(calls, [], "no wait while the graph request is in flight");
+    env.data.graphError = true; // the first graph request fails
+    env.dataListeners.forEach((fn) => fn());
+    await settle();
+    assert.deepStrictEqual(calls, [], "no wait for a view that cannot stand without the graph");
+    // the graph recovers: the dropped link does not open by itself
+    env.vault = vaultOf(MEMS);
+    env.data.graph = graphOf();
+    env.data.graphError = false;
+    env.dataListeners.forEach((fn) => fn());
+    await settle();
+    assert.deepStrictEqual(calls, []);
+    assert.strictEqual(env.state.browser, null);
+    // back in Tasks, the same link again: zoom to the memory, then the browser grows
+    unmount();
+    env.state.view = "tasks";
+    mb.openMemoryBrowser("all", "full", RECT);
+    const root = mounted(mb, opts);
+    await settle();
+    assert.deepStrictEqual(calls, ["ready", "show full"]);
+    assert.strictEqual(env.state.browser, "vault");
+    assert.ok(root.classes.has("is-on"));
+  });
+});
