@@ -7,14 +7,10 @@
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { loadGraph } from "../data.js";
+import { jsonRequest } from "../session-client.js";
 
 async function post(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(() => null);
+  const r = await jsonRequest(url, body).catch(() => null);
   if (!r?.ok) throw new Error(`${url} → ${r?.status ?? 0}`);
 }
 

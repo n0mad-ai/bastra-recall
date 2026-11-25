@@ -6,6 +6,7 @@
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { noteEditor, noteInit } from "./care-note.js";
+import { jsonRequest } from "../session-client.js";
 
 // Drafts live for the page session, independent of reader DOM and selection.
 const drafts = new Map();
@@ -29,12 +30,7 @@ export function careSaveError(status) {
 }
 
 async function postCare(payload) {
-  const r = await fetch("/ui/annotate", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }).catch(() => null);
+  const r = await jsonRequest("/ui/annotate", payload).catch(() => null);
   if (!r?.ok) throw new Error(t(careSaveError(r?.status ?? 0)));
   const b = await r.json().catch(() => ({}));
   return b?.entry && typeof b.entry === "object" ? b.entry : null;

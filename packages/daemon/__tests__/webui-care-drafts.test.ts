@@ -55,7 +55,7 @@ function find(node: Element, predicate: (el: Element) => boolean): Element | und
 }
 
 async function load(fetch = async () => ({ ok: true, json: async () => ({}) })) {
-  const files = ["care-note.js", "membrowser-care.js"];
+  const files = ["../session-client.js", "care-note.js", "membrowser-care.js"];
   const sources = await Promise.all(
     files.map((file) => readFile(new URL(`../webui/app/js/views/${file}`, import.meta.url), "utf8"))
   );

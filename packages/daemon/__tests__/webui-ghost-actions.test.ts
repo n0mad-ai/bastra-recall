@@ -51,7 +51,9 @@ function button(cls: string, key: string, click: (e: unknown) => Promise<void>):
 
 type Call = { url: string; body: any };
 async function load(answer: (url: string) => { status: number; body?: unknown }) {
-  const src = await readFile(new URL("../webui/app/js/views/ghost-actions.js", import.meta.url), "utf8");
+  const src =
+    (await readFile(new URL("../webui/app/js/session-client.js", import.meta.url), "utf8")) +
+    (await readFile(new URL("../webui/app/js/views/ghost-actions.js", import.meta.url), "utf8"));
   const calls: Call[] = [];
   let reloads = 0;
   const fetch = async (url: string, init?: { body?: string }) => {
