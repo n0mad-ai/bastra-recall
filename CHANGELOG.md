@@ -723,6 +723,35 @@ until a new design replaces it; this name is independent of the product version.
   fanned out unchanged. Automatic hook hints send none of these and are
   unchanged. Conflict flags and Commons hits still exist only over REST
   (#1727).
+- Report answer options: the daemon's question check now reads the separator
+  before a `[? A | B]` marker the way the reader does (rendered text), so a
+  space inside bold, code, link or emphasis text, or a nonbreaking space, no
+  longer makes `task_report_save` warn about a marker the reader shows as
+  buttons. Both read one shared set of synthetic cases (#1729).
+- Settings: two tabs that keep saving in turn no longer run into HTTP 429
+  after about 95 saves. Opening a new settings session now ends the session
+  whose cookie it replaces, so one browser holds at most one session. Origin,
+  Host and CSRF checks, the 100-session limit and its idle-only displacement
+  are unchanged (#1733).
+- The vault loader no longer lets an impossible calendar day roll into the
+  next month. `created`, `updated` and `last_reviewed_at` written as a day the
+  calendar lacks (`2026-02-31`, `2026-13-01`, `2100-02-29`, `T24:00`, or a
+  year below 100) are now recognized in every YAML spelling (quoted or spaced
+  keys, trailing comments, unpadded timestamps, quoted values) and treated as
+  not set: `created` and `updated` fall back to the file date,
+  `last_reviewed_at` is dropped, and each repair is reported on the note. The
+  source file is never rewritten. `valid_until` is unchanged (#1731, #1720).
+- A note loaded twice with the same bytes no longer inherits the first load's
+  repaired fields and loses its damage report: gray-matter's byte cache was
+  shared with the loader's in-place repairs (#1731).
+- Web UI, Tasks: the calendar takes its settled width even while an unrelated
+  or endless animation runs on the stage; only the stage's own edge
+  transitions defer it. 699 px shows three days again (#1735).
+- Web UI, Tasks: a one-pixel change of the calendar body's width or height
+  redraws the calendar, so the hour rows and the stacked day heads follow
+  the real size (#1732).
+- Web UI: after **Is a skill**, the node on the open map also takes the
+  skill's collision radius at once, keeping its place (#1730).
 
 ### Internal
 
