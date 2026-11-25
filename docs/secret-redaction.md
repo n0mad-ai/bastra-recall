@@ -76,9 +76,12 @@ suggestion relay, notes (`save_memory`, `edit_memory`), documents
 byte as written; the home-directory abbreviation in drafts, tasks and reports is
 dropped too. The setting needs no restart (from the web UI at once, from the
 terminal within a second). `bastra doctor` names the off state. Redacted
-regardless of the switch: the content fields in the vault's append-only audit log,
-training data, the recall signals learned from telemetry and the queries in the
-vault report.
+regardless of the switch: the vault's append-only audit snapshots and reasons,
+training data, telemetry content and the queries in the vault report. Recognized
+credentials are also redacted in outgoing OpenAI embedding requests and requests
+to remote Ollama. The task execution adapter still requires credentials to stay
+out of its exact previews and backups. A connected assistant or a file sync
+service can receive the vault content that you keep with the switch off.
 
 ## Fixed acceptance corpus
 
@@ -259,9 +262,13 @@ Byte so, wie sie geschrieben wurden; auch die Abkürzung des Home-Verzeichnisses
 Entwürfen, Aufgaben und Berichten entfällt dann. Die Einstellung gilt ohne Neustart
 (aus der Weboberfläche sofort, aus dem Terminal nach spätestens einer Sekunde).
 `bastra doctor` nennt den ausgeschalteten Zustand. Unabhängig vom Schalter bleiben
-geschwärzt: die Inhaltsfelder im anhängenden Audit-Protokoll des Vaults,
-Trainingsdaten, die gelernten Suchsignale aus der Telemetrie und die Suchanfragen
-im Vault-Bericht.
+geschwärzt: die Vor- und Nachbilder und Begründungen im anhängenden Audit-Protokoll
+des Vaults, Trainingsdaten, die Inhalte in der Telemetrie und die Suchanfragen im
+Vault-Bericht. Erkannte Zugangsdaten werden auch in Anfragen an OpenAI-Embeddings
+und entferntes Ollama geschwärzt. Die exakten Vorschauen und Sicherungen der
+Aufgabenausführung dürfen weiterhin keine erkannten Zugangsdaten enthalten. Ein
+verbundener Assistent oder ein Dateisynchronisierungsdienst kann die Vault-Inhalte
+erhalten, die du bei ausgeschaltetem Schalter speicherst.
 
 ## Deutsch: Vorschlags-Relay
 

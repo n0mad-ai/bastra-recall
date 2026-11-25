@@ -404,13 +404,12 @@ until a new design replaces it; this name is independent of the product version.
   description now also asks for at most 20 questions per report, a separate
   report (`follow_up_of`) per clarification, plain words without jargon or
   issue numbers, and only questions that need a decision.
-- Tasks: a time reminder that becomes due while the task store is above its
-  normal limit now fires from the owner's reserve instead of staying silent.
-  The rest of the automatic evaluation still stops at the normal limit (#1599).
+- Tasks: due time reminders can use a dedicated portion of the reserve above
+  the normal limit. If it fills, due slots wait for space. Disarming a task
+  whose audit history is full commits independently of the reminders (#1599).
 - Saving the current version of a corrected claim again no longer warns that
-  it re-asserts a replaced claim. A save that is closer to the current version
-  than to the replaced one counts as repeating the correction; writing the old
-  version again still warns (#643).
+  it re-asserts a replaced claim. The warning still appears if the submitted
+  text combines a corrected summary with the replaced claim in its body (#643).
 - Task reports and report notes preserve joiners inside compound emoji when
   cleaning text (#1563).
 - Draft-store writes respect a live writer's lock. A competing write can be
