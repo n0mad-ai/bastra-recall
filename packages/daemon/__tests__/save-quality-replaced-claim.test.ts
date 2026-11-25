@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, type SaveMemoryInput } from "@bastra-recall/core";
@@ -408,3 +408,11 @@ for (const privateId of ["private-middle", "private-current"]) {
     );
   });
 }
+
+test("the usage guide limits redacted claim comparison to enabled redaction", async () => {
+  const guide = await readFile(new URL("../../../docs/USAGE.md", import.meta.url), "utf8");
+  const lines = guide.split("\n").filter((line) => /^\*\*(Replaced claims|Schon ersetzte Aussagen)/.test(line));
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /When credential redaction is enabled/);
+  assert.match(lines[1], /Bei eingeschalteter Schwärzung/);
+});
