@@ -257,11 +257,109 @@ test("#1720: an `updated` that is no date is taken from the file mtime; the note
     ["2026-05-02", "2026-05-02"],
     ["2024-02-29", "2024-02-29"],
     ["2026-05-01T23:30:00-02:00", "2026-05-02"],
-    ['"2026-02-31"', "2026-02-31"],
+    ['"2026-05-02"', "2026-05-02"],
+    ['"not a date"', "not a date"],
   ]) {
     const m = parse(note(good));
-    assert.equal(m.fm.updated, day, `${good} keeps its value; a quoted string is left to the Recall formatter`);
+    assert.equal(m.fm.updated, day, `${good} keeps its value; a non-date string is left to the Recall formatter`);
     assert.equal(m.damaged, undefined, good);
   }
   assert.throws(() => parse(note("2026-05-01").replace("created: 2026-05-01", "created: false")), /created/);
+});
+
+// #1731: every YAML spelling of an impossible calendar day, in every date field the loader repairs.
+// Each line replaces the field's own line; `{f}` is the field's key.
+const IMPOSSIBLE_DATE_LINES = [
+  "{f}: 2026-02-31",
+  '"{f}": 2026-02-31',
+  "'{f}': 2026-02-31",
+  "{f} : 2026-02-31",
+  "{f}: 2026-02-31 # written by hand",
+  "{f}: 2026-04-31",
+  "{f}: 2026-13-01",
+  "{f}: 2100-02-29",
+  "{f}: 0026-05-01",
+  "{f}: 2026-02-31T10:00:00Z",
+  "{f}: 2026-2-31 1:00:00",
+  '"{f}" : 2026-2-31 1:00:00 # comment',
+  "{f}: 2026-05-01T24:00:00Z",
+  '{f}: "2026-02-31"',
+  "{f}: '2026-02-30T10:00:00Z'",
+];
+const VALID_DATE_LINES: Array<[line: string, day: string]> = [
+  ["{f}: 2024-02-29", "2024-02-29"],
+  ["{f}: 2000-02-29", "2000-02-29"],
+  ['"{f}" : 2026-05-02 # comment', "2026-05-02"],
+  ["{f}: 2026-5-2 1:00:00", "2026-05-02"],
+  ["{f}: 2026-05-01T23:30:00-02:00", "2026-05-02"],
+  ["{f}: 1999-12-31", "1999-12-31"],
+  ['{f}: "2026-05-02"', "2026-05-02"],
+];
+const datedNote = (field: string, line: string) =>
+  [
+    "---",
+    "id: note",
+    "title: T",
+    "type: lesson",
+    "summary: s",
+    "topic_path: [a]",
+    "tags: [t]",
+    "scope: s",
+    "recall_when: [x]",
+    field === "created" ? line.replace("{f}", field) : "created: 2026-05-01",
+    field === "updated" ? line.replace("{f}", field) : "updated: 2026-05-03",
+    ...(field === "last_reviewed_at" ? [line.replace("{f}", field)] : []),
+    "---",
+    "body",
+  ].join("\n");
+
+for (const [field, fallback] of [
+  ["updated", "2026-05-17"],
+  ["created", "2026-05-17"],
+  ["last_reviewed_at", undefined],
+] as const) {
+  for (const line of IMPOSSIBLE_DATE_LINES) {
+    test(`#1731: an impossible \`${field}\` day never rolls over — ${line}`, () => {
+      const m = parse(datedNote(field, line));
+      assert.equal(m.fm[field], fallback, `${line}: falls back instead of rolling`);
+      assert.ok(
+        m.damaged?.some((d) => d.field === field),
+        `${line}: the fallback is diagnosed, got ${JSON.stringify(m.damaged)}`
+      );
+      assert.equal(m.damaged?.length, 1, `${line}: no other field is touched`);
+      assert.equal(m.fm.summary, "s");
+      if (field !== "created") assert.equal(m.fm.created, "2026-05-01");
+      if (field !== "updated") assert.equal(m.fm.updated, "2026-05-03");
+    });
+  }
+  test(`#1731: a valid \`${field}\` keeps its day in every spelling and is not reported`, () => {
+    for (const [line, day] of VALID_DATE_LINES) {
+      const m = parse(datedNote(field, line));
+      assert.equal(m.fm[field], day, `${line} keeps its day`);
+      assert.equal(m.damaged, undefined, `${line} is not reported as damaged`);
+    }
+  });
+}
+
+test("#1731: the impossible-day check also runs when the block only loads through the rescue", () => {
+  const raw = datedNote("updated", '"updated" : 2026-02-31 # c').replace("title: T", 'title: "it\\\'s"');
+  const m = parse(raw);
+  assert.equal(m.fm.updated, "2026-05-17");
+  assert.deepEqual(m.damaged?.map((d) => d.field).sort(), ["title", "updated"]);
+});
+
+test("#1731: a second load of the same bytes reports the same repair (gray-matter caches by bytes)", () => {
+  const raw = datedNote("updated", "updated: false").replace("id: note", "id: cached-note");
+  const first = parse(raw, "/vault/a.md", Date.UTC(2026, 4, 17));
+  const second = parse(raw, "/vault/b.md", Date.UTC(2026, 4, 18));
+  assert.equal(first.fm.updated, "2026-05-17");
+  assert.equal(second.fm.updated, "2026-05-18", "the first load's fallback must not leak into the second");
+  assert.ok(second.damaged?.some((d) => d.field === "updated"));
+});
+
+test("#1731: `valid_until` is outside this repair — its handling is an open product decision", () => {
+  // Dropping an expiry would serve an expired note again; see the #1731 report.
+  const m = parse(datedNote("last_reviewed_at", "valid_until: 2026-05-20"));
+  assert.equal(m.fm.valid_until, "2026-05-20");
+  assert.equal(m.damaged, undefined);
 });

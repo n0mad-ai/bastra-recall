@@ -1,7 +1,7 @@
 import { z } from "zod";
 import matter from "gray-matter";
 import { truncateSummaryTo, SUMMARY_MAX } from "./summary.js";
-import { rescueFrontmatter, repairRequired, repairUpdated } from "./frontmatter-rescue.js";
+import { rescueFrontmatter, repairRequired, repairDates } from "./frontmatter-rescue.js";
 
 /** Fields `repairRequired` guarantees (#222). A validation error on one of
  *  these after the repair means something the loader cannot reason about, so
@@ -427,18 +427,7 @@ export interface Memory {
  * Throws if the frontmatter is missing or invalid.
  */
 export function parseMemory(raw: string, filePath: string, mtime: number): Memory {
-  // gray-matter caches parsed data by raw bytes. Lenient repair mutates its
-  // input, so give each file/read an owned copy: fallback ids/dates must not
-  // leak from a source probe (mtime 0) into a later real vault load.
-  return parseMemoryWith(
-    (input) => {
-      const parsed = matter(input);
-      return { data: structuredClone(parsed.data), content: parsed.content };
-    },
-    raw,
-    filePath,
-    mtime
-  );
+  return parseMemoryWith((input) => matter(input), raw, filePath, mtime);
 }
 
 /**
@@ -456,7 +445,11 @@ export function parseMemoryWith(
   // always did and comes back with an empty `damaged` list.
   const rescued = rescueFrontmatter(matter, raw);
   if (!rescued) throw new NotAMemoryFile(filePath);
-  const { data, content, damaged } = rescued;
+  const { content, damaged } = rescued;
+  // gray-matter caches parsed data by raw bytes and the repairs below mutate
+  // it, so every caller gets an owned copy: a fallback id or date must not leak
+  // into a later load of the same bytes, and that load must report its damage too.
+  const data = structuredClone(rescued.data);
   // Pre-check: if there's no recognizable memory `type:` field, throw a
   // NotAMemoryFile so the caller can silently skip it. Lets the vault scan
   // recursively through an Obsidian vault and only pick up memorys. This stays
@@ -465,7 +458,7 @@ export function parseMemoryWith(
   if (!("type" in data) || !MEMORY_TYPES.has(String(data.type))) {
     throw new NotAMemoryFile(filePath);
   }
-  repairUpdated(data, raw, mtime, damaged);
+  repairDates(data, raw, damaged);
   repairRequired(data, filePath, mtime, content, damaged, isPathSafeComponent);
   const parsed = FrontmatterSchema.safeParse(data);
   if (!parsed.success) {

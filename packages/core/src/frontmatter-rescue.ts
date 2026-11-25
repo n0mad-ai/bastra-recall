@@ -30,13 +30,16 @@ import type { DamagedField } from "./schema.js";
 /** gray-matter's public YAML engine — parses a bare fragment, no document
  *  delimiters and therefore no constructed parser input. It runs js-yaml's
  *  safe loader, so no custom tag can instantiate anything. */
-function parseYamlFragment(fragment: string): unknown {
+function parseYamlFragment(fragment: string, options?: { listener: YamlListener }): unknown {
   return (
     matter as unknown as {
-      engines: { yaml: { parse: (input: string) => unknown } };
+      engines: { yaml: { parse: (input: string, options?: { listener: YamlListener }) => unknown } };
     }
-  ).engines.yaml.parse(fragment);
+  ).engines.yaml.parse(fragment, options);
 }
+
+/** js-yaml's documented `listener` option: called when a node opens and closes. */
+type YamlListener = (event: "open" | "close", state: { input: string; position: number; result: unknown }) => void;
 
 export interface RescueResult {
   data: Record<string, unknown>;
@@ -233,29 +236,94 @@ export function repairRequired(
   }
 }
 
-/** False when the unquoted frontmatter line `field: YYYY-MM-DD…` names a day the calendar lacks. */
-function writtenDayExists(raw: string, field: string): boolean {
-  const block = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(raw)?.[1] ?? "";
-  const m = new RegExp(`^${field}:[ \\t]*(\\d{4})-(\\d{2})-(\\d{2})`, "m").exec(block);
+/** js-yaml's date and timestamp shapes, plus the zone forms `Date.parse` reads. */
+const WRITTEN_DATE =
+  /^(\d{4})-(\d\d?)-(\d\d?)(?:(?:[Tt]|[ \t]+)(\d\d?):(\d\d):(\d\d)(?:\.\d*)?(?:[ \t]*(?:Z|[-+](\d\d?)(?::?(\d\d))?))?)?$/;
+
+/** False when `text` is written as a date but names an instant the calendar lacks. js-yaml and
+ *  `Date.parse` roll such a value silently (`2026-02-31` → March 3, `T24:00` → next day), and
+ *  js-yaml maps years below 100 into the 1900s. Text in any other shape is not judged here. */
+function writtenDateExists(text: string): boolean {
+  const m = WRITTEN_DATE.exec(text.trim());
   if (!m) return true;
-  const [y, mo, d] = m.slice(1).map(Number),
-    date = new Date(Date.UTC(y, mo - 1, d));
-  return date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
+  const [y, mo, d, h, mi, s, zh, zm] = m.slice(1).map((part) => Number(part ?? 0));
+  // 2000 + y % 400 has the same leap years as y, and stays clear of Date.UTC's 0–99 mapping.
+  const daysInMonth = new Date(Date.UTC(2000 + (y % 400), mo, 0)).getUTCDate();
+  const dayExists = y >= 100 && mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth;
+  return dayExists && h < 24 && mi < 60 && s < 60 && zh < 24 && zm < 60;
 }
 
-/** #1720: an `updated` that is no date — `false`, a list, or a bare impossible day that js-yaml
- *  silently rolls over (`2026-02-31` becomes March 3) — is taken from the file mtime like a
- *  missing one, so the note stays loaded and Recall shows the file's day, as it does for an
- *  invalid date string. A string is left to the schema and the Recall formatter. */
-export function repairUpdated(
-  data: Record<string, unknown>,
-  raw: string,
-  mtime: number,
-  damaged: DamagedField[]
-): void {
-  const v = data.updated;
-  if (v == null || v === "" || typeof v === "string") return;
-  if (v instanceof Date && Number.isFinite(v.getTime()) && writtenDayExists(raw, "updated")) return;
-  data.updated = new Date(mtime).toISOString().slice(0, 10);
-  damaged.push({ field: "updated", reason: "updated was not a valid date — taken from the file mtime" });
+/** #1731: the date fields the loader checks. `created` and `updated` that name an impossible day
+ *  become missing, so `repairRequired` takes them from the file mtime; `last_reviewed_at` is
+ *  dropped. `valid_until` is left out on purpose: dropping an end date would serve a note that is
+ *  expired today again, so its fallback is an open product decision. */
+const CHECKED_DATE_FIELDS = ["created", "updated", "last_reviewed_at"] as const;
+
+/** The source text of each checked field js-yaml turned into a Date, whatever the key's quoting,
+ *  spacing or trailing comment. A second parse of the block hands every Date node back as the
+ *  text it was read from; a block that only loads through the rescue is read entry by entry. */
+function writtenDates(raw: string): Record<string, unknown> {
+  const block = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(raw)?.[1] ?? "";
+  const starts: number[] = [];
+  const listener: YamlListener = (event, state) => {
+    if (event === "open") {
+      starts.push(state.position);
+      return;
+    }
+    const start = starts.pop() ?? state.position;
+    if (!(state.result instanceof Date)) return;
+    // Drop an anchor or explicit tag in front of the scalar (`&d 2026-05-01`).
+    state.result = state.input
+      .slice(start, state.position)
+      .trim()
+      .replace(/^(?:[&!]\S*\s+)+/, "");
+  };
+  const written: Record<string, unknown> = {};
+  const read = (fragment: string): void => {
+    const parsed = parseYamlFragment(fragment, { listener });
+    if (!parsed || typeof parsed !== "object") return;
+    for (const field of CHECKED_DATE_FIELDS) {
+      if (Object.hasOwn(parsed, field)) written[field] = (parsed as Record<string, unknown>)[field];
+    }
+  };
+  try {
+    read(block);
+  } catch {
+    for (const entry of splitTopLevelEntries(block)) {
+      starts.length = 0;
+      try {
+        read(entry);
+      } catch {
+        /* the rescue already reported this entry */
+      }
+    }
+  }
+  return written;
+}
+
+/** True when a checked field holds a day the calendar lacks: a Date js-yaml rolled over, or a
+ *  string written as such a day. Any other value is left to the schema as before. */
+function namesImpossibleDay(value: unknown, written: () => Record<string, unknown>, field: string): boolean {
+  if (typeof value === "string") return !writtenDateExists(value);
+  if (!(value instanceof Date)) return false;
+  const text = written()[field];
+  return !Number.isFinite(value.getTime()) || (typeof text === "string" && !writtenDateExists(text));
+}
+
+/** #1720/#1731: an impossible calendar day in `created`, `updated` or `last_reviewed_at` — in any
+ *  YAML spelling, quoted or not — is treated as not set and reported, instead of loading as the
+ *  day it rolls into. An `updated` that is no date at all (`false`, a list) is treated the same
+ *  way; the other fields keep their validation. Only the loader's copy changes, never the file. */
+export function repairDates(data: Record<string, unknown>, raw: string, damaged: DamagedField[]): void {
+  let cache: Record<string, unknown> | undefined;
+  const written = (): Record<string, unknown> => (cache ??= writtenDates(raw));
+  for (const field of CHECKED_DATE_FIELDS) {
+    const v = data[field];
+    if (v == null || v === "") continue;
+    const noDate = field === "updated" && typeof v !== "string" && !(v instanceof Date);
+    if (!noDate && !namesImpossibleDay(v, written, field)) continue;
+    delete data[field];
+    const fallback = field === "last_reviewed_at" ? "dropped" : "taken from the file mtime";
+    damaged.push({ field, reason: `${field} was not a valid date — ${fallback}` });
+  }
 }
