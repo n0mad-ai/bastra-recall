@@ -426,7 +426,7 @@ type Env = {
   /** The browser's timers (grow, reveal, close) wait for runTimers(); the test's own waits use setImmediate. */
   timers: Map<number, { fn: () => void; ms: number }>;
   resize: () => void;
-  keydown: (event: Pick<KeyboardEvent, "key">) => void;
+  keydown: (event: { key: string }) => void;
 };
 
 /** The browser's world: fake DOM, stand-in daemon, a fixed clock and held timers. */
