@@ -11,14 +11,17 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
-- Credential redaction can be switched off: `bastra config set
+- The credential-redaction toggle can be switched off: `bastra config set
   redaction.enabled false`, or Settings › Writing & docs › "Redact
-  credentials" in the web UI. It stays on by default. Off, drafts, the
-  suggestion relay, notes, documents, tasks and reports keep their text byte
-  for byte; the vault's audit log, training data, telemetry-derived recall
-  signals and the vault report's queries stay redacted. No restart needed;
-  `bastra doctor` names the off state. The redesign with a credential vault
-  and password managers follows in 1.4.0 (#1684).
+  credentials" in the web UI. It stays on by default. Off, recognizable
+  credentials are no longer replaced in drafts, the suggestion relay, notes,
+  documents, tasks and reports; ordinary parsing and cleanup still apply (the
+  report path, for example, normalizes line endings and removes injected
+  context blocks), so text is not kept byte for byte in every case. The
+  vault's audit log, training data, telemetry-derived recall signals and the
+  vault report's queries stay redacted. No restart needed; `bastra doctor`
+  names the off state. The redesign with a credential vault and password
+  managers follows in 1.4.0 (#1684).
 - `bastra doctor` shows what the MCP tool list really costs at session start:
   tool names plus server instructions for clients that load descriptions when
   needed (Claude Code, current Codex; about 1,100 tokens today), and the full

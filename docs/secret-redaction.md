@@ -68,14 +68,17 @@ are not rewritten.
 
 ## Switching it off
 
-Since 1.3.0 redaction of your own content can be switched off:
-`bastra config set redaction.enabled false`, or in the web UI under Settings ›
-Writing & docs › "Redact credentials". It is on by default. Off, drafts, the
-suggestion relay, notes (`save_memory`, `edit_memory`), documents
-(`save_document`), tasks and reports (`task_report_save`) keep their text byte for
-byte as written; the home-directory abbreviation in drafts, tasks and reports is
-dropped too. The setting needs no restart (from the web UI at once, from the
-terminal within a second). `bastra doctor` names the off state. Redacted
+Since 1.3.0 the credential-redaction toggle for your own content can be switched
+off: `bastra config set redaction.enabled false`, or in the web UI under Settings ›
+Writing & docs › "Redact credentials". It is on by default. Off, recognized
+credentials are no longer replaced with `[REDACTED]` in drafts, the suggestion
+relay, notes (`save_memory`, `edit_memory`), documents (`save_document`), tasks
+and reports (`task_report_save`); the home-directory abbreviation in drafts,
+tasks and reports is dropped too. Normal parsing and cleanup still apply: the
+report path, for example, normalizes line endings (a CR in CRLF is dropped) and
+removes complete injected hook/harness context blocks, so text is not kept byte
+for byte in every case. The setting needs no restart (from the web UI at once,
+from the terminal within a second). `bastra doctor` names the off state. Redacted
 regardless of the switch: the vault's append-only audit snapshots and reasons,
 training data, telemetry content and the queries in the vault report. Recognized
 credentials are also redacted in outgoing OpenAI embedding requests and requests
@@ -253,13 +256,17 @@ nicht umgeschrieben.
 
 ## Deutsch: Schwärzung ausschalten
 
-Seit 1.3.0 lässt sich die Schwärzung für die eigenen Inhalte ausschalten:
-`bastra config set redaction.enabled false` oder in der Weboberfläche unter
-Einstellungen › Schreiben & Doku › „Zugangsdaten schwärzen“. Standard ist an. Aus
-bleiben Entwürfe, Vorschlags-Relay, Notizen (`save_memory`, `edit_memory`),
-Dokumente (`save_document`), Aufgaben und Berichte (`task_report_save`) Byte für
-Byte so, wie sie geschrieben wurden; auch die Abkürzung des Home-Verzeichnisses in
-Entwürfen, Aufgaben und Berichten entfällt dann. Die Einstellung gilt ohne Neustart
+Seit 1.3.0 lässt sich die Schwärzung der eigenen Zugangsdaten als Einstellung
+ausschalten: `bastra config set redaction.enabled false` oder in der Weboberfläche
+unter Einstellungen › Schreiben & Doku › „Zugangsdaten schwärzen“. Standard ist an.
+Aus werden erkannte Zugangsdaten in Entwürfen, Vorschlags-Relay, Notizen
+(`save_memory`, `edit_memory`), Dokumenten (`save_document`), Aufgaben und
+Berichten (`task_report_save`) nicht mehr durch `[REDACTED]` ersetzt; auch die
+Abkürzung des Home-Verzeichnisses in Entwürfen, Aufgaben und Berichten entfällt
+dann. Gewöhnliche Textverarbeitung und Bereinigung finden weiterhin statt: Der
+Berichtspfad normalisiert etwa Zeilenenden (ein CR in CRLF entfällt) und entfernt
+vollständige eingeschobene Hook-/Harness-Kontextblöcke, der Text bleibt also nicht
+in jedem Fall Byte für Byte erhalten. Die Einstellung gilt ohne Neustart
 (aus der Weboberfläche sofort, aus dem Terminal nach spätestens einer Sekunde).
 `bastra doctor` nennt den ausgeschalteten Zustand. Unabhängig vom Schalter bleiben
 geschwärzt: die Vor- und Nachbilder und Begründungen im anhängenden Audit-Protokoll
