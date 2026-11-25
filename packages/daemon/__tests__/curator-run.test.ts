@@ -142,6 +142,9 @@ test("dry-run: decides + writes REPORT.md but persists nothing and demotes nothi
     assert.ok(report.includes("**never re-affirmed**"));
     assert.ok(report.includes("`css / grid`: [[tax]] · [[young]]"), "same-topic cluster");
     assert.ok(report.includes("[[used]] → `[[gone-target]]` (missing)"), "dangling wikilink");
+    // #642: the pass wires the low-signal section; fixtures carry no trigger and no body.
+    assert.ok(report.includes("## Low-signal memories"), "low-signal section");
+    assert.ok(report.includes("- [[tax]]: no recall_when trigger; body has 0 characters"), "reasons per entry");
   });
 });
 

@@ -13,7 +13,8 @@
  */
 import { stripAutoRelatedSection } from "@bastra-recall/core";
 import { GENERATED_TRIGGER_TYPES } from "./claim-gate.js";
-import { tokens, triggerRestatesSummary } from "./save-similarity.js";
+import { isOneWordTrigger } from "./save-quality.js";
+import { triggerRestatesSummary } from "./save-similarity.js";
 
 /** Rows one report shows; the count above the list is always complete. */
 export const LOW_SIGNAL_REPORT_LIMIT = 30;
@@ -45,7 +46,7 @@ export function lowSignalReasons(m: MemoryLike): string[] {
   const summary = typeof m.fm.summary === "string" ? m.fm.summary : "";
   const title = typeof m.fm.title === "string" ? m.fm.title.trim() : "";
   if (triggers.length === 0) reasons.push("no recall_when trigger");
-  const oneWord = triggers.filter((t) => tokens(t).length <= 1);
+  const oneWord = triggers.filter(isOneWordTrigger);
   if (oneWord.length > 0) reasons.push(`one-word trigger: ${oneWord.map((t) => `'${t}'`).join(", ")}`);
   if (triggers.some((t) => triggerRestatesSummary(t, summary))) reasons.push("a trigger restates the summary");
   const bodyChars = stripAutoRelatedSection(m.body ?? "").replace(/\s+/gu, "").length;

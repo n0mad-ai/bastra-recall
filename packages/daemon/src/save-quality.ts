@@ -105,9 +105,15 @@ export const GENERIC_TRIGGER_WORDS = new Set([
   "ux",
 ]);
 
+/** #642: the language-neutral half of the specificity check, shared with the
+ *  curator's low-signal report so both ask the same question. */
+export function isOneWordTrigger(trigger: string): boolean {
+  return words(trigger).length <= 1;
+}
+
 function triggerSpecificityIssue(trigger: string): string | undefined {
+  if (isOneWordTrigger(trigger)) return `recall_when '${trigger}' is too short/generic`;
   const tokens = words(trigger);
-  if (tokens.length <= 1) return `recall_when '${trigger}' is too short/generic`;
   if (tokens.length <= 2 && tokens.every((t) => GENERIC_TRIGGER_WORDS.has(t))) {
     return `recall_when '${trigger}' is only generic technology words`;
   }
