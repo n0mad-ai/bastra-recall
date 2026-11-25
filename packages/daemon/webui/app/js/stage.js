@@ -24,14 +24,6 @@ export function mountStage(app) {
   app.append(stage);
 }
 
-// A quick return removes the opening animation while the stage can still be under the agent.
-export function keepClearOfClosingAgent(agent) {
-  if (stage.getBoundingClientRect().left >= agent.getBoundingClientRect().right) return;
-  const fade = agent.getAnimations().find((animation) => animation.transitionProperty === "opacity");
-  if (fade)
-    stage.animate([{ visibility: "hidden" }, { visibility: "hidden" }], fade.effect.getComputedTiming().endTime);
-}
-
 export function render(ctx) {
   // Reopening the browser cancels a pending departure by restoring its host
   // view. Its show() cancels the shrink timeout, so clear our guard here too.

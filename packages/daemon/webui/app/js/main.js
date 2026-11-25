@@ -55,14 +55,12 @@ lens.mountLens(app, ctx);
 mountHeader(app, ctx);
 
 function update(changed) {
-  const wasBesideAgent = L.cL > L.jL;
   L = computeLayout(state);
   applyLayout(app, L, state);
   updateNav(ctx, changed);
   updateHeader(L, changed);
   stage.render(ctx);
   agent.render(L);
-  if (changed.has("view") && wasBesideAgent && !L.jOpen) stage.keepClearOfClosingAgent(app.querySelector(".agent"));
   footer.render(L);
   lens.render(L, changed);
 }
@@ -124,7 +122,5 @@ update(new Set(["init", "view", "vw", "data"]));
 const stageEl = app.querySelector(".stage");
 stageEl.style.transition = "none";
 void stageEl.offsetLeft;
-// nor does it wait hidden for the panel, as on an area switch (panels.css › Stage)
-stageEl.getAnimations().forEach((a) => a.finish());
 stageEl.style.transition = "";
 startPolling();

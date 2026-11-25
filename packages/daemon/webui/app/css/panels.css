@@ -1051,33 +1051,9 @@
   top: var(--panel-t, 66px);
   bottom: var(--stage-b, 92px);
   z-index: 2;
-  /* Area switch: the agent window fades in or out first (opacity 0.4s), then the stage slides,
-     so it never shows through the half-faded window. */
   transition:
-    left 0.45s var(--ease-knob) 0.4s,
+    left 0.45s var(--ease-knob),
     right 0.45s var(--ease-knob);
-}
-/* The window opens over the stage's old place: the stage stays hidden until it is opaque. */
-.app.is-beside-agent .stage {
-  animation: stage-after-agent 0.4s step-end;
-}
-@keyframes stage-after-agent {
-  from,
-  to {
-    visibility: hidden;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  /* No slide: opening, the stage stands beside the window at once; closing, it moves once the window is gone. */
-  .stage {
-    transition:
-      left 0s 0.4s,
-      right 0.45s var(--ease-knob);
-  }
-  .app.is-beside-agent .stage {
-    transition: right 0.45s var(--ease-knob);
-    animation: none;
-  }
 }
 .stage__wip {
   position: absolute;

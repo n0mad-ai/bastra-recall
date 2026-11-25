@@ -137,8 +137,6 @@ export function applyLayout(app, L, s) {
   });
   app.classList.toggle("is-short", s.vh < 640);
   app.classList.toggle("is-narrow", L.compact);
-  // The agent window takes the left column and the stage stands beside it (panels.css › Stage).
-  app.classList.toggle("is-beside-agent", L.cL > L.jL);
   app.classList.toggle("is-small", !L.wide);
   for (const f of ["console", "mirror", "anchored", "drawer", "island"]) app.classList.toggle(`ft-${f}`, L.ft === f);
   app.classList.toggle("ft-nopod", !L.pod);
