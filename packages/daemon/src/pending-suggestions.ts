@@ -222,6 +222,8 @@ async function writePendingRows(path: string, rows: PendingSuggestion[], busyTim
   writeAppRecord("pending-suggestions", path, JSON.stringify(rows), validateLegacyJson, { busyTimeoutMs });
 }
 
+const detachedRetry = Symbol("detached pending relay retry");
+
 /**
  * Append (capped, atomic). Best-effort — never throws. Only ENOENT starts an
  * empty store; unreadable or malformed existing files are preserved.
@@ -250,6 +252,7 @@ export async function writePendingSuggestion(
     clusters?: Record<string, number>;
     provisional?: string;
     deferOnBusy?: boolean;
+    [detachedRetry]?: true;
     /** Called only after a successful atomic relay write (also for refreshes).
      *  Disabled relay, skipped writes and failures never acknowledge persistence. */
     onPersisted?: () => void;
@@ -373,7 +376,7 @@ export async function writePendingSuggestion(
       if (ran) return;
       if (opts.deferOnBusy) {
         const { deferOnBusy: _defer, ...background } = opts;
-        void writePendingSuggestion(blocks, background);
+        void writePendingSuggestion(blocks, { ...background, [detachedRetry]: true });
         return;
       }
       if (Date.now() >= deadline) {
@@ -383,7 +386,7 @@ export async function writePendingSuggestion(
       // A busy writable directory is ordinary contention; retain the write.
       // Permanent filesystem denial is a real failure, not an endless retry.
       await access(dirname(path), constants.W_OK);
-      await delay(25);
+      await delay(25, undefined, { ref: !opts[detachedRetry] });
     }
   } catch (e) {
     // The relay stays best-effort — never break the Stop hook — but a write
@@ -600,7 +603,7 @@ export async function takePendingRelay(
           }
           return { recency, trends };
         },
-        { crossProcess: true, noQueue: true }
+        { crossProcess: true, noQueue: true, takeOverDead: true }
       )) ?? { recency: [], trends: [] }
     );
   } catch {

@@ -1,9 +1,11 @@
 import { readAppRecord, deleteAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
+import { execFile, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, unlink, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, unlink, rm, stat, utimes } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathLockFilePath } from "../src/path-lock.js";
 import { takePendingRelay, writePendingFromHook } from "../src/pending-suggestions.js";
@@ -50,6 +52,24 @@ test("busy relay reads skip immediately, preserve bytes, and deliver on the next
     await unlink(pathLockFilePath(path));
     assert.equal((await takePendingRelay()).recency.length, 1);
   }));
+test("a relay reader recovers an old dead local owner but leaves an old live owner alone", () =>
+  fixture(async (path) => {
+    const now = Date.now();
+    await writeFile(path, JSON.stringify([{ ts: now, blocks: "Invented retained relay observation" }]));
+    const lock = pathLockFilePath(path);
+    const expired = new Date(now - 60_000);
+    const liveOwner = { pid: process.pid, host: hostname(), ts: expired.getTime(), token: "live-fixture" };
+    await writeFile(lock, JSON.stringify(liveOwner));
+    await utimes(lock, expired, expired);
+    assert.deepEqual(await takePendingRelay(), { recency: [], trends: [] });
+    assert.equal(await readFile(lock, "utf8"), JSON.stringify(liveOwner));
+
+    const deadPid = spawnSync(process.execPath, ["--eval", ""]).pid;
+    assert.throws(() => process.kill(deadPid, 0), { code: "ESRCH" });
+    await writeFile(lock, JSON.stringify({ ...liveOwner, pid: deadPid, token: "dead-fixture" }));
+    await utimes(lock, expired, expired);
+    assert.deepEqual((await takePendingRelay()).recency, [{ ts: now, blocks: "Invented retained relay observation" }]);
+  }));
 test("busy hook writes return immediately and the deferred write persists after unlock without losing old entries", (t) =>
   fixture(async (path) => {
     const original = JSON.stringify([{ ts: Date.now(), blocks: "Invented old relay observation" }]);
@@ -81,6 +101,26 @@ test("busy hook writes return immediately and the deferred write persists after 
       ["Invented old relay observation", "Invented new relay observation"]
     );
     assert.equal(warnings, "");
+  }));
+test("a deferred hook write does not keep a short-lived process open", () =>
+  fixture(async (path) => {
+    await writeFile(pathLockFilePath(path), "held fixture lock");
+    const moduleUrl = new URL("../src/pending-suggestions.ts", import.meta.url).href;
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        `import { writePendingFromHook } from ${JSON.stringify(moduleUrl)};
+         await writePendingFromHook("Invented deferred relay observation");
+         console.log("hook returned");`,
+      ],
+      { timeout: 5000 }
+    );
+    assert.equal(stdout.trim(), "hook returned");
+    assert.equal(await readFile(pathLockFilePath(path), "utf8"), "held fixture lock");
   }));
 test("the actual Stop response skips busy relay contention and writes later", () =>
   fixture(async (path) => {

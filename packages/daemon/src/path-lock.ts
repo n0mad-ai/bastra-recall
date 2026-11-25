@@ -679,9 +679,12 @@ export function withPathLock<T>(
  * booking after its owner releases it. Called only off the response path.
  * Strict-local (#1691): one pass of the waiting strict lane, without the wait —
  * the same lease body (boot identity) and the same dead-owner-only reclaim. */
-function tryFileLock(path: string, takeOverStale: boolean, strictLocal = false): string | null {
+function tryFileLock(
+  path: string,
+  opts: PathLockOptions & { takeOverStale?: boolean; takeOverDead?: boolean }
+): string | null {
   const lockPath = pathLockFilePath(path);
-  if (strictLocal) {
+  if (opts.strictLocal) {
     const token = randomUUID();
     const body = newLeaseBody(token, true);
     try {
@@ -695,7 +698,7 @@ function tryFileLock(path: string, takeOverStale: boolean, strictLocal = false):
   try {
     return (
       mutateLock(lockPath, () => {
-        if (takeOverStale) {
+        if (opts.takeOverStale) {
           try {
             // The guard protects this whole age check and removal, including
             // legacy bodies without tokens. No acquisition can replace it.
@@ -705,7 +708,13 @@ function tryFileLock(path: string, takeOverStale: boolean, strictLocal = false):
           }
         }
         const token = randomUUID();
-        createLease(lockPath, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }));
+        const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
+        try {
+          createLease(lockPath, body);
+        } catch (err) {
+          if (!opts.takeOverDead || (err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+          if (!replaceAgedDeadLease(lockPath, body)) return null;
+        }
         return token;
       }) ?? null
     );
@@ -714,19 +723,31 @@ function tryFileLock(path: string, takeOverStale: boolean, strictLocal = false):
   }
 }
 
+/** Called under the same mutation guard as ordinary relay writers. */
+function replaceAgedDeadLease(lockPath: string, body: string): boolean {
+  const observed = lstatSync(lockPath);
+  if (!observed.isFile() || Date.now() - observed.mtimeMs <= LOCK_STALE_MS) return false;
+  const held = readMarker(lockPath);
+  if (!held.regular || held.st.ino !== observed.ino || !deadLocal(held.raw)) return false;
+  unlinkSync(lockPath);
+  createLease(lockPath, body);
+  return true;
+}
+
 /** Advisory feedback normally queues off the response path. `noQueue` skips a
  * busy local chain immediately. An aged lease is left alone unless the caller
- * explicitly opts into age-only takeover. Never writes without the
+ * explicitly opts into takeover. Readers can require proof of a dead owner.
+ * Never writes without the
  * cross-process lock; busy/unwritable means no mutation. */
 export function tryWithPathLock<T>(
   path: string,
   fn: () => Promise<T>,
-  opts: PathLockOptions & { takeOverStale?: boolean } = {}
+  opts: PathLockOptions & { takeOverStale?: boolean; takeOverDead?: boolean } = {}
 ): Promise<T | undefined> {
   if (opts.noQueue && (depths.get(path) ?? 0) > 0) return Promise.resolve(undefined);
   return withPathLock(path, async () => {
     const fileLock = opts.crossProcess || opts.strictLocal;
-    const token = fileLock ? tryFileLock(path, opts.takeOverStale === true, opts.strictLocal) : null;
+    const token = fileLock ? tryFileLock(path, opts) : null;
     if (fileLock && token === null) return undefined;
     try {
       return await fn();
