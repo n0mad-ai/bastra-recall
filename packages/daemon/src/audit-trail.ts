@@ -45,7 +45,7 @@ import {
   type WriteOriginEvidence,
 } from "@bastra-recall/core";
 import { writeCallerStore } from "./caller-session.js";
-import { redactSaveInput, withRedactionReceipt, type RedactionReceipt } from "./save-redaction.js";
+import { redactSaveInput, withRedactionReceipt, WriteRedaction, type RedactionReceipt } from "./save-redaction.js";
 
 /** One AuditLog per vault — it caches reads, and re-creating it per write
  *  would throw that cache away on every save. */
@@ -181,6 +181,24 @@ export interface SaveMemoryWithAuditTrailInput {
   commit?: SaveMemoryCommitOptions;
 }
 
+/** Preserve the import receipt for changed content fields without touching the mutation's exact snapshots. */
+function importAuditSnapshot(
+  snapshot: Record<string, unknown> | null,
+  prefix: string,
+  redaction: WriteRedaction
+): Record<string, unknown> | null {
+  if (snapshot === null) return null;
+  const copy = { ...snapshot };
+  for (const field of ["title", "summary", "applies_when", "verify_cmd"]) {
+    if (typeof copy[field] === "string") copy[field] = redaction.text(`${prefix}.${field}`, copy[field]);
+  }
+  if (Array.isArray(copy.recall_when))
+    copy.recall_when = copy.recall_when.map((item: unknown) =>
+      typeof item === "string" ? redaction.text(`${prefix}.recall_when`, item) : item
+    );
+  return copy;
+}
+
 /**
  * Audit a direct daemon `saveMemory` caller without requiring a live Vault
  * instance. Imports and onboarding both write before the watcher/index exists;
@@ -211,24 +229,29 @@ export async function saveMemoryWithAuditTrail(
   // Re-File protokollierte `operation: update` mit `diff_before: null`, also
   // eine Änderung ohne Vorzustand. Vor- und Nachbild kommen deshalb aus der
   // Mutation selbst, die beide unter ihrem Claim gelesen bzw. geschrieben hat.
-  const result = withRedactionReceipt(await saveMemory(args.vaultRoot, input, args.commit), redacted);
+  const result = await saveMemory(args.vaultRoot, input, args.commit);
   // #530: Ein Save, der nichts geschrieben hat, hat auch nichts zu belegen.
   // Ein wiederholter Import hängte sonst je unveränderter Datei ein
   // `update`-Ereignis mit identischem `diff_before`/`diff_after` an das
   // append-only Log — ein Beleg für eine Änderung, die es nicht gab.
-  if (result.unchanged) return result;
+  if (result.unchanged) return withRedactionReceipt(result, redacted);
+  const auditRedaction = new WriteRedaction();
   await recordAudit({
     vaultRoot: args.vaultRoot,
     memoryId: result.id,
     operation: result.created ? "create" : "update",
     actor: args.actor,
     actorDetail: args.actorDetail,
-    diffBefore: result.audit_before,
-    diffAfter: result.audit_after,
+    diffBefore: importAuditSnapshot(result.audit_before, "audit_before", auditRedaction),
+    diffAfter: importAuditSnapshot(result.audit_after, "audit_after", auditRedaction),
     filePath: result.file_path,
     sessionId: args.sessionId,
   });
-  return result;
+  const receipt = auditRedaction.receipt();
+  const saved = withRedactionReceipt(result, redacted);
+  if (!receipt.message) return saved;
+  receipt.fields.secrets_redacted = { ...redacted.fields.secrets_redacted, ...receipt.fields.secrets_redacted };
+  return withRedactionReceipt(saved, receipt);
 }
 
 /** Test seam — the module-level cache would otherwise leak between vaults. */
