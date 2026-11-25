@@ -105,6 +105,7 @@ export async function runSaveNoticeLane(
 ): Promise<string> {
   const startedAt = Date.now();
   let tool: WriteTool | null = null;
+  let client: ReturnType<typeof hookClientEvidence> = "unknown";
   let action: SaveNoticeAction | null = null;
   let stdout = "{}";
   try {
@@ -112,6 +113,7 @@ export async function runSaveNoticeLane(
     tool = recallWriteTool(payload.tool_name);
     if (tool === null) return "{}";
     if (envOff("BASTRA_SAVE_NOTICE")) return "{}";
+    client = hookClientEvidence(payload);
 
     const language = await (opts.language ?? getPrimaryLanguage)().catch(() => undefined);
     const notice = describeWrite(
@@ -123,7 +125,7 @@ export async function runSaveNoticeLane(
     );
     if (notice !== null) {
       action = notice.action;
-      const colour = hookClientEvidence(payload) !== "codex" || isOnValue(envFirst("BASTRA_SAVE_NOTICE_COLOR"));
+      const colour = (client !== "codex" && client !== "unknown") || isOnValue(envFirst("BASTRA_SAVE_NOTICE_COLOR"));
       stdout = JSON.stringify({ systemMessage: formatSaveNotice(notice, language, colour) });
     }
   } catch {
@@ -135,7 +137,7 @@ export async function runSaveNoticeLane(
       .then(() =>
         (opts.telemetry ?? writeTelemetry)({
           session_id: typeof payload.session_id === "string" ? payload.session_id : null,
-          client: hookClientEvidence(payload),
+          client,
           agent: hookAgent(payload),
           tool,
           action,
@@ -174,7 +176,7 @@ export function readToolResult(value: unknown): Record<string, unknown> | null {
   }
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  if (record.isError === true || record.error !== undefined) return null;
+  if (record.isError === true || record.is_error === true || record.error !== undefined) return null;
   if (typeof record.id === "string" && record.id.trim().length > 0) return record;
   if (Array.isArray(record.content)) return readToolResult(record.content);
   return null;

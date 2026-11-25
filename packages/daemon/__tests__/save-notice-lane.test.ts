@@ -211,6 +211,7 @@ test("a refused call gets no line", async () => {
       // The same refusal, should a client deliver it as a result after all.
       { tool_response: [{ type: "text", text: `memory already exists: ${ID}` }] },
       { tool_response: { isError: true, content: blocks({ id: ID, created: true }) } },
+      { tool_response: { is_error: true, content: blocks({ id: ID, created: true }) } },
       { tool_response: undefined },
       { tool_response: "null" },
     ];
@@ -698,5 +699,23 @@ test("Codex colour is an explicit daemon opt-in, with the same plain wording", a
       assert.match(JSON.parse(out).systemMessage, /^\x1b\[/);
     },
     { BASTRA_SAVE_NOTICE_COLOR: "1" }
+  );
+});
+
+test("an unmarked hook uses a plain notice by default", async () => {
+  await german(
+    async () => {
+      const out = await runSaveNoticeLane(
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "mcp__bastra_recall__save_memory",
+          tool_input: SAVE_INPUT,
+          tool_response: { content: blocks({ id: ID, created: true }) },
+        },
+        VAULT
+      );
+      assert.match(JSON.parse(out).systemMessage, /^bastra-recall gespeichert:/);
+    },
+    { BASTRA_SAVE_NOTICE_COLOR: "0" }
   );
 });
