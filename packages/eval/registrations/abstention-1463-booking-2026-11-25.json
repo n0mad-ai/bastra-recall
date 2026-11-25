@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "registration_version": 1,
+  "registered_at": "2026-11-25",
+  "issue": 1463,
+  "status": "preregistered",
+  "follows": "registrations/abstention-1463-2026-11-24.json",
+  "question": "How often does the UserPromptSubmit lane actually book a must-load hint (pending must-load in the session state, marker in the hook output) on the 79 unanswerable and 584 answerable gold-set questions?",
+  "code": {
+    "daemon_and_core": "packages/core/dist and packages/daemon/dist as built at 12c4cbfd; packages/eval/src (gold-set loader, attachHybrid) from the working tree",
+    "runner": "m1463-booking.mjs (kept outside the repo)",
+    "runner_sha256": "e9821ffb94f9a92662851ff11041b91f581076cef32f7d8377f96d6e596a0293",
+    "vault_prepare": "m1463-prepare.mjs (kept outside the repo)",
+    "vault_prepare_sha256": "c058890b5c76ef8c45ec46ce5c29f112b4036db6d45e1bf6d34653ae346a6a10"
+  },
+  "population": {
+    "dataset_sha256": "69e1475010c64a0a02eee0b2fbc6929f3a33de1029ffc14eea36b91316dced00",
+    "source_files": 12,
+    "no_answer": 79,
+    "answerable": 584,
+    "ignored_probes": 36,
+    "rule": "Identical to the 24.11 registration; the runner asserts hash and counts before the first call."
+  },
+  "vault": {
+    "target_state": "The 24.11.2026 pre-archiving copy (1,675 notes) that the 24.11 registration measured. That copy was removed after the run.",
+    "reconstruction": "Fresh scratch copy of the live vault on 25.11.2026, plus the 135 notes archived on 24.11 (restored from the copy's own trash), minus the 17 notes created on 24./25.11 and last written after the archiving finished (2026-11-24T04:53:35Z). Notes edited after 24.11 keep their current text.",
+    "acceptance_checks": "dataset hash, 79/584/36, missing_label_ids and answerable_with_no_available_primary as on 24.11 (3 and 2); vault size reported next to the 1,675 of 24.11"
+  },
+  "protocol": "Production runPromptLane, non-replay, with the options of the /hook/prompt route (rule-kernel notice, convention source, reflex pool). The lane's loopback calls (/hook/recall, /hook/reflex, /hook/hinted) go to an isolated in-process server built on the production dispatchLocalRoutes over the scratch vault. Evidence gate on (production default), prompt-hook mode default, context budget default (10,000 chars minus the rulebook notice). Every lane call uses a fresh session id; temp HOME and hook-state dir inside the scratch folder; telemetry off. No learned bridges, no prewarm, no deadline-learning profile.",
+  "arms": {
+    "host": {
+      "claude-code": "bastra_client claude-code: deny-capable, hookGateAvailable true",
+      "codex-legacy": "bastra_client codex without a verified bastra_codex_version: hookGateAvailable false; control, expected 0 bookings"
+    },
+    "scope": {
+      "unscoped": "cwd without a git root: no project detected",
+      "bastra-recall": "cwd = repository git root: project bastra-recall"
+    },
+    "index": {
+      "bm25": "SearchIndex only",
+      "hybrid": "BM25 + EmbeddingGemma via local Ollama, store copied from the scratch vault, missing vectors backfilled"
+    }
+  },
+  "primary_metric": "booked_any: share of questions whose lane call leaves at least one pending must-load entry in the fresh session state (claude-code, unscoped, hybrid, no_answer; denominator 79).",
+  "secondary_metrics": [
+    "booked_any on the 584 answerable questions",
+    "marked_any: share with the must-load marker in the hook stdout, and its mismatch count against booked_any",
+    "recall_hints_delivered, unfused_recall, lane status and detected mode",
+    "the same for every arm above"
+  ],
+  "interpretation_fixed_in_advance": "A booking is a pending must-load claim the gate lane will hold for the next tool call; it is not proof that a tool call was interrupted. The lane books any delivered hint of a rule-shaped type with own-trigger, reflex or user-directed evidence; it does not require the 100-point band that the 24.11 'must-load-eligible' count used. Numbers on the reconstructed vault are not identical to the 24.11 copy.",
+  "privacy": "Aggregates only; no query text, note ids or paths are recorded.",
+  "results": {
+    "recorded_at": "2026-11-25",
+    "status": "numbers_registered",
+    "execution": {
+      "wrapper": "m1463-run.sh (shared CPU lock, idle >= 40 % before each arm, watchdog pause below 25 % idle; no pause occurred)",
+      "wrapper_sha256": "62536341594b9be4597274d3254db0b4f7524a779bc9e0a428c7860a5333d095",
+      "runner_sha256_unchanged": true,
+      "note": "A first start at 20:15 was aborted before completion when the night CPU rule took effect; its partial output was discarded. The registered run started 20:26:59 and ended 20:29:05 on the unchanged runner."
+    },
+    "acceptance_checks": {
+      "dataset_sha256_match": true,
+      "no_answer": 79,
+      "answerable": 584,
+      "ignored_probes": 36,
+      "missing_label_ids": 3,
+      "answerable_with_no_available_primary": 2,
+      "vault_count": 1674,
+      "vault_count_24_11": 1675,
+      "hybrid_vectors": 1674,
+      "hybrid_backfilled": 135
+    },
+    "definitions": {
+      "booked_any": "at least one pendingMustLoad entry in the fresh session state after the lane call",
+      "marked_any": "at least one must-load marker in the hook stdout",
+      "recall_hints_delivered": "lane telemetry hint_count + reflex_hint_count > 0",
+      "unfused_recall": "the /hook/recall answer the lane received carried unfused: true"
+    },
+    "primary": {
+      "arm": "hybrid / claude-code / unscoped / no_answer",
+      "booked_any": 10,
+      "n": 79
+    },
+    "groups": {
+      "hybrid/claude-code/unscoped/no_answer": { "n": 79, "recall_hints_delivered": 37, "booked_any": 10, "booked_ids_total": 10, "marked_any": 10, "booking_marker_mismatch": 0, "unfused_recall": 4 },
+      "hybrid/claude-code/unscoped/answerable": { "n": 584, "recall_hints_delivered": 407, "booked_any": 121, "booked_ids_total": 158, "marked_any": 121, "booking_marker_mismatch": 0, "unfused_recall": 11 },
+      "hybrid/claude-code/bastra-recall/no_answer": { "n": 79, "recall_hints_delivered": 37, "booked_any": 10, "booked_ids_total": 10, "marked_any": 10, "booking_marker_mismatch": 0, "unfused_recall": 4 },
+      "hybrid/claude-code/bastra-recall/answerable": { "n": 584, "recall_hints_delivered": 407, "booked_any": 121, "booked_ids_total": 158, "marked_any": 121, "booking_marker_mismatch": 0, "unfused_recall": 11 },
+      "hybrid/codex-legacy/unscoped/no_answer": { "n": 79, "recall_hints_delivered": 37, "booked_any": 0, "marked_any": 0, "unfused_recall": 4 },
+      "hybrid/codex-legacy/unscoped/answerable": { "n": 584, "recall_hints_delivered": 407, "booked_any": 0, "marked_any": 0, "unfused_recall": 11 },
+      "hybrid/codex-legacy/bastra-recall/no_answer": { "n": 79, "recall_hints_delivered": 37, "booked_any": 0, "marked_any": 0, "unfused_recall": 4 },
+      "hybrid/codex-legacy/bastra-recall/answerable": { "n": 584, "recall_hints_delivered": 407, "booked_any": 0, "marked_any": 0, "unfused_recall": 11 },
+      "bm25/claude-code/unscoped/no_answer": { "n": 79, "recall_hints_delivered": 2, "booked_any": 1, "booked_ids_total": 1, "marked_any": 1, "booking_marker_mismatch": 0, "unfused_recall": 79 },
+      "bm25/claude-code/unscoped/answerable": { "n": 584, "recall_hints_delivered": 21, "booked_any": 8, "booked_ids_total": 10, "marked_any": 8, "booking_marker_mismatch": 0, "unfused_recall": 584 },
+      "bm25/claude-code/bastra-recall/no_answer": { "n": 79, "recall_hints_delivered": 2, "booked_any": 1, "booked_ids_total": 1, "marked_any": 1, "booking_marker_mismatch": 0, "unfused_recall": 79 },
+      "bm25/claude-code/bastra-recall/answerable": { "n": 584, "recall_hints_delivered": 21, "booked_any": 8, "booked_ids_total": 10, "marked_any": 8, "booking_marker_mismatch": 0, "unfused_recall": 584 },
+      "bm25/codex-legacy/unscoped/no_answer": { "n": 79, "recall_hints_delivered": 2, "booked_any": 0, "marked_any": 0, "unfused_recall": 79 },
+      "bm25/codex-legacy/unscoped/answerable": { "n": 584, "recall_hints_delivered": 21, "booked_any": 0, "marked_any": 0, "unfused_recall": 584 },
+      "bm25/codex-legacy/bastra-recall/no_answer": { "n": 79, "recall_hints_delivered": 2, "booked_any": 0, "marked_any": 0, "unfused_recall": 79 },
+      "bm25/codex-legacy/bastra-recall/answerable": { "n": 584, "recall_hints_delivered": 21, "booked_any": 0, "marked_any": 0, "unfused_recall": 584 }
+    },
+    "detected_mode": {
+      "no_answer": { "generic": 77, "retrieval": 2 },
+      "answerable": { "generic": 559, "retrieval": 12, "assertion": 13 }
+    },
+    "interpretation": [
+      "On the deny-capable host with hybrid search, the lane booked a must-load hint on 10 of 79 unanswerable questions (12.7 %) and on 121 of 584 answerable questions (20.7 %). Booking and output marker agreed on every call.",
+      "The legacy Codex control booked nothing on identical hints, as the code intends.",
+      "With BM25 only, every recall answer was unfused; in the default generic mode only user-wired hints may then be delivered, so the lane stayed nearly silent (1/79 and 8/584 booked).",
+      "The scope arms were identical. Project detection differed (git root vs. none), but the lane passes the project only as a recall hint and its scope filter runs in shadow mode.",
+      "Compared with 24.11 (11/79 must-load-eligible, hybrid, unscoped), the actual booking rate on unanswerable questions is of the same order. The two numbers are not a strict subset relation: the lane books any delivered rule-shaped hint with trigger, reflex or user-directed evidence, without the 100-point band, but only k=3 to 5 hints reach it."
+    ],
+    "limitations": [
+      "The vault is a reconstruction of the 24.11 copy with 1,674 instead of 1,675 notes; edits made after 24.11 are included.",
+      "Code is the 12c4cbfd build (dist), not the newer working-tree sources.",
+      "Every question ran in a fresh session: no backoff, no dedup, no earlier loads. A real session books less once a hint was shown or loaded.",
+      "No learned bridges, no prewarm, no latency profile; the rulebook notice was generated from the scratch vault.",
+      "A booking is a pending claim, not a measured tool-call interruption."
+    ]
+  }
+}
