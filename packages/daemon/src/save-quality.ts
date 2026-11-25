@@ -242,33 +242,39 @@ function restatesCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, 
  *  credential values are never compared (#1734). */
 function claimTrigrams(summary: string, body: string): Set<string> {
   const text = `${same(summary)} ${same(stripAutoRelatedSection(body))}`.toLowerCase().replace(/\s+/g, " ");
-  const chars = Array.from(text);
   const grams = new Set<string>();
-  for (let i = 0; i + 3 <= chars.length; i++) grams.add(chars.slice(i, i + 3).join(""));
+  let first = "",
+    second = "";
+  for (const character of text) {
+    if (first) grams.add(first + second + character);
+    first = second;
+    second = character;
+  }
   return grams;
 }
 
 /** #643, rule from the Run-4 measurement: the advisory is for repeating the OLD
  *  claim. A save that reworded the current version still matches the old one on
  *  its metadata, but carries more of what only the current version says than of
- *  what only the old one said. Only the text that changed between the two
- *  versions votes; a tie keeps the advisory, so this can only drop warnings. */
+ *  what only the old one said. Keep the advisory when a save still carries old
+ *  evidence, even if it also includes more background from the current version. */
 function closerToCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, currentId: string): boolean {
   const old = deps.vault.get(oldId);
   const current = deps.vault.get(currentId);
   if (!old || !current) return false;
+  // An exact opening that repeats the superseded summary is already old
+  // evidence. Avoid building three gram sets for that common case.
+  if (old.fm.summary !== current.fm.summary && input.summary.startsWith(old.fm.summary)) return false;
   const oldGrams = claimTrigrams(old.fm.summary, old.body);
   const currentGrams = claimTrigrams(current.fm.summary, current.body);
-  let toOld = 0;
-  let toCurrent = 0;
+  let supportsCurrent = false;
   for (const gram of claimTrigrams(input.summary, input.body ?? "")) {
     const inOld = oldGrams.has(gram);
-    if (inOld !== currentGrams.has(gram)) {
-      if (inOld) toOld++;
-      else toCurrent++;
-    }
+    const inCurrent = currentGrams.has(gram);
+    if (inOld && !inCurrent) return false;
+    if (!inOld && inCurrent) supportsCurrent = true;
   }
-  return toCurrent > toOld;
+  return supportsCurrent;
 }
 
 /** The public `superseded_by` edges, oldest successor first. A private or missing

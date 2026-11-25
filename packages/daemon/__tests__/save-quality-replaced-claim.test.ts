@@ -416,3 +416,10 @@ test("the usage guide limits redacted claim comparison to enabled redaction", as
   assert.match(lines[0], /When credential redaction is enabled/);
   assert.match(lines[1], /Bei eingeschalteter Schwärzung/);
 });
+
+test("new supporting details do not hide a warning when the saved claim still repeats the old value", () => {
+  const context = "The new runner batches acknowledgments asynchronously using the dedicated throughput queue.";
+  const issue = claimCorrected(OLD, `${NEW} ${context}`);
+  assert.ok(issue(`${OLD} ${context}`), "the old batch size is still asserted");
+  assert.equal(issue(`${NEW} ${context}`), undefined);
+});
