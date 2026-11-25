@@ -76,7 +76,7 @@ export function mountLensView(kind, stage) {
     buildCard();
   }
   const onKey = (e) => {
-    if (e.key === "Escape" && selMem && !state.covered) {
+    if (e.key === "Escape" && lens.selScreen() && !state.covered) {
       e.preventDefault();
       e.stopImmediatePropagation();
       closeCard();

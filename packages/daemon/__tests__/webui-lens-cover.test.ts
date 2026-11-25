@@ -51,12 +51,14 @@ test("lens-canvas and lens-view wire the pause", async () => {
 // to restart the animation at the wall clock while frames stay on the held
 // clock, so the progress went negative (Half-life rings: negative radius,
 // IndexSizeError). The real lens canvas runs here with a fake canvas and clock.
-async function lensUnderCover() {
+async function lensUnderCover(onOpen?: (id: string) => void) {
   const read = (file: string) => readFile(new URL(`../webui/app/js/views/${file}`, import.meta.url), "utf8");
   const strip = (source: string) => source.replace(/^import [\s\S]*?;$/gm, "").replace(/^export /gm, "");
   const source = strip(await read("lens-clock.js")) + "\n" + strip(await read("lens-canvas.js"));
   const clock = { now: 1000 };
   const frames: Array<(ts: number) => void> = [];
+  const timers = new Map<number, () => void>();
+  let nextTimer = 0;
   const drawn: number[] = [];
   const node = () => ({
     append() {},
@@ -78,8 +80,11 @@ async function lensUnderCover() {
     performance: { now: () => clock.now },
     requestAnimationFrame: (fn: (ts: number) => void) => frames.push(fn),
     cancelAnimationFrame() {},
-    setTimeout,
-    clearTimeout,
+    setTimeout(fn: () => void) {
+      timers.set(++nextTimer, fn);
+      return nextTimer;
+    },
+    clearTimeout: (id: number) => timers.delete(id),
     ResizeObserver: class {
       observe() {}
       disconnect() {}
@@ -92,14 +97,19 @@ async function lensUnderCover() {
     TC: {},
     ACC: "#fff",
     INK: "#fff",
-    VIEWS: { half: ({ t }: { t: number }) => drawn.push(t) },
+    VIEWS: {
+      half: ({ t, pt }: { t: number; pt: (x: number, y: number, r: number, datum: object) => void }) => {
+        drawn.push(t);
+        pt(100, 90, 5, { m: { id: "memory" } });
+      },
+    },
     prep: (vault: unknown) => vault,
     rgba: () => "",
     dstr: () => "",
-  }).mountLens(canvas, { kind: "half", vault: { n: 1 } });
+  }).mountLens(canvas, { kind: "half", vault: { n: 1 }, onOpen });
   // one frame at the current time (the loop asks for the next one while busy)
   const flush = () => frames.splice(0).forEach((frame) => frame(clock.now));
-  return { lens, clock, drawn, flush };
+  return { lens, clock, drawn, flush, runTimers: () => timers.forEach((fn) => fn()) };
 }
 
 test("a replay under a covering layer starts on the held clock and plays after resume (#1552)", async () => {
@@ -124,4 +134,19 @@ test("a replay under a covering layer starts on the held clock and plays after r
   lens.update({ focus: "x" });
   flush();
   assert.ok(drawn.at(-1)! > 0 && drawn.at(-1)! < 1); // still playing halfway
+});
+
+test("reset during a lens zoom cancels the pending card and browser callback", async () => {
+  const opened: string[] = [];
+  const { lens, flush, runTimers } = await lensUnderCover((id) => opened.push(id));
+  flush();
+  assert.equal(
+    lens.open("memory", () => opened.push("browser")),
+    true
+  );
+  assert.equal(lens.selScreen()[2], "memory");
+  lens.reset();
+  runTimers();
+  assert.equal(lens.selScreen(), null);
+  assert.deepEqual(opened, []);
 });

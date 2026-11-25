@@ -408,6 +408,7 @@ export function mountLens(canvas, opts) {
       zoomAt(f, w / 2, h0 / 2);
     },
     reset() {
+      clearTimeout(openT);
       sel = null;
       aim(1, 0, 0);
     },
