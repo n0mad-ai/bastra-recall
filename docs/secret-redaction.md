@@ -86,6 +86,28 @@ to remote Ollama. The task execution adapter still requires credentials to stay
 out of its exact previews and backups. A connected assistant or a file sync
 service can receive the vault content that you keep with the switch off.
 
+### Switching it back on
+
+Turning the switch on again rewrites nothing by itself. Text that was kept
+unredacted while it was off changes only when Recall processes it again, and that
+depends on where it lives:
+
+- **Drafts:** when the draft store is loaded afresh (after any change to it, or
+  after a daemon restart), every draft is cleaned again and the cleaned version is
+  saved with the next write. A draft whose quote is mostly credentials (more than
+  30 % of it) is dropped from the store then. A draft that becomes a note is
+  cleaned at that step as well.
+- **Suggestion relay:** the waiting entries are cleaned at the next write to the
+  relay and before an entry is delivered.
+- **Tasks:** every change to the task store cleans all task text in it (requests,
+  goals, notes, events, decisions), not only the task you changed. Reading changes
+  nothing. Restoring an older backup cleans it as well.
+- **Not rewritten:** notes and documents already in the vault (`edit_memory` cleans
+  only the text you add, never the body that is already stored), and reports
+  already saved. For reports, only text that arrives later (a new report, a note or
+  a reply) is cleaned. If an old note, document or report holds a credential you
+  wrote while the switch was off, change or delete it yourself.
+
 ## Fixed acceptance corpus
 
 `packages/core/__tests__/redact-secrets-corpus.test.ts` retains every literal and
@@ -276,6 +298,31 @@ und entferntes Ollama geschwärzt. Die exakten Vorschauen und Sicherungen der
 Aufgabenausführung dürfen weiterhin keine erkannten Zugangsdaten enthalten. Ein
 verbundener Assistent oder ein Dateisynchronisierungsdienst kann die Vault-Inhalte
 erhalten, die du bei ausgeschaltetem Schalter speicherst.
+
+### Schwärzung wieder einschalten
+
+Das erneute Einschalten schreibt von sich aus nichts um. Text, der bei
+ausgeschaltetem Schalter ungeschwärzt blieb, ändert sich erst, wenn Recall ihn
+wieder verarbeitet; das hängt davon ab, wo er liegt:
+
+- **Entwürfe:** Wird der Entwurfsspeicher neu geladen (nach jeder Änderung daran
+  oder nach einem Neustart des Daemons), wird jeder Entwurf erneut bereinigt, und
+  die bereinigte Fassung wird mit dem nächsten Schreiben gespeichert. Ein Entwurf,
+  dessen Zitat überwiegend aus Zugangsdaten besteht (mehr als 30 %), fällt dabei aus
+  dem Speicher. Wird ein Entwurf zur Notiz, wird er in diesem Schritt ebenfalls
+  bereinigt.
+- **Vorschlags-Relay:** Die wartenden Einträge werden beim nächsten Schreiben ins
+  Relay und vor der Auslieferung eines Eintrags bereinigt.
+- **Aufgaben:** Jede Änderung am Aufgabenspeicher bereinigt allen Aufgabentext darin
+  (Aufträge, Ziele, Notizen, Ereignisse, Entscheidungen), nicht nur den der
+  geänderten Aufgabe. Reines Lesen ändert nichts. Auch das Zurückholen einer älteren
+  Sicherung bereinigt sie.
+- **Nicht umgeschrieben:** Notizen und Dokumente, die schon im Vault liegen
+  (`edit_memory` bereinigt nur den Text, den du hinzufügst, nie den bereits
+  gespeicherten Body), und bereits gespeicherte Berichte. Bei Berichten wird nur Text
+  bereinigt, der später dazukommt (neuer Bericht, Anmerkung oder Antwort). Steht in
+  einer alten Notiz, einem Dokument oder einem Bericht ein Zugangsdatum, das du bei
+  ausgeschaltetem Schalter geschrieben hast, ändere oder lösche es selbst.
 
 ## Deutsch: Vorschlags-Relay
 
