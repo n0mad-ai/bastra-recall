@@ -38,6 +38,9 @@ function fixture() {
     vault: {
       get: (id: string) => (id === m.fm.id ? m : undefined),
       list: () => [m],
+      size: () => 1,
+      scanBlindSpots: () => [],
+      root,
       on: (fn: (e: VaultEvent) => void) => {
         fire = () => fn({ kind: "change", memory: m });
         return () => {};
