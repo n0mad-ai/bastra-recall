@@ -225,7 +225,8 @@ function calendar() {
     if (!bodyEl) return;
     const bw = bodyEl.clientWidth,
       bh = bodyEl.clientHeight;
-    if (bw > 0 && (Math.abs(bw - size.bw) > 1 || Math.abs(bh - size.bh) > 1)) {
+    // every pixel counts: the ledger scales its hours by bh and stacks the day heads by bw (#1732)
+    if (bw > 0 && (bw !== size.bw || bh !== size.bh)) {
       size = { bw, bh };
       drawCal();
     }
