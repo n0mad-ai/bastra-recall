@@ -19,8 +19,9 @@ import { callTaskCrud } from "../src/task-service.js";
 import { readTaskStore } from "../src/task-store.js";
 import { evaluateTaskSnapshot, observeTaskSources, reconcileTaskTime, taskValueHash } from "../src/task-events.js";
 import { ambiguousTaskCalendar, localWall, resolveTaskCalendar } from "../src/task-clock.js";
-import { emptyTaskStore } from "../src/task-schema.js";
+import { TASK_MAX_BYTES, emptyTaskStore } from "../src/task-schema.js";
 import { cachedTaskSnapshot } from "../src/task-outbox.js";
+import { notifyDueTasks } from "../src/task-notification.js";
 import { startTaskRuntime } from "../src/task-runtime.js";
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-events-"));
@@ -829,4 +830,99 @@ test("#1599 deleting a task is allowed above the normal limit because it makes t
     ["Second"]
   );
   assert.ok(storeBytes(f.ctx.path) < NORMAL_LIMIT);
+});
+
+test("near the hard limit each full-task audit competes independently and due slots retry", async () => {
+  const { f, seriesId } = await fullHistoryFixture(9899);
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    idempotency_key: "second-series",
+    goal: "Second full series",
+    recurrence: { kind: "elapsed", interval: 60000, catch_up: "latest" },
+  });
+  const full = await readTaskStore(f.ctx.path);
+  const second = full.tasks.find((t) => t.goal === "Second full series")!;
+  second.history = full.tasks.find((t) => t.id === seriesId)!.history;
+  await writeAppRecord("tasks", f.ctx.path, JSON.stringify(full));
+  const once = full.tasks.find((t) => t.goal === "One reminder")!;
+  await padStore(f.ctx.path, once.id, TASK_MAX_BYTES - 345);
+
+  await assert.rejects(reconcileTaskTime(f.ctx), { code: "capacity" });
+  const after = await readTaskStore(f.ctx.path);
+  const series = after.tasks.find((t) => t.id === seriesId)!;
+  assert.equal(series.armed, false);
+  assert.equal(series.history.at(-1)?.operation, "history-full");
+  assert.equal(after.tasks.find((t) => t.id === second.id)?.armed, true, "only one history audit fits");
+  assert.equal(after.occurrences.length, 0);
+  const pending = after.tasks.find((t) => t.id === once.id)!;
+  assert.equal(pending.slots_checked ?? 0, 0, "the reminder stays eligible for a retry");
+  await callTaskCrud(f.ctx, f.auth, "task_delete", {
+    id: series.id,
+    expected_revision: `${after.recovery_epoch}:${series.revision}`,
+  });
+  await reconcileTaskTime(f.ctx).catch((error) => {
+    assert.equal(error.code, "capacity");
+  });
+  const retried = await readTaskStore(f.ctx.path);
+  assert.deepEqual(
+    retried.occurrences.map((o) => o.task_id),
+    [once.id]
+  );
+  assert.equal(retried.tasks.find((t) => t.id === second.id)?.history.at(-1)?.operation, "history-full");
+  const state = (await callTaskCrud(f.ctx, f.auth, "task_get", { id: once.id })) as { state: string };
+  assert.equal(state.state, "due");
+  await reconcileTaskTime(f.ctx);
+  assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1, "a later pass does not duplicate delivery");
+});
+
+test("a frequent series can use a reminder reserve without spending the owner's control reserve", async () => {
+  const f = await fixture();
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    recurrence: { kind: "elapsed", interval: 1000, catch_up: "latest" },
+  });
+  const id = (await readTaskStore(f.ctx.path)).tasks[0].id;
+  const reminderLimit = (TASK_MAX_BYTES * 7) / 8;
+  await padStore(f.ctx.path, id, reminderLimit - 650);
+
+  f.setNow(2000);
+  await assert.rejects(reconcileTaskTime(f.ctx), { code: "capacity" });
+  let state = await readTaskStore(f.ctx.path);
+  assert.equal(state.occurrences.length, 1);
+  const delivered: string[] = [];
+  const options = {
+    platform: "darwin",
+    enabled: true,
+    send: async (message: { body: string }) => void delivered.push(message.body),
+  } as const;
+  await notifyDueTasks(f.ctx, options);
+  assert.deepEqual(delivered, [f.input.goal]);
+  for (const now of [3000, 4000]) {
+    f.setNow(now);
+    await assert.rejects(reconcileTaskTime(f.ctx), { code: "capacity" });
+  }
+  state = await readTaskStore(f.ctx.path);
+  await notifyDueTasks(f.ctx, options);
+  assert.deepEqual(delivered, [f.input.goal], "the prior reminder is not delivered again");
+  assert.equal(state.occurrences.length, 1, "no automatic write can fill the control reserve");
+  assert.equal(state.tasks[0].next_slot?.at, 3000);
+  assert.ok(storeBytes(f.ctx.path) <= reminderLimit);
+  await callTaskCrud(f.ctx, f.auth, "task_resolve", {
+    id,
+    occurrence_id: state.occurrences[0].id,
+    expected_revision: `${state.recovery_epoch}:${state.tasks[0].revision}`,
+  });
+  state = await readTaskStore(f.ctx.path);
+  await callTaskCrud(f.ctx, f.auth, "task_cancel", {
+    id,
+    expected_revision: `${state.recovery_epoch}:${state.tasks[0].revision}`,
+  });
+  state = await readTaskStore(f.ctx.path);
+  assert.equal(state.tasks[0].state, "cancelled");
+  await callTaskCrud(f.ctx, f.auth, "task_archive", {
+    task_ids: [id],
+    expected_revision: state.revision,
+    recovery_epoch: state.recovery_epoch,
+  });
+  assert.deepEqual((await readTaskStore(f.ctx.path)).tasks, []);
 });

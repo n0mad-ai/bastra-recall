@@ -12,8 +12,15 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
-import { taskSourceSchema, taskIdentitySchema, type TaskStore, type Task } from "./task-schema.js";
-import { transactTaskStore, readTaskStore, TaskStoreError, TASK_HISTORY_RESERVE } from "./task-store.js";
+import { TASK_MAX_BYTES, taskSourceSchema, taskIdentitySchema, type TaskStore, type Task } from "./task-schema.js";
+import {
+  transactTaskStore,
+  readTaskStore,
+  TaskStoreError,
+  TASK_HISTORY_RESERVE,
+  TASK_TIME_REMINDER_LIMIT,
+  withTaskStoreGuard,
+} from "./task-store.js";
 import { latestTimeSlot, timeSlot } from "./task-clock.js";
 import type { TaskServiceContext } from "./task-service.js";
 const exec = promisify(execFile);
@@ -418,10 +425,53 @@ function advanceEventCheckpoint(store: TaskStore): void {
     : (store.events.at(-1)?.sequence ?? 0);
   store.checkpoint = Math.max(store.checkpoint, cursor);
 }
+/** Commit the task changes that fit without advancing any refused slot. */
+function fitReserveTaskChanges(store: TaskStore, limit: number, update: (task: Task) => Task | undefined): void {
+  if (!store.controls.enabled) return;
+  const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+  let remaining = limit - bytes(store) - 1; // store revision may gain one digit
+  if (remaining < 0) return;
+  store.tasks.forEach((task, index) => {
+    const count = store.occurrences.length;
+    const trial = update(task);
+    if (!trial || trial.revision === task.revision) return;
+    const occurrence = store.occurrences[count];
+    const added = bytes(trial) - bytes(task) + (occurrence ? bytes(occurrence) + Number(count > 0) : 0);
+    if (added > remaining || store.occurrences.length > 10000) {
+      store.occurrences.length = count;
+      return;
+    }
+    store.tasks[index] = trial;
+    remaining -= added;
+  });
+}
+
+function disarmFullTasks(store: TaskStore, now: number): void {
+  fitReserveTaskChanges(store, TASK_MAX_BYTES, (task) => {
+    if (!task.armed || task.history.length < TASK_HISTORY_RESERVE - 1) return;
+    const trial = structuredClone(task);
+    historyFull(trial, now);
+    return trial;
+  });
+}
+
+function evaluateReserveTimeTasks(store: TaskStore, now: number): void {
+  fitReserveTaskChanges(store, TASK_TIME_REMINDER_LIMIT, (task) => {
+    if (
+      task.schedule.kind === "event" ||
+      taskRests(task, now) ||
+      taskValidityExpired(task, now) ||
+      task.history.length >= TASK_HISTORY_RESERVE - 1
+    )
+      return;
+    const trial = structuredClone(task);
+    evaluateTimeTask(store, trial, now);
+    return trial;
+  });
+}
+
 export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskStore> {
-  // Automatic disarming needs its audit row even at the history reserve
-  // (#1581), but the evaluation stays under the normal byte limit (#1599);
-  // a time reminder that is due always fires, if need be from the reserve.
+  // The normal time evaluation stays under the normal byte limit (#1599).
   try {
     return await transactTaskStore(
       ctx.path,
@@ -434,26 +484,13 @@ export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskSt
     );
   } catch (error) {
     if (!(error instanceof TaskStoreError) || error.code !== "capacity") throw error;
-    // Only the audit row that switches a full task off and a time reminder
-    // that is due now may use the owner's control reserve; the refused
-    // evaluation itself stays visible.
+    // Commit the full-history audit independently of due time reminders.
+    // A reminder without space stays eligible after the owner makes room.
     const now = (ctx.now ?? Date.now)();
-    await transactTaskStore(
-      ctx.path,
-      undefined,
-      (s) => {
-        if (!s.controls.enabled) return;
-        for (const task of s.tasks)
-          if (
-            !historyFull(task, now) &&
-            task.schedule.kind !== "event" &&
-            !taskRests(task, now) &&
-            !taskValidityExpired(task, now)
-          )
-            evaluateTimeTask(s, task, now);
-      },
-      "control"
-    );
+    await withTaskStoreGuard(ctx.path, async (guard) => {
+      await guard.commit((store) => disarmFullTasks(store, now), "control");
+      await guard.commit((store) => evaluateReserveTimeTasks(store, now), "time-reminder");
+    });
     throw error;
   }
 }

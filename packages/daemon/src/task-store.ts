@@ -34,6 +34,8 @@ export { decodeTaskStore };
 
 /** History rows a normal mutation may reach; the rest is kept for control operations. */
 export const TASK_HISTORY_RESERVE = 9900;
+/** Leave half of the byte reserve for control operations and delivery. */
+export const TASK_TIME_REMINDER_LIMIT = (TASK_MAX_BYTES * 7) / 8;
 
 async function readTaskStoreRaw(path: string): Promise<TaskStore> {
   let raw: string;
@@ -188,12 +190,13 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
 /** `automatic` is the time evaluation: it may write a full task's own history
  * like a control operation, but it stays under the normal byte limit so the
  * space above it remains for the owner's control operations (#1599). */
-export type TaskMutationKind = "normal" | "control" | "automatic" | "archive" | "delete";
+export type TaskMutationKind = "normal" | "control" | "automatic" | "time-reminder" | "archive" | "delete";
 /** Control operations may fill the store; everything else stops at 75 %, except
  * archiving or deleting that makes the store smaller: that is the way out of a
  * full store and is never refused for size (#1599). */
 function taskByteLimit(kind: TaskMutationKind, payload: string, store: TaskStore): number {
   if (kind === "control") return TASK_MAX_BYTES;
+  if (kind === "time-reminder") return TASK_TIME_REMINDER_LIMIT;
   const shrinks =
     (kind === "archive" || kind === "delete") && Buffer.byteLength(payload) < Buffer.byteLength(JSON.stringify(store));
   return shrinks ? TASK_MAX_BYTES : TASK_MAX_BYTES * 0.75;
