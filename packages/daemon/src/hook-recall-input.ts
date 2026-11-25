@@ -104,8 +104,13 @@ export function readHookRecallInput(body: Record<string, unknown>) {
   // #1727: the recall tool's `min_score` and `verbosity`, sent by the MCP
   // forwarder so both transports serve the same call alike. The hook lanes and
   // older forwarders send neither: no floor (the lanes apply their own), lean hits.
-  const minScore = typeof body.min_score === "number" && Number.isFinite(body.min_score) ? body.min_score : 0;
-  const full = body.verbosity === "full";
+  // #1736: only the tool lane may set them. Any other caller's values are
+  // ignored (not rejected, so older clients keep working), which keeps the
+  // automatic hook hints' projection and budget fixed.
+  const toolLane = body.hook_source === "mcp";
+  const minScore =
+    toolLane && typeof body.min_score === "number" && Number.isFinite(body.min_score) ? body.min_score : 0;
+  const full = toolLane && body.verbosity === "full";
   return {
     k,
     hookSessionId,

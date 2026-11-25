@@ -172,6 +172,60 @@ test("#1727: near-duplicate queries collapse before the forwarder fans out", asy
   assert.equal((distinct.recall_ids as string[]).length, 2);
 });
 
+// #1736: `min_score` and `verbosity` belong to the recall tool. Only the MCP
+// forwarder (`hook_source: "mcp"`) may set them; for any other caller they are
+// ignored, so an automatic hook hint keeps its projection and its budget.
+const AUTOMATIC_LANES = [
+  undefined,
+  "prompt",
+  "session",
+  "session-context",
+  "pre-tool",
+  "todo",
+  "bash-pre",
+  "bash-fail",
+  "gate",
+  "save-notice",
+];
+
+/** The payload with wall-clock values and per-call ids taken out. */
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable);
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, inner] of Object.entries(value)) {
+    if (key.endsWith("_ms") || key === "recall_id" || key === "recall_ids") continue;
+    out[key] = stable(inner);
+  }
+  return out;
+}
+
+async function hookRecall(port: number | null, body: Record<string, unknown>): Promise<string> {
+  const res = await fetch(`http://127.0.0.1:${port}/hook/recall`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return JSON.stringify(stable(await res.json()));
+}
+
+test("#1736: min_score and verbosity leave every automatic lane's payload and budget byte-identical", async () => {
+  const { port } = ctx;
+  for (const lane of AUTOMATIC_LANES) {
+    const base = { query: "deploy release", k: 2, ...(lane ? { hook_source: lane } : {}) };
+    const plain = await hookRecall(port, base);
+    assert.ok(JSON.parse(plain).hits.length > 0, `${lane}: fixture must produce hits`);
+    for (const extra of [{ min_score: 1e9 }, { verbosity: "full" }, { min_score: 1e9, verbosity: "full" }]) {
+      const withExtra = await hookRecall(port, { ...base, ...extra });
+      assert.equal(withExtra, plain, `${lane ?? "no hook_source"} + ${JSON.stringify(extra)}: payload`);
+      assert.equal(Buffer.byteLength(withExtra), Buffer.byteLength(plain), `${lane}: budget`);
+    }
+  }
+  // The tool lane keeps both (#1727).
+  const mcp = JSON.parse(await hookRecall(port, { query: "deploy release", k: 2, hook_source: "mcp", min_score: 1e9 }));
+  assert.deepEqual(mcp.hits, [], "mcp: the floor applies");
+});
+
 test("#1727: hook lanes send neither field and keep their payload", async () => {
   const { port } = ctx;
   const lane = (await (
