@@ -158,6 +158,26 @@ test("writing the old value again after a value-only correction still warns", as
   assert.match(replacedIssue(result) ?? "", /was superseded by ingest-worker-batch-size-v2/);
 });
 
+test("claim text, including a stale body under the corrected summary, controls the replacement advisory", async (t) => {
+  const deps = await fixture(t);
+  await valueCorrectedVault(deps);
+  const check = async (summary: string, body: string) =>
+    replacedIssue(
+      (await saveMemoryHandler(
+        deps,
+        memo("Ingest worker batch size", summary, "tuning the ingest worker flush", {
+          body,
+          id: "mixed-claim",
+          dry_run: true,
+        })
+      )) as SaveMemoryResult
+    );
+
+  assert.ok(await check(NEW, `${OLD} Measured on the staging cluster.`));
+  assert.ok(await check(`${OLD} ${NEW}`, `${OLD} Measured on the staging cluster.`));
+  assert.equal(await check(NEW, " "), undefined, "a summary-only restatement still carries the current value");
+});
+
 test("on equal content words only a verbatim copy of the current text counts as restating it", () => {
   // Single-character values drop out of the content words, so both versions tie.
   const base = memo("Ingest worker batch size", "Batch size is 5 x.", "tuning the ingest worker flush");

@@ -17,8 +17,8 @@
  *  - `reassert-paraphrase` / `reassert-verbatim` (positive): a NEW save of the
  *    first version's claim. Correct = an advisory naming a chain member.
  *  - `agrees-with-correction`: a NEW save restating the chain head. Reported on
- *    its own; the advisory stays silent when the save is closer to the head
- *    than to the replaced version (`restatesCurrent`).
+ *    its own. The advisory stays silent when the save repeats the current
+ *    claim text (`restatesCurrent`).
  *  - `fresh-*`: NEW saves that replace nothing (unrelated, same topic, near
  *    duplicate of a living memory).
  *  - `overwrite`: `save_memory(overwrite)` of every non-superseded memory.

@@ -17,6 +17,7 @@ import {
   scanForInjection,
   formatInjectionAdvisory,
   scopeEquals,
+  stripAutoRelatedSection,
 } from "@bastra-recall/core";
 import { detectLanguage } from "./learned-recall/language.js";
 import { cueRegex, fixMarkerCues, imperativeLeadCues, negativeClaimCues } from "./lexicon.js";
@@ -204,27 +205,20 @@ function replacedClaimAdvisory(
   return 0;
 }
 
-/** The authored fields `fieldSimilarity` compares, read from a stored memory. */
-function storedFields(deps: ToolDeps, id: string): SimilarityFields | undefined {
-  const fm = deps.vault.get(id)?.fm;
-  return fm && { title: fm.title, summary: fm.summary, tags: fm.tags ?? [], recall_when: fm.recall_when ?? [] };
-}
-
-/** A save that is closer to the current version than to the replaced one
- *  repeats the correction instead of the old claim: a corrected claim often
- *  differs from its predecessor in one value only, so both match the save
- *  (N48: 16 of 133 restated heads warned). On a tie of the content words, only
- *  a verbatim copy of the current version's text counts as restating it. */
+/** Metadata helps find candidates. Only the authored claim can establish
+ *  that a save repeats the correction, including single-character changes. */
 function restatesCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, currentId: string): boolean {
-  const old = storedFields(deps, oldId);
-  const current = storedFields(deps, currentId);
+  const old = deps.vault.get(oldId);
+  const current = deps.vault.get(currentId);
   if (!old || !current) return false;
-  const self = { title: input.title, summary: input.summary, tags: input.tags, recall_when: input.recall_when };
-  const toCurrent = fieldSimilarity(self, current);
-  const toOld = fieldSimilarity(self, old);
-  if (toCurrent !== toOld) return toCurrent > toOld;
-  const text = (summary: string, body: string | undefined) => `${summary}\n${body ?? ""}`.trim();
-  return text(input.summary, input.body) === text(current.summary, deps.vault.get(currentId)?.body);
+  const summary = current.fm.summary.trim();
+  if (input.summary.trim() !== summary) return false;
+  const body = stripAutoRelatedSection(input.body ?? "").trim();
+  const currentBody = stripAutoRelatedSection(current.body).trim();
+  const changedSummary = old.fm.summary.trim() !== summary;
+  if (body !== currentBody) return body === "" && changedSummary;
+  const changedBody = stripAutoRelatedSection(old.body).trim() !== currentBody;
+  return changedSummary || changedBody || input.title.trim() === current.fm.title.trim();
 }
 
 /** The public `superseded_by` edges, oldest successor first. A private or missing
