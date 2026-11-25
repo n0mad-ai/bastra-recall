@@ -676,9 +676,22 @@ export function withPathLock<T>(
 
 /** Reserve advisory feedback immediately when its deferred callback starts.
  * No mkdir/queued open before the attempt: a busy lock must not become a late
- * booking after its owner releases it. Called only off the response path. */
-function tryFileLock(path: string, takeOverStale: boolean): string | null {
+ * booking after its owner releases it. Called only off the response path.
+ * Strict-local (#1691): one pass of the waiting strict lane, without the wait —
+ * the same lease body (boot identity) and the same dead-owner-only reclaim. */
+function tryFileLock(path: string, takeOverStale: boolean, strictLocal = false): string | null {
   const lockPath = pathLockFilePath(path);
+  if (strictLocal) {
+    const token = randomUUID();
+    const body = newLeaseBody(token, true);
+    try {
+      createLease(lockPath, body);
+      return token;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") return null;
+      return reclaimDeadLocal(lockPath, body) ? token : null;
+    }
+  }
   try {
     return (
       mutateLock(lockPath, () => {
@@ -712,12 +725,13 @@ export function tryWithPathLock<T>(
 ): Promise<T | undefined> {
   if (opts.noQueue && (depths.get(path) ?? 0) > 0) return Promise.resolve(undefined);
   return withPathLock(path, async () => {
-    const token = opts.crossProcess ? tryFileLock(path, opts.takeOverStale === true) : null;
-    if (opts.crossProcess && token === null) return undefined;
+    const fileLock = opts.crossProcess || opts.strictLocal;
+    const token = fileLock ? tryFileLock(path, opts.takeOverStale === true, opts.strictLocal) : null;
+    if (fileLock && token === null) return undefined;
     try {
       return await fn();
     } finally {
-      if (token) await releaseFileLock(path, token);
+      if (token) await releaseFileLock(path, token, opts.strictLocal);
     }
   });
 }
