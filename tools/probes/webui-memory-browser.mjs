@@ -75,23 +75,45 @@ async function browserProbe(quick = false) {
     if (document.querySelector(".mb.is-on")) throw new Error(`${label}: browser before the vault view stood`);
     for (let i = 0; i < 80 && !document.querySelector(".mb.is-on"); i++) await sleep(100);
   }
+  // Whether the selected row (wide) or the reader (narrow) is on screen.
+  function shown(root, row, list, reader) {
+    if (root.classList.contains("is-narrow"))
+      return root.classList.contains("is-reading") && reader.getBoundingClientRect().height > 0;
+    const rr = row?.getBoundingClientRect(),
+      lr = list.getBoundingClientRect();
+    return !!rr && rr.top >= lr.top && rr.bottom <= lr.bottom + 1;
+  }
+  // One look at the open browser. problem: "selection" (wrong or missing row), "detail-pending"
+  // (the detail request has not answered yet), "detail-wrong" (the reader shows another memory).
+  function inspect(m) {
+    const root = document.querySelector(".mb.is-on.is-grow");
+    if (!root) return { problem: "selection" };
+    const row = root.querySelector(`.mb-row[data-id="${CSS.escape(m.id)}"]`);
+    const list = root.querySelector(".mb__list"),
+      reader = root.querySelector(".mb__reader");
+    const visible = shown(root, row, list, reader);
+    const title = reader.querySelector(".mb-rd__h")?.textContent;
+    const loaded = !reader.querySelector(".mb-rd__text.is-wait");
+    const problem = !(row?.classList.contains("is-sel") && visible)
+      ? "selection"
+      : !loaded
+        ? "detail-pending"
+        : title !== m.title
+          ? "detail-wrong"
+          : null;
+    return { root, row, list, visible, title, loaded, problem };
+  }
+  // The detail request may take longer than the grow (#1714): wait for it, bounded.
+  const DETAIL_TIMEOUT_MS = 5000;
   async function check(label, m) {
     await sleep(1100); // grow plus smooth scroll
-    const root = document.querySelector(".mb.is-on.is-grow");
-    const row = root?.querySelector(`.mb-row[data-id="${CSS.escape(m.id)}"]`);
-    const list = root?.querySelector(".mb__list"),
-      reader = root?.querySelector(".mb__reader");
-    const rr = row?.getBoundingClientRect(),
-      lr = list?.getBoundingClientRect();
+    let seen = inspect(m);
+    for (const t0 = performance.now(); seen.problem && performance.now() - t0 < DETAIL_TIMEOUT_MS; seen = inspect(m))
+      await sleep(100);
+    const { root, row, list, visible, title, loaded, problem } = seen;
     const narrow = root?.classList.contains("is-narrow");
-    const reading = root?.classList.contains("is-reading");
-    const visible = narrow
-      ? reading && reader.getBoundingClientRect().height > 0
-      : rr && rr.top >= lr.top && rr.bottom <= lr.bottom + 1;
-    const title = reader?.querySelector(".mb-rd__h")?.textContent;
-    const loaded = !reader?.querySelector(".mb-rd__text.is-wait");
     let backReveals = true;
-    if (narrow && reading) {
+    if (!problem && narrow) {
       root.querySelector(".mb-rd__back").click();
       await sleep(30);
       const r = row.getBoundingClientRect(),
@@ -99,7 +121,7 @@ async function browserProbe(quick = false) {
       backReveals = r.top >= b.top && r.bottom <= b.bottom + 1;
       row.click();
     }
-    const pass = !!(row?.classList.contains("is-sel") && visible && title === m.title && loaded && backReveals);
+    const pass = !problem && backReveals;
     results.push({
       label,
       pass,
@@ -113,10 +135,11 @@ async function browserProbe(quick = false) {
       throw new Error(
         JSON.stringify({
           label,
+          problem: problem || "back-hides-row",
           id: m.id,
           title,
-          row: rr?.toJSON(),
-          list: lr?.toJSON(),
+          row: row?.getBoundingClientRect().toJSON(),
+          list: list?.getBoundingClientRect().toJSON(),
           scroll: list?.scrollTop,
           max: list && list.scrollHeight - list.clientHeight,
           results,

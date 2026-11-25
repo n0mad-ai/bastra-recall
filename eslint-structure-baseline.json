@@ -572,7 +572,6 @@
     "[\"tools/probes/convention-e2e/run.ts\",\"[\\\"function:main\\\"]\",\"max-depth\"]": 5,
     "[\"tools/probes/path-lock-marker-deadline.mts\",\"module\",\"max-depth\"]": 6,
     "[\"tools/probes/path-lock-recovery-load.mts\",\"module\",\"max-depth\"]": 5,
-    "[\"tools/probes/webui-memory-browser.mjs\",\"[\\\"function:browserProbe\\\",\\\"function:check\\\"]\",\"complexity\"]": 29,
     "[\"tools/probes/webui-memory-browser.mjs\",\"[\\\"function:browserProbe\\\"]\",\"complexity\"]": 21,
     "[\"tools/test-map.mjs\",\"[\\\"function:codeLinesOf\\\"]\",\"complexity\"]": 33,
     "[\"tools/test-map.mjs\",\"[\\\"function:codeLinesOf\\\"]\",\"max-depth\"]": 5,
