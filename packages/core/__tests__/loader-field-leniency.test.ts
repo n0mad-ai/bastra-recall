@@ -292,6 +292,7 @@ const IMPOSSIBLE_DATE_LINES = [
   "{f}: 2026-02-31\n  12:30:00Z",
   "{f}: 2026-05-01\n  24:00:00Z",
   '{f}: !!timestamp "2026-02-31"',
+  String.raw`{f}: !!timestamp "2026-02-\x33\x31"`,
   "{f}: !!timestamp '2026-02-30T10:00:00Z'",
   "{f}: !<tag:yaml.org,2002:timestamp> 2026-02-31",
   "{f}: !!timestamp >-\n  2026-02-31",

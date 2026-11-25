@@ -280,8 +280,11 @@ function mayContainRolledDate(block: string): boolean {
  *  a multi-line scalar (`2026-02-31\n  12:30:00Z`). */
 function timestampText(source: string): string {
   const text = source.trim().replace(/^(?:[&!]\S*\s+)+/, "");
-  const quoted = /^(["'])([\s\S]*)\1$/.exec(text)?.[2];
-  const content = quoted ?? text.replace(/^[|>][-+\d]*[ \t]*(?:#.*)?\n/, "");
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(text);
+  // Decode escaped date digits as YAML did before constructing the timestamp.
+  const decoded = quoted?.[1] === '"' && quoted[2].includes("\\") ? parseYamlFragment(text) : undefined;
+  const content =
+    typeof decoded === "string" ? decoded : (quoted?.[2] ?? text.replace(/^[|>][-+\d]*[ \t]*(?:#.*)?\n/, ""));
   return content.replace(/\s+/g, " ").trim();
 }
 
