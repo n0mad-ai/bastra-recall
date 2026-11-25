@@ -1,6 +1,7 @@
 /** Agent review metadata only: confirmation never gates or triggers promotion. */
 import reviewRule from "./draft-review-rule.json" with { type: "json" };
-import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
+import { homedir } from "node:os";
+import { HINT_FRAME_NOTE, redactSecrets, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { scanForInjection } from "@bastra-recall/core";
 import { transactDrafts, withDraftPublication, draftFingerprint, type Draft } from "./draft-store.js";
 import { singleLine, projectLabel, draftHintsEnabled } from "./draft-search.js";
@@ -72,6 +73,8 @@ export async function takeDraftReview(
   const empty = { block: "", fingerprints: [] };
   if (!pendingRelayEnabled() || !sessionHarvestEnabled() || !draftHintsEnabled()) return empty;
   const de = language === "de";
+  const home = homedir();
+  const redact = (text: string) => redactSecrets(text, home).text;
   const head = [
     "<draft-review>",
     HINT_FRAME_NOTE,
@@ -109,9 +112,9 @@ export async function takeDraftReview(
           const verdict = Object.fromEntries(
             (["kind", "reason", "judge_statement", "judge_repeat", "judge_note"] as const)
               .filter((k) => c[k] !== undefined)
-              .map((k) => [k, singleLine(c[k]!).slice(0, 100)])
+              .map((k) => [k, singleLine(redact(c[k]!)).slice(0, 100)])
           );
-          const entry = `${row.id} — ${new Date(row.evidence[0].ts).toISOString().slice(0, 10)}${row.situation.project ? " / " + projectLabel(row.situation.project) : ""}\n${de ? "Zitat" : "Quote"}: ${JSON.stringify(singleLine(row.quote))}\n${de ? "Lokale Urteile" : "Local verdicts"}: ${JSON.stringify(verdict)}`;
+          const entry = `${row.id} — ${new Date(row.evidence[0].ts).toISOString().slice(0, 10)}${row.situation.project ? " / " + projectLabel(redact(row.situation.project)) : ""}\n${de ? "Zitat" : "Quote"}: ${JSON.stringify(singleLine(redact(row.quote)))}\n${de ? "Lokale Urteile" : "Local verdicts"}: ${JSON.stringify(verdict)}`;
           if (block.length + entry.length + 18 > PENDING_BLOCK_CHAR_BUDGET) continue;
           block += "\n" + stripFenceMarkers(entry);
           ids.push(row.id);

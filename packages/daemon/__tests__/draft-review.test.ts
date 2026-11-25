@@ -34,6 +34,10 @@ import { saveMemoryHandler } from "../src/save-memory-handler.js";
 import { runSessionLane } from "../src/session-lane.js";
 import { writePendingSuggestion, PENDING_BLOCK_CHAR_BUDGET } from "../src/pending-suggestions.js";
 import { formatHarvestBlock } from "../src/session-harvest.js";
+import { prepareDraftSearch } from "../src/draft-search.js";
+import { pendingRelayBlocks } from "../src/session-lane-blocks.js";
+import { mutateSettings, settingsFilePath } from "../src/settings-file.js";
+import { applySettingChanges } from "../src/settings-registry.js";
 
 const first = "Fixture deployments require an isolated amber database before the release starts.";
 const local = { baseURL: "http://127.0.0.1:11434", model: "fixture" };
@@ -179,6 +183,39 @@ test("all three switches suppress candidate reads and claims; retained candidate
     }
     assert.equal((await takeDraftReview(id)).fingerprints.length, 1);
   }));
+test("automatic draft delivery redacts credentials while the local switch preserves originals", async (t) => {
+  const setRedaction = (value: boolean | null) =>
+    mutateSettings(settingsFilePath(), (config) => applySettingChanges(config, { "redaction.enabled": value }));
+  t.after(() => setRedaction(null));
+  await setRedaction(false);
+  await fixture(async (_vault, id) => {
+    const secret = "synthetic-review-key-23";
+    const credential = `password=${secret}`;
+    const d = row(id, 0, `${first} ${credential}`);
+    d.context = `Database login uses ${credential}`;
+    d.situation.project = credential;
+    await candidate(d);
+    await transactDrafts(async (rows) => {
+      const current = rows.find(({ id }) => id === d.id)!;
+      current.review_candidate = { ...(current.review_candidate as object), reason: credential };
+    }, now);
+    await writePendingSuggestion(`<save-eval>Earlier database credential: ${credential}</save-eval>`);
+    assert.equal((await listDrafts(now))[0].quote, d.quote);
+    assert.ok(readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!).includes(secret));
+
+    const relay = await pendingRelayBlocks("later-review", "startup", undefined, () => takeDraftReview(id, "en", now));
+    assert.ok(relay.reviewBlock.includes(first));
+    assert.ok(relay.pendingBlock.includes("Earlier database credential"));
+    assert.ok(!relay.reviewBlock.includes(secret), "review quote, project and verdict must be safe");
+    assert.ok(!relay.pendingBlock.includes(secret), "the pending relay must be safe");
+    assert.equal((await listDrafts(now))[0].quote, d.quote);
+
+    const { hits } = prepareDraftSearch([d], now)("isolated amber database deployments");
+    assert.equal(hits.length, 1);
+    assert.ok(!JSON.stringify(hits).includes(secret), "draft hints and MCP recall share the safe projection");
+  });
+});
+
 test("the old quote block loses only the candidate shown in the same start", () =>
   fixture(async (_vault, id) => {
     const a = row(id),

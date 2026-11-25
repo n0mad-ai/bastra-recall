@@ -7,6 +7,8 @@
  * own: a block that cannot be built is left out, it never fails the start.
  * The texts are the lane's output contract and moved here unchanged.
  */
+import { homedir } from "node:os";
+import { redactSecrets } from "@bastra-recall/core/scrub";
 import { filterPendingSaveSuggestions } from "./save-suggestion-review.js";
 import { projectForFilter } from "./scope-filter.js";
 import { suppressReviewedHarvestQuotes, type DraftReviewDelivery } from "./draft-review.js";
@@ -20,6 +22,7 @@ import {
   formatPendingRelay,
   isCountableSessionStart,
   takePendingRelay,
+  type PendingSuggestion,
 } from "./pending-suggestions.js";
 import type { HealthResponse } from "./session-hook-http.js";
 import type { SessionHookTelemetry } from "./session-lane-telemetry.js";
@@ -234,7 +237,13 @@ export async function pendingRelayBlocks(
       for (const row of relay.recency) row.blocks = suppressReviewedHarvestQuotes(row.blocks, review.fingerprints);
       relay.recency = relay.recency.filter((row) => row.blocks.trim());
     }
-    const rendered = formatPendingRelay(relay, Math.max(0, PENDING_BLOCK_CHAR_BUDGET - (review?.block.length ?? 0)));
+    // Redact the automatic assistant context independently of the local copy.
+    const home = homedir();
+    const redact = (row: PendingSuggestion) => ({ ...row, blocks: redactSecrets(row.blocks, home).text });
+    const rendered = formatPendingRelay(
+      { recency: relay.recency.map(redact), trends: relay.trends.map(redact) },
+      Math.max(0, PENDING_BLOCK_CHAR_BUDGET - (review?.block.length ?? 0))
+    );
     if (rendered.text) result.pendingBlock = `\n${rendered.text}`;
     // #675: counted in what was rendered, after the char budget.
     result.pendingHarvest = (rendered.text.match(/<session-harvest /g) ?? []).length;

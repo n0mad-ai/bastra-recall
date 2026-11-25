@@ -1,9 +1,10 @@
 import { markDraftDelivery } from "./draft-delivery.js";
 /** Local, read-only draft retrieval. Advisory feedback never delays recall. */
 import { appendFile, mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { scanForInjection } from "@bastra-recall/core";
-import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
+import { HINT_FRAME_NOTE, redactSecrets, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { draftSearchSnapshot, draftsPath, type Draft } from "./draft-store.js";
 import { weightedContainment, STORED_CONTAINMENT_MIN } from "./harvest-vault-match.js";
 import { tokens } from "./save-similarity.js";
@@ -64,6 +65,8 @@ export function prepareDraftSearch(rows: readonly Draft[], now = Date.now(), voc
     const safe = scanForInjection([row.quote, row.context ?? "", row.situation.project ?? ""].join("\n")).length === 0;
     return { row, words, lits, safe };
   });
+  const home = homedir();
+  const redact = (text: string) => redactSecrets(text, home).text;
   const rareMax = DRAFT_RARE_MAX_ROWS;
   const draftIdf = (word: string) => Math.log(1 + (open.length + 1) / ((df.get(word) ?? 0) + 1));
   return (query: string, notes: DraftNote[] = [], limit = 2, sessionId?: string): { hits: DraftHit[] } => {
@@ -120,9 +123,9 @@ export function prepareDraftSearch(rows: readonly Draft[], now = Date.now(), voc
         id: row.id,
         unconfirmed: true as const,
         frame_note: HINT_FRAME_NOTE,
-        quote: singleLine(row.quote),
-        ...(row.context ? { context: singleLine(row.context) } : {}),
-        ...(row.situation.project ? { project: projectLabel(row.situation.project) } : {}),
+        quote: singleLine(redact(row.quote)),
+        ...(row.context ? { context: singleLine(redact(row.context)) } : {}),
+        ...(row.situation.project ? { project: projectLabel(redact(row.situation.project)) } : {}),
         date: new Date(row.evidence[0]?.ts ?? now).toISOString().slice(0, 10),
       })),
     };
