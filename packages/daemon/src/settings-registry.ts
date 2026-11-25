@@ -450,6 +450,12 @@ type Block<G> = { [K in RequiredKeys<G>]: Value<G[K]> } & { [K in Exclude<keyof 
 export type CliSettings = { update: Block<Registry["update"]> } & {
   [K in Exclude<keyof Registry, "update">]?: Block<Registry[K]>;
 };
+export type SettingsGroup = keyof CliSettings;
+export type SettingsField<G extends SettingsGroup> = keyof NonNullable<CliSettings[G]> & string;
+export type StoredSettingValue<G extends SettingsGroup, F extends SettingsField<G>> = Exclude<
+  NonNullable<CliSettings[G]>[F],
+  undefined
+>;
 export interface SettingEntry extends Metadata {
   key: string;
   path: readonly [string, string];
@@ -517,8 +523,19 @@ export function parseStoredSettings(raw: unknown): CliSettings {
   }
   return out as CliSettings;
 }
+/** Project a field from settings already normalized by the registry. */
+export function storedSettingAt<G extends SettingsGroup, F extends SettingsField<G>>(
+  settings: CliSettings,
+  group: G,
+  field: F
+): StoredSettingValue<G, F> | undefined;
+export function storedSettingAt(settings: CliSettings, group: string, field: string): unknown;
+export function storedSettingAt(settings: CliSettings, group: string, field: string): unknown {
+  return (settings as unknown as Record<string, Record<string, unknown> | undefined>)[group]?.[field];
+}
+
 export function storedSetting(settings: CliSettings, entry: SettingEntry): unknown {
-  return (settings as unknown as Record<string, Record<string, unknown> | undefined>)[entry.path[0]]?.[entry.path[1]];
+  return storedSettingAt(settings, entry.path[0], entry.path[1]);
 }
 export function applySettingChanges(current: CliSettings, changes: Record<string, unknown>): CliSettings {
   const next = structuredClone(current) as unknown as Record<string, Record<string, unknown>>;

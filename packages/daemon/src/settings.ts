@@ -1,5 +1,11 @@
 export { EVIDENCE_GATE_DEFAULT } from "./settings-defaults.js";
-import { SETTINGS_REGISTRY } from "./settings-registry.js";
+import {
+  SETTINGS_REGISTRY,
+  storedSettingAt,
+  type SettingsField,
+  type SettingsGroup,
+  type StoredSettingValue,
+} from "./settings-registry.js";
 /**
  * bastra-recall local CLI settings (#39: auto-update; #79: embedding provider).
  *
@@ -37,7 +43,6 @@ import { randomBytes } from "node:crypto";
 import type { EmbeddingSource } from "./embedding-status.js";
 import { isOffValue, isOnValue } from "./env.js";
 import {
-  GENERATION_MODEL_DEFAULT,
   mutateSettings,
   normalizeCorsOrigin,
   readSettings,
@@ -70,38 +75,35 @@ export {
 } from "./settings-file.js";
 export type { UpdateMode, EmbeddingProviderName, DocsMode, CliSettings } from "./settings-file.js";
 
-// #1510: the get/set pairs below read and write through these three, so the
-// file shape and the defaults come from the registry instead of being
-// repeated per setting. Normalization and special shapes stay with the pair.
-type Group = keyof CliSettings;
-type Field<G extends Group> = keyof NonNullable<CliSettings[G]> & string;
-type Stored<G extends Group, F extends Field<G>> = Exclude<NonNullable<CliSettings[G]>[F], undefined>;
+// #1510: the registry owns field lookup and defaults. Each getter keeps its
+// existing fallback and choice of migrating or observational file reads.
 
 /** The stored value of one setting, undefined when unset. */
-async function stored<G extends Group, F extends Field<G>>(
+async function stored<G extends SettingsGroup, F extends SettingsField<G>>(
   group: G,
   field: F,
   path?: string
-): Promise<Stored<G, F> | undefined> {
-  const block = (await readSettings(path))[group] as Partial<NonNullable<CliSettings[G]>> | undefined;
-  return block?.[field] as Stored<G, F> | undefined;
+): Promise<StoredSettingValue<G, F> | undefined> {
+  return storedSettingAt(await readSettings(path), group, field);
 }
 
 /** The stored value, or the registry's default for it. */
-async function storedOrDefault<G extends Group, F extends Field<G>>(
+async function storedOrDefault<G extends SettingsGroup, F extends SettingsField<G>>(
   group: G,
   field: F,
   path?: string
-): Promise<Stored<G, F>> {
+): Promise<StoredSettingValue<G, F>> {
   const fields = SETTINGS_REGISTRY[group] as Record<string, { default: unknown }>;
-  return (await stored(group, field, path)) ?? (fields[field]!.default as Stored<G, F>);
+  return (
+    storedSettingAt(await readSettings(path), group, field) ?? (fields[field]!.default as StoredSettingValue<G, F>)
+  );
 }
 
 /** Persist one setting atomically; the group's other stored fields stay. */
-async function store<G extends Group, F extends Field<G>>(
+async function store<G extends SettingsGroup, F extends SettingsField<G>>(
   group: G,
   field: F,
-  value: Stored<G, F>,
+  value: StoredSettingValue<G, F>,
   path: string
 ): Promise<void> {
   await mutateSettings(
@@ -153,9 +155,7 @@ export async function setGenerationModel(model: string, path: string = settingsF
 export async function resolveGenerationModel(path?: string): Promise<string> {
   const env = process.env.BASTRA_EXPAND_MODEL ?? process.env.BASTRA_RERANK_MODEL;
   if (typeof env === "string" && env.trim().length > 0) return env.trim();
-  const stored = (await readSettings(path)).generation?.model;
-  if (typeof stored === "string" && stored.trim().length > 0) return stored.trim();
-  return GENERATION_MODEL_DEFAULT;
+  return storedSettingAt(await readSettings(path), "generation", "model") ?? SETTINGS_REGISTRY.generation.model.default;
 }
 
 /**
@@ -258,7 +258,8 @@ export async function getApiToken(path?: string): Promise<string | undefined> {
  * override). Values are already normalized + validated by readSettings.
  */
 export async function getCorsOrigins(path?: string): Promise<string[]> {
-  return (await readSettings(path)).cors?.origins ?? [];
+  // With no stored allowlist the runtime returns an independent, empty list.
+  return storedSettingAt(await readSettings(path), "cors", "origins") ?? [];
 }
 
 /**
@@ -490,7 +491,7 @@ export async function setReflexEnabled(on: boolean, path: string = settingsFileP
 
 /** The stored primary authoring language (2-letter ISO code), or undefined when unset. */
 export async function getPrimaryLanguage(path?: string): Promise<string | undefined> {
-  return (await peekSettings(path)).language?.primary;
+  return storedSettingAt(await peekSettings(path), "language", "primary");
 }
 
 /** Persists the primary authoring language, normalized to a lowercase 2-letter code. */
