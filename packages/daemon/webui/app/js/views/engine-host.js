@@ -23,9 +23,10 @@ import { createSemanticView } from "../../engines/managers/semantic-view.js";
 import { placeWeather, onPlaceWeather } from "../weather-place.js";
 import { createBoltDemo } from "../../engines/managers/bolt-demo.js";
 import { h, setVars } from "../dom.js";
-import { data, onUpdates, loadWeather } from "../data.js";
+import { data, onData, onUpdates, loadWeather } from "../data.js";
 import { state } from "../state.js";
 import { installLive } from "./engine-live.js";
+import { adoptKinds } from "./engine-kinds.js";
 
 // Same storage keys as the old UI: cloud arrangements are shared between both.
 const ANCHORS_KEY = "bastra-vault-map-cluster-pos";
@@ -480,6 +481,14 @@ export function attach(stage, v, hooks) {
 // so the map is current when it is opened again. Live off → nothing applied.
 onUpdates((list) => {
   if (eng && state.live && Array.isArray(list)) for (const u of list) eng.live.apply(u);
+});
+
+// A reloaded graph keeps the built engine until the next entry; the nodes on screen take over
+// changed kinds right away (#1715: "Is a skill" on a ghost). Once per graph.
+onData(() => {
+  if (!eng || !data.graph || eng.src === data.graph || eng.kindsFrom === data.graph) return;
+  eng.kindsFrom = data.graph;
+  if (adoptKinds(eng.sim.byId, data.graph.nodes) && eng.stage) awake(eng);
 });
 
 function detachAll(e) {
