@@ -198,7 +198,8 @@ function replacedClaimAdvisory(
     if (successors.length === 0 || successors.some(excluded)) continue;
     const [direct] = successors;
     const current = successors[successors.length - 1];
-    if (restatesCurrent(deps, input, candidate.id, current)) continue;
+    if (restatesCurrent(deps, input, candidate.id, current) || closerToCurrent(deps, input, candidate.id, current))
+      continue;
     issues.push(
       `re-asserts a replaced claim: ${candidate.id} (similarity ${candidate.similarity}) was superseded by ${direct}` +
         (current === direct ? "" : ` (current version: ${current})`)
@@ -220,11 +221,12 @@ function replacedClaimAdvisory(
  *  #1734 (intended): plaintext credential values are never compared. Versions
  *  that differ only in a redacted value read the same, so repeating the old
  *  value gets no advisory. */
+const same = (text: string) => redactUserText(text).text.trim();
+
 function restatesCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, currentId: string): boolean {
   const old = deps.vault.get(oldId);
   const current = deps.vault.get(currentId);
   if (!old || !current) return false;
-  const same = (text: string) => redactUserText(text).text.trim();
   const summary = same(current.fm.summary);
   if (same(input.summary) !== summary) return false;
   const body = same(stripAutoRelatedSection(input.body ?? ""));
@@ -233,6 +235,41 @@ function restatesCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, 
   if (body !== currentBody) return body === "" && changedSummary;
   const changedBody = same(stripAutoRelatedSection(old.body)) !== currentBody;
   return changedSummary || changedBody || same(input.title) === same(current.fm.title);
+}
+
+/** The claim (summary + body) as a set of character trigrams. Characters, not
+ *  words: no tokenizer or word list, so it reads every script alike, including
+ *  text written without spaces. Redacted like `restatesCurrent`, so plaintext
+ *  credential values are never compared (#1734). */
+function claimTrigrams(summary: string, body: string): Set<string> {
+  const text = `${same(summary)} ${same(stripAutoRelatedSection(body))}`.toLowerCase().replace(/\s+/g, " ");
+  const chars = Array.from(text);
+  const grams = new Set<string>();
+  for (let i = 0; i + 3 <= chars.length; i++) grams.add(chars.slice(i, i + 3).join(""));
+  return grams;
+}
+
+/** #643, rule from the Run-4 measurement: the advisory is for repeating the OLD
+ *  claim. A save that reworded the current version still matches the old one on
+ *  its metadata, but carries more of what only the current version says than of
+ *  what only the old one said. Only the text that changed between the two
+ *  versions votes; a tie keeps the advisory, so this can only drop warnings. */
+function closerToCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, currentId: string): boolean {
+  const old = deps.vault.get(oldId);
+  const current = deps.vault.get(currentId);
+  if (!old || !current) return false;
+  const oldGrams = claimTrigrams(old.fm.summary, old.body);
+  const currentGrams = claimTrigrams(current.fm.summary, current.body);
+  let toOld = 0;
+  let toCurrent = 0;
+  for (const gram of claimTrigrams(input.summary, input.body ?? "")) {
+    const inOld = oldGrams.has(gram);
+    if (inOld !== currentGrams.has(gram)) {
+      if (inOld) toOld++;
+      else toCurrent++;
+    }
+  }
+  return toCurrent > toOld;
 }
 
 /** The public `superseded_by` edges, oldest successor first. A private or missing

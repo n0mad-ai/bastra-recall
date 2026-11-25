@@ -274,6 +274,94 @@ test("#1734: the same value-only change without a credential still warns", () =>
   assert.equal(issue("beta-readwrite"), undefined, "the current value repeated");
 });
 
+/** Two versions with the same title, trigger and tags, so the metadata finds the
+ *  old one for either claim; `issue` scores a save of the given summary (and the
+ *  usual body) against them. */
+function claimCorrected(oldSummary: string, newSummary: string, title = "Ingest worker batch size") {
+  const base = memo(title, oldSummary, "tuning the ingest worker flush");
+  const stored = (id: string, summary: string, extra: Record<string, unknown> = {}) => ({
+    fm: { ...base, id, summary, sensitivity: "team", ...extra },
+    body: `${summary} Measured on the staging cluster.`,
+  });
+  const rows = new Map([
+    ["old", stored("old", oldSummary, { superseded_by: "new" })],
+    ["new", stored("new", newSummary)],
+  ]);
+  const deps = {
+    vault: { get: (id: string) => rows.get(id), list: () => [...rows.values()] },
+    search: { recall: () => [{ id: "old", title, summary: oldSummary }] },
+  } as unknown as ToolDeps;
+  return (summary: string) =>
+    scoreSaveQuality(
+      deps,
+      { ...base, summary, body: `${summary} Measured on the staging cluster.` } as SaveMemoryInput,
+      "probe"
+    ).issues.find((i) => i.startsWith("re-asserts a replaced claim"));
+}
+
+// #643 Run-4 measurement: a save that rewords the CURRENT claim was warned as if it
+// repeated the old one (word order 1/8 de, 2/8 en; free rewording 3/8 de, 4/8 en).
+const REWORDED: Array<{
+  language: string;
+  old: string;
+  current: string;
+  currentReworded: string[];
+  oldReworded: string[];
+}> = [
+  {
+    language: "en",
+    old: OLD,
+    current: NEW,
+    currentReworded: [
+      "Records per flush: 800 records is the ingest worker batch size.",
+      "Each flush of the ingest worker carries a batch of 800 records.",
+    ],
+    oldReworded: [
+      "Records per flush: 500 records is the ingest worker batch size.",
+      "Each flush of the ingest worker carries a batch of 500 records.",
+    ],
+  },
+  {
+    language: "de",
+    old: "Der monatliche Abschlag für Strom beträgt 85 Euro.",
+    current: "Der monatliche Abschlag für Strom beträgt 112 Euro.",
+    currentReworded: [
+      "Für Strom beträgt 112 Euro der monatliche Abschlag.",
+      "Jeden Monat werden für den Strom 112 Euro abgebucht.",
+    ],
+    oldReworded: [
+      "Für Strom beträgt 85 Euro der monatliche Abschlag.",
+      "Jeden Monat werden für den Strom 85 Euro abgebucht.",
+    ],
+  },
+  {
+    // written without spaces: nothing may depend on word boundaries
+    language: "zh",
+    old: "摄取工作进程每次刷新处理五百条记录。",
+    current: "摄取工作进程每次刷新处理八百条记录。",
+    currentReworded: ["每次刷新时摄取工作进程处理八百条记录。", "八百条记录是摄取工作进程每次刷新的批量。"],
+    oldReworded: ["每次刷新时摄取工作进程处理五百条记录。", "五百条记录是摄取工作进程每次刷新的批量。"],
+  },
+];
+
+for (const c of REWORDED) {
+  test(`#643 (${c.language}): rewording the current claim gets no replaced-claim advisory`, () => {
+    const issue = claimCorrected(c.old, c.current);
+    for (const summary of c.currentReworded) assert.equal(issue(summary), undefined, summary);
+  });
+
+  test(`#643 (${c.language}): repeating or rewording the old claim still warns`, () => {
+    const issue = claimCorrected(c.old, c.current);
+    assert.ok(issue(c.old), "the old claim verbatim");
+    for (const summary of c.oldReworded) assert.ok(issue(summary), summary);
+  });
+}
+
+test("#643: a save that holds as much of the old claim as of the current one still warns", () => {
+  const issue = claimCorrected(OLD, NEW);
+  assert.ok(issue(`${OLD} ${NEW}`), "both values: a tie keeps the advisory");
+});
+
 test("an unrelated save gets no replaced-claim advisory", async (t) => {
   const deps = await fixture(t);
   await correctedVault(deps);
