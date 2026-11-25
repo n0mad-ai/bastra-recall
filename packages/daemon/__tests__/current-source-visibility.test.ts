@@ -12,6 +12,7 @@ import { Vault, SearchIndex, memoryRevision } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { recallHandler, loadMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { TRUSTED_LOCAL_APP } from "../src/private-access.js";
+import { readConventionSource } from "../src/convention-source.js";
 
 const ID = "stale-visibility-fixture";
 const memory = (extra = "", body = "Invented fixture body about lantern quarry routes.") =>
@@ -37,10 +38,10 @@ const memory = (extra = "", body = "Invented fixture body about lantern quarry r
     "",
   ].join("\n");
 
-async function staleDeps() {
+async function staleDeps(raw = memory()) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-1334-"));
   const file = join(dir, `${ID}.md`);
-  await writeFile(file, memory(), "utf8");
+  await writeFile(file, raw, "utf8");
   const vault = new Vault(dir);
   await vault.init(); // no startWatching(): the index stays as indexed
   const search = new SearchIndex(vault);
@@ -55,6 +56,20 @@ async function staleDeps() {
     },
   };
 }
+
+test("a current source still matches an indexed memory whose date came from the file mtime", async () => {
+  const raw = memory().replace(/^updated:.*\n/m, "");
+  const { deps, close } = await staleDeps(raw);
+  try {
+    const indexed = deps.vault.get(ID);
+    assert.ok(indexed?.damaged?.some((field) => field.field === "updated"));
+    const source = await readConventionSource(indexed);
+    assert.equal(source.revision, indexed?.revision);
+    assert.equal(source.matchesIndex, true);
+  } finally {
+    await close();
+  }
+});
 
 const hidden = async (deps: ToolDeps) => {
   await assert.rejects(loadMemoryHandler(deps, { id: ID }), /memory not found/);

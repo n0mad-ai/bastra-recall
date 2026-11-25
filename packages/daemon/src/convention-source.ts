@@ -45,7 +45,7 @@ function projectRulebookMetadata(fm: Frontmatter, context: RulebookLegacyContext
 }
 
 export async function readConventionSource(
-  memory: (Pick<Memory, "filePath" | "fm"> & Partial<Pick<Memory, "body">>) | undefined,
+  memory: (Pick<Memory, "filePath" | "fm"> & Partial<Pick<Memory, "body" | "mtime">>) | undefined,
   includeRuleMetadata = false,
   context: RulebookLegacyContext = {}
 ): Promise<ConventionSource> {
@@ -54,7 +54,8 @@ export async function readConventionSource(
     const raw = await readFile(memory.filePath, "utf8");
     const revision = memoryRevision(raw);
     try {
-      const parsed = parseMemory(raw, memory.filePath, 0);
+      // Compare against the indexed view using the same fallback date for missing or damaged fields.
+      const parsed = parseMemory(raw, memory.filePath, memory.mtime ?? 0);
       if (parsed.fm.id !== memory.fm.id) return { revision, hiddenFromPublic: true };
       return {
         revision,
