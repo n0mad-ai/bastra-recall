@@ -30,7 +30,7 @@ export function eventLogFile(
 }
 
 function redactEventContent(event: TelemetryEvent): TelemetryEvent {
-  const clean = (text: string) => redactSecrets(text).text;
+  const clean = (text: string) => (typeof text === "string" ? redactSecrets(text).text : text);
   if (event.kind === "save_memory") return { ...event, title: clean(event.title) };
   if (event.kind !== "recall" && event.kind !== "hook_recall") return event;
   return {
