@@ -79,6 +79,14 @@ import { callDaemon, callRecallStreaming, maybeSessionContextItem, setForwarderC
 import { mcpClientLabel } from "./caller-session.js";
 import { liveStatusline, syncStatuslineTurn, flushStatusline } from "./mcp-forwarder-statusline.js";
 
+function nonStreamingErrorText(tool: string, error: unknown): string {
+  const toolText = (error as { toolText?: unknown } | null)?.toolText;
+  if (typeof toolText === "string") return toolText;
+  // Response formatting and session context run outside callDaemon.
+  if (isTaskTool(tool)) return JSON.stringify(taskFailure(error).body);
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function main(): Promise<void> {
   // Best-effort: Daemon hochziehen wenn er fehlt. NICHT awaited (#78): der
   // Stdio-Server connected sofort (Client-initialize hängt nicht am Boot);
@@ -354,7 +362,7 @@ async function main(): Promise<void> {
         content: [
           {
             type: "text" as const,
-            text: (err as { toolText: string }).toolText,
+            text: nonStreamingErrorText(name, err),
           },
         ],
       };
