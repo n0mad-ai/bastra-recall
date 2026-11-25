@@ -26,6 +26,8 @@ test("#1725: record reports the snapshot redactions per top-level field and writ
     recall_when: [`with ${token}`, "plain", "password=fictional-trigger-44"],
     nested: { deep: `key ${token}` },
     tags: ["clean"],
+    constructor: `credential ${token}`,
+    ["__proto__"]: `credential ${token}`,
   };
   const after = { title: "Connection [REDACTED]", summary: "clean" };
   const counts: AuditRedactionCounts = { diff_before: {}, diff_after: {} };
@@ -35,7 +37,7 @@ test("#1725: record reports the snapshot redactions per top-level field and writ
     counts
   );
   assert.deepEqual(counts, {
-    diff_before: { title: 1, summary: 2, recall_when: 2, nested: 1 },
+    diff_before: { title: 1, summary: 2, recall_when: 2, nested: 1, constructor: 1, ["__proto__"]: 1 },
     diff_after: {},
   });
   // The redaction itself is unchanged: every string through `redactSecrets`, nothing else touched.
@@ -45,6 +47,8 @@ test("#1725: record reports the snapshot redactions per top-level field and writ
     recall_when: before.recall_when.map((item) => redactSecrets(item).text),
     nested: { deep: redactSecrets(before.nested.deep).text },
     tags: ["clean"],
+    constructor: redactSecrets(before.constructor).text,
+    ["__proto__"]: redactSecrets(before.__proto__).text,
   });
   assert.deepEqual(entry.diff_after, after);
   const line = (await readFile(join(dir, ".bastra/audit-log.ndjson"), "utf8")).trim();

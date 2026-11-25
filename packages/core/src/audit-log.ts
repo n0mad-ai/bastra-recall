@@ -75,10 +75,10 @@ export interface AuditRedactionCounts {
 
 const placeholders = (text: string): number => text.split("[REDACTED]").length - 1;
 
-function redactAuditValue(value: unknown, count: (added: number) => void): unknown {
+function redactAuditValue(value: unknown, count?: (added: number) => void): unknown {
   if (typeof value === "string") {
     const text = redactSecrets(value).text;
-    if (text !== value) count(Math.max(1, placeholders(text) - placeholders(value)));
+    if (count && text !== value) count(Math.max(1, placeholders(text) - placeholders(value)));
     return text;
   }
   if (Array.isArray(value)) return value.map((item) => redactAuditValue(item, count));
@@ -91,14 +91,24 @@ function redactAuditSnapshot(
   snapshot: AuditEntry["diff_before"],
   counts: Record<string, number> | undefined
 ): AuditEntry["diff_before"] {
-  if (snapshot === null) return null;
+  if (!counts || snapshot === null) return redactAuditValue(snapshot) as AuditEntry["diff_before"];
   return Object.fromEntries(
-    Object.entries(snapshot).map(([key, item]) => [
-      key,
-      redactAuditValue(item, (added) => {
-        if (counts) counts[key] = (counts[key] ?? 0) + added;
-      }),
-    ])
+    Object.entries(snapshot).map(([key, item]) => {
+      let replaced = 0;
+      const clean = redactAuditValue(item, (added) => {
+        replaced += added;
+      });
+      if (replaced) {
+        const previous = Object.hasOwn(counts, key) ? counts[key] : 0;
+        Object.defineProperty(counts, key, {
+          value: previous + replaced,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      return [key, clean];
+    })
   );
 }
 
