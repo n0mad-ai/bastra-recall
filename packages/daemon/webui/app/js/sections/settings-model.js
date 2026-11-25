@@ -223,7 +223,8 @@ async function call(path, body) {
 function settingsApi(path, body) {
   return settingsSession.run(settingsCsrf, async (csrf, { renew, invalidate }) => {
     const { res, json } = await requestSettings(path, body, csrf);
-    if (res.status === 401) {
+    // 403 csrf_mismatch: another tab replaced the session cookie (#1699). Origin/host 403s carry no code.
+    if (res.status === 401 || (res.status === 403 && json?.code === "csrf_mismatch")) {
       if (renew) return renew();
       invalidate();
     }

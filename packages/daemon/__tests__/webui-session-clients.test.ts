@@ -382,6 +382,42 @@ test("settings client: 403 is not renewed and keeps the session", async () => {
   ]);
 });
 
+test("settings client: 403 csrf_mismatch renews once and repeats the call (#1699)", async () => {
+  const mismatch = { status: 403, body: { error: "Zugriff nicht erlaubt", code: "csrf_mismatch" } };
+  const c = await settingsClient({ "/ui/settings": [{}, mismatch, { body: { entries: [1] } }] });
+  await c.get("/ui/settings");
+  assert.deepEqual(await outcome(c.get("/ui/settings")), { ok: { entries: [1] } });
+  assert.deepEqual(c.log, [
+    SETTINGS_SESSION,
+    settingsGet("/ui/settings", "csrf-1"),
+    settingsGet("/ui/settings", "csrf-1"),
+    SETTINGS_SESSION,
+    settingsGet("/ui/settings", "csrf-2"),
+  ]);
+});
+
+test("settings client: a second csrf_mismatch ends with the error instead of a loop (#1699)", async () => {
+  const mismatch = () => ({ status: 403, body: { error: "Zugriff nicht erlaubt", code: "csrf_mismatch" } });
+  const c = await settingsClient({ "/ui/settings": [mismatch(), mismatch(), mismatch()] });
+  assert.deepEqual(await outcome(c.get("/ui/settings")), {
+    error: { type: "Error", message: "Zugriff nicht erlaubt", code: "csrf_mismatch", status: 403 },
+  });
+  assert.deepEqual(c.log, [
+    SETTINGS_SESSION,
+    settingsGet("/ui/settings", "csrf-1"),
+    SETTINGS_SESSION,
+    settingsGet("/ui/settings", "csrf-2"),
+  ]);
+});
+
+test("settings client: a 403 without code (origin, host) is not renewed (#1699)", async () => {
+  const c = await settingsClient({ "/ui/settings": [{ status: 403, body: { error: "Zugriff nicht erlaubt" } }] });
+  assert.deepEqual(await outcome(c.get("/ui/settings")), {
+    error: { type: "Error", message: "Zugriff nicht erlaubt", code: undefined, status: 403 },
+  });
+  assert.deepEqual(c.log, [SETTINGS_SESSION, settingsGet("/ui/settings", "csrf-1")]);
+});
+
 test("settings client: a second rejection ends with the daemon text or the HTTP status", async () => {
   const c = await settingsClient({
     "/ui/settings": [

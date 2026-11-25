@@ -39,8 +39,10 @@ export interface SettingsUiOptions {
   restart?: () => Promise<void>;
   autostart?: SettingsAutostart;
 }
-function failure(status: number): never {
-  throw Object.assign(new Error("Settings request denied"), { status });
+// `code` names a recoverable denial for the client; it is only set where the
+// endpoint calls failure() itself, so no internal error code leaves the endpoint.
+function failure(status: number, code?: string): never {
+  throw Object.assign(new Error("Settings request denied"), { status, settingsCode: code });
 }
 /** The assistant name row shows the name as typed; its stored companion field is not a row of its own. */
 const DISPLAY_NAME_KEY = "assistant.displayName";
@@ -160,7 +162,7 @@ export function dispatchSettingsUi(
       }
       if (method !== "POST") failure(405);
       const csrf = req.headers["x-bastra-settings-csrf"];
-      if (typeof csrf !== "string" || !safeEqual(csrf, session.csrf)) failure(403);
+      if (typeof csrf !== "string" || !safeEqual(csrf, session.csrf)) failure(403, "csrf_mismatch");
       session.lastUsed = Date.now();
       const body = await readJsonBody(req, 128 * 1024);
       if (url === "/ui/settings") {
@@ -234,6 +236,8 @@ export function dispatchSettingsUi(
             : status === 403
               ? "Zugriff nicht erlaubt"
               : "Einstellungen konnten nicht verarbeitet werden",
+        // Another tab replaced the session cookie: the client renews once (#1699).
+        code: (error as { settingsCode?: string }).settingsCode,
       });
     }
   })();
