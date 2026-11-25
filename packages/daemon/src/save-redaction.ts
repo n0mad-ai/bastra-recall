@@ -36,9 +36,13 @@ export class WriteRedaction {
     if (value === undefined || value === "") return value;
     const out = redactUserText(value).text;
     if (out === value) return value;
-    const added = Math.max(1, placeholders(out) - placeholders(value));
-    this.hits[field] = (this.hits[field] ?? 0) + added;
+    this.add(field, Math.max(1, placeholders(out) - placeholders(value)));
     return out;
+  }
+
+  /** Records redactions another pass already made, e.g. `AuditLog.record` (#1725). */
+  add(field: string, count: number): void {
+    this.hits[field] = (this.hits[field] ?? 0) + count;
   }
 
   list(field: string, values: string[]): string[];

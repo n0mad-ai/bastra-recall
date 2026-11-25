@@ -66,16 +66,40 @@ export interface AuditEntry {
 const AUDIT_DIR = ".bastra";
 const AUDIT_FILE = "audit-log.ndjson";
 
-function redactAuditValue(value: unknown): unknown {
-  if (typeof value === "string") return redactSecrets(value).text;
-  if (Array.isArray(value)) return value.map(redactAuditValue);
+/** #1725: credential values `record` replaced in each snapshot, per top-level field. Counted like
+ *  the write receipt: every changed string adds its new `[REDACTED]` placeholders, at least one. */
+export interface AuditRedactionCounts {
+  diff_before: Record<string, number>;
+  diff_after: Record<string, number>;
+}
+
+const placeholders = (text: string): number => text.split("[REDACTED]").length - 1;
+
+function redactAuditValue(value: unknown, count: (added: number) => void): unknown {
+  if (typeof value === "string") {
+    const text = redactSecrets(value).text;
+    if (text !== value) count(Math.max(1, placeholders(text) - placeholders(value)));
+    return text;
+  }
+  if (Array.isArray(value)) return value.map((item) => redactAuditValue(item, count));
   if (value === null || typeof value !== "object" || value instanceof Date) return value;
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactAuditValue(item)]));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactAuditValue(item, count)]));
 }
 
 /** Snapshots are evidence. The entry's ID and path still drive restore. */
-function redactAuditSnapshot(snapshot: AuditEntry["diff_before"]): AuditEntry["diff_before"] {
-  return redactAuditValue(snapshot) as AuditEntry["diff_before"];
+function redactAuditSnapshot(
+  snapshot: AuditEntry["diff_before"],
+  counts: Record<string, number> | undefined
+): AuditEntry["diff_before"] {
+  if (snapshot === null) return null;
+  return Object.fromEntries(
+    Object.entries(snapshot).map(([key, item]) => [
+      key,
+      redactAuditValue(item, (added) => {
+        if (counts) counts[key] = (counts[key] ?? 0) + added;
+      }),
+    ])
+  );
 }
 
 export class AuditLog {
@@ -87,12 +111,15 @@ export class AuditLog {
 
   // ─── public API ───────────────────────────────────────────────
 
-  /** Schreibt einen neuen Audit-Eintrag und invalidiert den Lese-Cache. */
+  /** Schreibt einen neuen Audit-Eintrag und invalidiert den Lese-Cache.
+   *  #1725: `redacted`, when given, receives the snapshot redaction counts of
+   *  this entry, so a caller's receipt needs no second redaction pass. */
   async record(
     input: Omit<AuditEntry, "id" | "timestamp"> & {
       id?: string;
       timestamp?: string;
-    }
+    },
+    redacted?: AuditRedactionCounts
   ): Promise<AuditEntry> {
     const entry: AuditEntry = {
       id: input.id ?? makeAuditID(),
@@ -101,8 +128,8 @@ export class AuditLog {
       actor: input.actor,
       ...(input.actor_detail ? { actor_detail: redactSecrets(input.actor_detail).text } : {}),
       operation: input.operation,
-      diff_before: redactAuditSnapshot(input.diff_before),
-      diff_after: redactAuditSnapshot(input.diff_after),
+      diff_before: redactAuditSnapshot(input.diff_before, redacted?.diff_before),
+      diff_after: redactAuditSnapshot(input.diff_after, redacted?.diff_after),
       ...(input.file_path ? { file_path: input.file_path } : {}),
       ...(input.reason ? { reason: redactSecrets(input.reason).text } : {}),
       ...(input.session_id ? { session_id: input.session_id } : {}),

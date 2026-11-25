@@ -227,7 +227,7 @@ export {
   // Wer sie ruft, muss einen `IdClaim` in der Hand haben.
   moveToTrashUnderClaim,
 } from "./audit-log.js";
-export type { AuditEntry, AuditOperation, AuditActor } from "./audit-log.js";
+export type { AuditEntry, AuditOperation, AuditActor, AuditRedactionCounts } from "./audit-log.js";
 export {
   CONFLICT_START,
   CONFLICT_END,

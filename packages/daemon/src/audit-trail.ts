@@ -39,6 +39,7 @@ import {
   reportMutationIncident,
   type AuditActor,
   type AuditOperation,
+  type AuditRedactionCounts,
   type SaveMemoryCommitOptions,
   type SaveMemoryInput,
   type SaveMemoryResult,
@@ -46,6 +47,7 @@ import {
 } from "@bastra-recall/core";
 import { writeCallerStore } from "./caller-session.js";
 import { redactSaveInput, withRedactionReceipt, WriteRedaction, type RedactionReceipt } from "./save-redaction.js";
+import { redactionEnabled } from "./user-text-redaction.js";
 
 /** One AuditLog per vault — it caches reads, and re-creating it per write
  *  would throw that cache away on every save. */
@@ -121,20 +123,26 @@ export interface AuditTrailInput {
  * ein zweiter Versuch wäre ein zweiter Schreibvorgang auf einen schon
  * geschriebenen Zustand.
  */
-export async function recordAudit(input: AuditTrailInput): Promise<string | undefined> {
+export async function recordAudit(
+  input: AuditTrailInput,
+  redacted?: AuditRedactionCounts
+): Promise<string | undefined> {
   try {
-    await logFor(input.vaultRoot).record({
-      memory_id: input.memoryId,
-      actor: input.actor,
-      actor_detail: input.actorDetail,
-      operation: input.operation,
-      diff_before: input.diffBefore,
-      diff_after: input.diffAfter,
-      ...(input.filePath ? { file_path: input.filePath } : {}),
-      ...(input.reason ? { reason: input.reason } : {}),
-      ...(input.sessionId ? { session_id: input.sessionId } : {}),
-      ...writerFields(),
-    });
+    await logFor(input.vaultRoot).record(
+      {
+        memory_id: input.memoryId,
+        actor: input.actor,
+        actor_detail: input.actorDetail,
+        operation: input.operation,
+        diff_before: input.diffBefore,
+        diff_after: input.diffAfter,
+        ...(input.filePath ? { file_path: input.filePath } : {}),
+        ...(input.reason ? { reason: input.reason } : {}),
+        ...(input.sessionId ? { session_id: input.sessionId } : {}),
+        ...writerFields(),
+      },
+      redacted
+    );
   } catch (err) {
     console.error(
       `[bastra-recall] audit: could not record ${input.operation} of ${input.memoryId}: ${(err as Error).message}`
@@ -181,22 +189,20 @@ export interface SaveMemoryWithAuditTrailInput {
   commit?: SaveMemoryCommitOptions;
 }
 
-/** Preserve the import receipt for changed content fields without touching the mutation's exact snapshots. */
-function importAuditSnapshot(
-  snapshot: Record<string, unknown> | null,
-  prefix: string,
-  redaction: WriteRedaction
-): Record<string, unknown> | null {
-  if (snapshot === null) return null;
-  const copy = { ...snapshot };
-  for (const field of ["title", "summary", "applies_when", "verify_cmd"]) {
-    if (typeof copy[field] === "string") copy[field] = redaction.text(`${prefix}.${field}`, copy[field]);
+/** #1725: the import receipt for changed content fields, taken from the counts of the audit pass
+ *  itself. The audit snapshots are always redacted; the receipt follows the owner's switch. */
+function importAuditReceipt(counts: AuditRedactionCounts): RedactionReceipt {
+  const redaction = new WriteRedaction();
+  if (!redactionEnabled()) return redaction.receipt();
+  for (const [prefix, fields] of [
+    ["audit_before", counts.diff_before],
+    ["audit_after", counts.diff_after],
+  ] as const) {
+    for (const field of ["title", "summary", "applies_when", "verify_cmd", "recall_when"]) {
+      if (fields[field]) redaction.add(`${prefix}.${field}`, fields[field]);
+    }
   }
-  if (Array.isArray(copy.recall_when))
-    copy.recall_when = copy.recall_when.map((item: unknown) =>
-      typeof item === "string" ? redaction.text(`${prefix}.recall_when`, item) : item
-    );
-  return copy;
+  return redaction.receipt();
 }
 
 /**
@@ -235,19 +241,22 @@ export async function saveMemoryWithAuditTrail(
   // `update`-Ereignis mit identischem `diff_before`/`diff_after` an das
   // append-only Log — ein Beleg für eine Änderung, die es nicht gab.
   if (result.unchanged) return withRedactionReceipt(result, redacted);
-  const auditRedaction = new WriteRedaction();
-  await recordAudit({
-    vaultRoot: args.vaultRoot,
-    memoryId: result.id,
-    operation: result.created ? "create" : "update",
-    actor: args.actor,
-    actorDetail: args.actorDetail,
-    diffBefore: importAuditSnapshot(result.audit_before, "audit_before", auditRedaction),
-    diffAfter: importAuditSnapshot(result.audit_after, "audit_after", auditRedaction),
-    filePath: result.file_path,
-    sessionId: args.sessionId,
-  });
-  const receipt = auditRedaction.receipt();
+  const counts: AuditRedactionCounts = { diff_before: {}, diff_after: {} };
+  await recordAudit(
+    {
+      vaultRoot: args.vaultRoot,
+      memoryId: result.id,
+      operation: result.created ? "create" : "update",
+      actor: args.actor,
+      actorDetail: args.actorDetail,
+      diffBefore: result.audit_before,
+      diffAfter: result.audit_after,
+      filePath: result.file_path,
+      sessionId: args.sessionId,
+    },
+    counts
+  );
+  const receipt = importAuditReceipt(counts);
   const saved = withRedactionReceipt(result, redacted);
   if (!receipt.message) return saved;
   receipt.fields.secrets_redacted = { ...redacted.fields.secrets_redacted, ...receipt.fields.secrets_redacted };

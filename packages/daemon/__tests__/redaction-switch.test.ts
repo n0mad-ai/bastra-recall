@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AuditLog, Vault, SearchIndex } from "@bastra-recall/core";
+import { AuditLog, Vault, SearchIndex, saveMemory, type SaveMemoryInput } from "@bastra-recall/core";
 import { mutateSettings, readSettings, settingsFilePath } from "../src/settings.js";
 import { applySettingChanges, settingEntry } from "../src/settings-registry.js";
 import { redactionEnabled, redactUserText } from "../src/user-text-redaction.js";
@@ -22,7 +22,7 @@ import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-han
 import { saveDocument } from "../src/documents-write-handler.js";
 import { saveProductDocHandler } from "../src/product-doc-handler.js";
 import { createBridgeMethods } from "../src/bridge-methods.js";
-import { resetAuditLogCache } from "../src/audit-trail.js";
+import { resetAuditLogCache, saveMemoryWithAuditTrail } from "../src/audit-trail.js";
 import { cleanDraftLine, cleanDraftText } from "../src/draft-text.js";
 import { draftFingerprint, draftId, listDrafts, upsertDraft, type Draft } from "../src/draft-store.js";
 import { situationForTurn } from "../src/draft-situation.js";
@@ -145,6 +145,27 @@ test("turning redaction back on keeps older credentials out of new audit entries
   const audit = await readFile(join(vaultRoot, ".bastra", "audit-log.ndjson"), "utf8");
   assert.ok(!audit.includes(TOKEN), "new entries redact old content too");
 });
+
+test("#1725: an import update names the audit redactions only with the switch on; the audit stays redacted", (t) =>
+  bothWays(async (on) => {
+    const { vaultRoot } = await vaultFixture(t);
+    const input = {
+      ...memory({ summary: TEXT, recall_when: [`deploying with ${TOKEN}`, "deploying"] }),
+      id: `legacy-${on}`,
+      source: "generic:notes:legacy.md",
+    } as SaveMemoryInput;
+    await saveMemory(vaultRoot, input);
+    const clean = { ...input, summary: "How the deploy works.", recall_when: ["deploying"], overwrite: true };
+    const args = { vaultRoot, actor: "import" as const, actorDetail: "import:vault", sessionId: "fixture" };
+    const updated = await saveMemoryWithAuditTrail({ ...args, input: clean });
+    const audit = await readFile(join(vaultRoot, ".bastra", "audit-log.ndjson"), "utf8");
+    assert.ok(!audit.includes(TOKEN), "the audit snapshots stay redacted either way");
+    assert.deepEqual(
+      updated.secrets_redacted,
+      on ? { "audit_before.summary": 1, "audit_before.recall_when": 1 } : undefined,
+      "the receipt counts come from the audit pass and follow the switch"
+    );
+  }));
 
 test("Mac bridge saves follow the switch while audit reasons and snapshots stay redacted", (t) =>
   bothWays(async (on) => {
