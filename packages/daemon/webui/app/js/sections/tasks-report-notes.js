@@ -32,12 +32,20 @@ import { excerptOf, notesAt, askOf, unescapeAsk, answerAt, optionParts } from ".
  *  table renderer build them): headings, paragraphs, list items, table body rows. */
 export function reportBlocksIn(nodes) {
   const out = [];
+  let previous = "";
+  const prose = (el, kind) => {
+    out.push({ el, kind, previous });
+    previous = el.textContent;
+  };
   for (const n of nodes) {
-    if (n.tagName === "H3") out.push({ el: n, kind: "heading" });
-    else if (n.tagName === "P") out.push({ el: n, kind: "paragraph" });
-    else if (n.tagName === "UL") for (const li of [...n.children]) out.push({ el: li, kind: "item" });
-    else if (n.classList?.contains("tk-rep__tbl"))
-      for (const tr of [...n.querySelectorAll("tbody tr")]) out.push({ el: tr, kind: "row" });
+    if (n.tagName === "P") prose(n, "paragraph");
+    else if (n.tagName === "UL") for (const li of [...n.children]) prose(li, "item");
+    else {
+      previous = "";
+      if (n.tagName === "H3") out.push({ el: n, kind: "heading" });
+      else if (n.classList?.contains("tk-rep__tbl"))
+        for (const tr of [...n.querySelectorAll("tbody tr")]) out.push({ el: tr, kind: "row" });
+    }
   }
   return out.map((b, i) => ({
     ...b,
@@ -131,7 +139,7 @@ function addButton(b, ui, anchor) {
  *  An escaped marker "\[? … ]" stays text and loses only its backslash (#1652). */
 function takeAsk(b) {
   if (b.kind !== "item" && b.kind !== "paragraph") return null;
-  const ask = askOf(b.el.textContent),
+  const ask = askOf(b.el.textContent, b.previous),
     last = [...b.el.childNodes].at(-1);
   if (last?.nodeType !== 3) return null;
   if (!ask) {

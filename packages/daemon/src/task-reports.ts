@@ -369,7 +369,7 @@ function saveHints(body: string): string[] {
   );
   if (hints.length)
     hints.push(
-      `Answer options need 2-6 different options of at most ${OPTION_MAX} characters, no brackets or formatting inside, at the end of a list item or paragraph line after the question text.`
+      `Answer options need 2-6 different options of at most ${OPTION_MAX} characters, no brackets or formatting inside. Put them at the end of the question's list item or paragraph line, or on their own line directly below it.`
     );
   if (asks > QUESTIONS_MAX)
     hints.push(

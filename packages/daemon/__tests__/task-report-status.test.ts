@@ -440,9 +440,9 @@ test("follow-up: a chain never loops, and a deleted original only drops the link
 
 test("Daniel 25.11.2026: task_report_save hints at unread markers and more than 20 questions, and stores anyway", async () => {
   const f = await fixture();
-  const clean = await f.save({ body: "- Ship it? [? Yes | No]" });
+  const clean = await f.save({ body: "- Ship it? [? Yes | No]\n\nLater?\n\n[? Yes | No]" });
   assert.equal(clean.hints, undefined, "a report the reader reads fully carries no hints");
-  const broken = await f.save({ body: "Ship it?\n[? Yes | No]\n- Later? [? Yes | Yes]" });
+  const broken = await f.save({ body: "[? Yes | No]\n- Later? [? Yes | Yes]" });
   assert.equal(broken.hints.length, 3);
   assert.match(broken.hints[0], /plain text without answer buttons: "\[\? Yes \| No\]"/);
   assert.match(broken.hints[1], /"- Later\? \[\? Yes \| Yes\]"/);

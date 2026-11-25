@@ -216,12 +216,13 @@ export function optionsOf(inner) {
   return fits && new Set(options).size === options.length ? options : null;
 }
 
-/** Block text → { question, options, at } (at: where the marker starts), or null. */
-export function askOf(text) {
+/** Block text → { question, options, at } (at: where the marker starts), or null. A marker on its
+ * own can use the preceding prose block as its question. A second marker cannot reuse that block. */
+export function askOf(text, previous = "") {
   const m = ASK.exec(String(text ?? ""));
   if (!m || text[m.index - 1] === "\\") return null;
   const options = optionsOf(m[1]);
-  const question = text.slice(0, m.index).trim();
+  const question = text.slice(0, m.index).trim() || (ASK.test(previous) ? "" : previous.trim());
   return options && question ? { question, options, at: m.index } : null;
 }
 

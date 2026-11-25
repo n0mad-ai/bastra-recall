@@ -18,7 +18,7 @@
 // finds next to its code as it finds the rest of the web UI (webui.ts).
 import { inlineMatches } from "../webui/app/js/views/inline-scan.js";
 import { codeLines } from "../webui/app/js/views/code-lines.js";
-import { OPTION_MAX, optionsOf, reportBlocks } from "../webui/app/js/sections/tasks-reports-model.js";
+import { OPTION_MAX, askOf, reportBlocks } from "../webui/app/js/sections/tasks-reports-model.js";
 
 export type ReportStatus = "new" | "read" | "in_progress" | "handed" | "question" | "done" | "outdated";
 
@@ -37,15 +37,14 @@ export interface StatusReport {
 }
 
 // The marker the UI shows as answer buttons (tasks-reports-model.js askOf, tasks-report-notes.js
-// takeAsk): 2 to 6 distinct options (optionsOf, the reader's own check) after a question, at the end
-// of a list item or paragraph line. One contract with the reader (#1656): the lines are taken apart
+// takeAsk): 2 to 6 distinct options after a question, at the end of a list item or paragraph line
+// or after the question's prose block. One contract with the reader (#1656): the lines are taken apart
 // as its renderer (webui views/markdown.js markdown()) does, so a marker in code (fenced or indented,
 // the reader's own rule in code-lines.js), in a heading, behind a backslash (#1652) or with formatting
 // inside it stays text here as well.
-const ASK = /\[\?([^[\]]*)\]\s*$/;
-
 const HEADING = /^#{1,6}\s/;
 const ITEM = /^\s*(?:[-*]|\d+\.)\s+(.*)$/;
+const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}$/;
 /** Where the last inline element of `text` ends (0 without one): the renderer's inline formatting
  * (views/markdown.js, via inline-scan.js) — wiki links, code, bold, links, web addresses, emphasis. An
  * element that ends after the marker's start leaves the line plain text. */
@@ -53,29 +52,35 @@ function formattedUntil(text: string): number {
   return inlineMatches(text).at(-1)?.end ?? 0;
 }
 
-/** The text of a list item or paragraph line: does it end with answer options? */
-function asksIn(text: string): boolean {
-  const m = ASK.exec(text);
-  if (!m || text[m.index - 1] === "\\" || !text.slice(0, m.index).trim()) return false;
-  return formattedUntil(text) <= m.index && optionsOf(m[1]!) !== null;
-}
-
-/** One line of prose as the reader shows it: does it hold a question? */
-const lineAsks = (line: string) => !HEADING.test(line) && asksIn(ITEM.exec(line)?.[1] ?? line);
-
-/** The lines of one piece of prose (a markdown() call of the reader) outside code. */
-function proseLines(md: string): string[] {
+/** The lines of one markdown() call outside code and whether the reader shows answer options. */
+function* proseQuestions(md: string) {
   // HTML comments are bookkeeping the reader drops before it reads the lines
   const lines = md.replace(/<!--[\s\S]*?-->/g, "").split("\n"),
     code = codeLines(lines);
-  return lines.filter((_, i) => !code[i]).map((l) => l.trimEnd());
+  let previous = "";
+  for (const [i, raw] of lines.entries()) {
+    const line = raw.trimEnd();
+    if (code[i] || HEADING.test(line) || ((!i || !lines[i - 1]?.trim()) && RULE.test(line))) {
+      previous = "";
+      if (!code[i]) yield { line, asks: false };
+    } else if (line.trim()) {
+      const text = ITEM.exec(line)?.[1] ?? line;
+      const ask = askOf(text, previous);
+      yield { line, asks: ask !== null && formattedUntil(text) <= ask.at };
+      previous = text;
+    }
+  }
 }
 
 /** True when the report text holds at least one question with answer options. The reader renders
  *  the prose between pipe tables piece by piece (tasks-reports.js bodyNodes), so a line right under
  *  a table starts a new piece there; this status reads the same pieces (#1665). */
 export function asksOwner(body: string): boolean {
-  return reportBlocks(body).some((b) => b.kind === "md" && proseLines(b.text).some(lineAsks));
+  for (const b of reportBlocks(body)) {
+    if (b.kind !== "md") continue;
+    for (const q of proseQuestions(b.text)) if (q.asks) return true;
+  }
+  return false;
 }
 
 // An opening marker outside inline code and not escaped: the agent meant answer options here.
@@ -89,10 +94,12 @@ export function questionCheck(body: string): { asks: number; unread: string[] } 
   let asks = 0;
   const unread: string[] = [];
   for (const b of reportBlocks(body)) {
-    const prose = b.kind === "md";
-    const lines = prose ? proseLines(b.text) : [b.head, ...b.rows].map((cells) => cells.join(" | "));
-    for (const line of lines) {
-      if (prose && lineAsks(line)) asks++;
+    const lines =
+      b.kind === "md"
+        ? proseQuestions(b.text)
+        : [b.head, ...b.rows].map((cells) => ({ line: cells.join(" | "), asks: false }));
+    for (const { line, asks: shown } of lines) {
+      if (shown) asks++;
       else if (OPENS.test(line.replace(INLINE_CODE, ""))) unread.push(line.trim());
     }
   }

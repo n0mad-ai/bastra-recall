@@ -2,5 +2,5 @@
 export type ReportBlock = { kind: "md"; text: string } | { kind: "table"; head: string[]; rows: string[][] };
 
 export function reportBlocks(md: unknown): ReportBlock[];
-export function optionsOf(inner: string): string[] | null;
+export function askOf(text: string, previous?: string): { question: string; options: string[]; at: number } | null;
 export const OPTION_MAX: number;

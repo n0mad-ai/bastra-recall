@@ -493,6 +493,44 @@ test("N6/N29: the tool agents file reports with teaches the syntax the reading v
   }
 });
 
+test("standalone options in stored reports get buttons and an outline entry without moving notes", async () => {
+  const m = await load();
+  const renderer = await realRenderer();
+  const { asksOwner, questionCheck } = await import("../src/task-report-status.js");
+  const body =
+    "# Timing\n\n- Keep the reminder at one minute?\n\n[? A – Keep it | B – Make it configurable]\n\nLater text.";
+  const anchor = { kind: "paragraph", index: 3, excerpt: "[? A – Keep it | B – Make it configurable]" };
+  const notes = m.noteRows({ notes: [stored({ anchor: { kind: "paragraph", index: 4, excerpt: "Later text." } })] });
+  const answers: unknown[][] = [];
+  const ui = {
+    notes,
+    editing: null,
+    open() {},
+    edit() {},
+    remove() {},
+    save: async () => {},
+    answer: (...args: unknown[]) => answers.push(args),
+    cancel() {},
+  };
+  const out = m.annotateReport(renderer.render(body), ui);
+  assert.deepEqual(plain(out.toc.asks.map((x: any) => [x.index, x.text])), [[3, "Timing"]]);
+  assert.match(out.nodes[3].textContent, /Preise verifizieren/);
+  assert.equal(out.nodes.length, 4, "the existing later note remains attached");
+  await out.nodes[2].find("tk-ask__opt")[0].click();
+  assert.deepEqual(plain(answers), [[anchor, "A – Keep it", null]]);
+  assert.equal(asksOwner(body), true);
+  assert.deepEqual(questionCheck(body), { asks: 1, unread: [] });
+  for (const isolated of [
+    "[? A | B]",
+    "Text\n\n---\n\n[? A | B]",
+    "Text\n\n```\nexample\n```\n\n[? A | B]",
+    "Text\n\n| A | B |\n|---|---|\n| U | V |\n\n[? A | B]",
+  ]) {
+    assert.equal(m.annotateReport(renderer.render(isolated), ui).toc.asks.length, 0, isolated);
+    assert.deepEqual(questionCheck(isolated), { asks: 0, unread: ["[? A | B]"] }, isolated);
+  }
+});
+
 test("N6/N29: a question shows its options, own answer and clarification; a click saves a note at that place", async () => {
   const m = await load();
   const renderer = await realRenderer();
