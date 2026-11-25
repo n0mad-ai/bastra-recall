@@ -2,17 +2,19 @@
  * #1126 — edge cases of the reviewed-miss harvester, one test each: a BOM in
  * front of the first line, subagent (`isSidechain`) records, a recall and a
  * load in the same message after a first result, a recall after a slash
- * command in `transcript_recalls`, and `hit_count: 1` next to `hits: []`.
+ * command in `transcript_recalls`, `hit_count: 1` next to `hits: []`, and a
+ * hook-lane load that an earlier, unlinked recall served.
  *
  * Runner: node --import tsx --import ../../scripts/test-env.mjs --test __tests__/reviewed-miss-edge-cases.test.ts
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { extractReviewedMissChains, type RecallCallStats } from "../src/learned-recall/reviewed-miss-harvest.js";
-import { loadTelemetry } from "../src/learned-recall/reviewed-miss-engines.js";
+import { loadTelemetry, snapshotVault } from "../src/learned-recall/reviewed-miss-engines.js";
+import { observeLanes } from "../src/learned-recall/reviewed-miss-evidence.js";
 
 const RECALL = "mcp__bastra-recall__recall";
 const LOAD = "mcp__bastra-recall__load_memory";
@@ -103,6 +105,93 @@ test("#1126 a recall after a slash command counts in transcript_recalls without 
   const stats: RecallCallStats = { recalls: 0, withRecallId: 0 };
   assert.deepEqual(extractReviewedMissChains(jsonl, "s", stats), [], "no typed intent, no chain");
   assert.deepEqual(stats, { recalls: 1, withRecallId: 1 });
+});
+
+test("#1126 hook lane: a load an earlier, unlinked recall of its session served is a gap, not a proposal", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "rm-1126-"));
+  try {
+    const vault = join(dir, "vault");
+    const eventsDir = join(dir, "events");
+    await mkdir(join(vault, "memories"), { recursive: true });
+    await mkdir(eventsDir);
+    for (const id of ["release-key", "other"])
+      await writeFile(
+        join(vault, "memories", id + ".md"),
+        ["---", `id: ${id}`, `title: ${id}`, "type: lesson", "scope: test", "---", "", "body", ""].join("\n")
+      );
+    const base = Date.now() + 3_600_000;
+    const at = (min: number): string => new Date(base + min * 60_000).toISOString();
+    const recallEvent = (recallId: string, hits: string[], min: number, session = "sess-a"): string =>
+      line({
+        kind: "recall",
+        ts: at(min),
+        recall_id: recallId,
+        vault_size: 2,
+        k: 4,
+        session_id: "run-1",
+        dimensions: { experiment_session: session },
+        hits: hits.map((id) => ({ id, score: 10 })),
+        candidate_pool: hits.map((id) => ({ id, score: 5 })),
+        candidate_pool_score_kind: "bm25",
+        candidate_pool_score_arms: ["bm25"],
+      });
+    const loadEvent = (min: number): string =>
+      line({
+        kind: "load_memory",
+        ts: at(min),
+        session_id: "run-1",
+        id: "release-key",
+        found: true,
+        follows_recall: "r2",
+      });
+    const hookLane = async (events: string[]): Promise<{ classes: string[]; gaps: string[]; targets: string[] }> => {
+      await writeFile(join(eventsDir, "events-2026-11-25.jsonl"), events.join("\n") + "\n");
+      const telemetry = await loadTelemetry(eventsDir);
+      const engines = {
+        pools: telemetry.pools,
+        vaultRoot: vault,
+        snapshot: await snapshotVault(vault),
+        labels: new Map(),
+      };
+      const lanes = observeLanes([], telemetry, engines, { hookLane: true, hubSessions: 3 });
+      return {
+        classes: lanes.hook.records.map((record) => record.classification),
+        gaps: lanes.gaps.map((gap) => gap.kind),
+        targets: lanes.proposals.map((proposal) => proposal.targetId),
+      };
+    };
+    const gap = { classes: [], gaps: ["load-served-by-unlinked-recall"], targets: [] };
+    // The first recall served the hit; the daemon linked the load to the second one.
+    assert.deepEqual(
+      await hookLane([recallEvent("r1", ["release-key"], 0), recallEvent("r2", ["other"], 1), loadEvent(2)]),
+      gap
+    );
+    assert.deepEqual(
+      await hookLane([recallEvent("r1", ["release-key"], 0), recallEvent("r2", [], 1), loadEvent(2)]),
+      gap,
+      "later recall served nothing"
+    );
+    // Controls: no earlier server, another session, or outside the follow-up window — judged as before.
+    const judged = { classes: ["genuine-out-of-pool"], gaps: [], targets: ["release-key"] };
+    assert.deepEqual(await hookLane([recallEvent("r2", ["other"], 1), loadEvent(2)]), judged, "no earlier server");
+    assert.deepEqual(
+      await hookLane([recallEvent("r1", ["release-key"], 0, "sess-b"), recallEvent("r2", ["other"], 1), loadEvent(2)]),
+      judged,
+      "another session"
+    );
+    assert.deepEqual(
+      await hookLane([recallEvent("r1", ["release-key"], 0), recallEvent("r2", ["other"], 6), loadEvent(7)]),
+      judged,
+      "older than five minutes"
+    );
+    assert.deepEqual(
+      await hookLane([recallEvent("r2", ["other"], 1), loadEvent(2), recallEvent("r3", ["release-key"], 3)]),
+      judged,
+      "a recall after the load"
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("#1126 hit_count above zero next to an empty hits list is no proven empty pool", async () => {

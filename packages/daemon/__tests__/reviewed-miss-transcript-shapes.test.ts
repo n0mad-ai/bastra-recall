@@ -226,8 +226,13 @@ test("hook lane: a complete batch joins the served hits and candidate pools of i
       name
     );
   }
-  // Control: the same two recalls, not a batch — the linked pool is the pool, and the load is judged.
-  assert.deepEqual(await hookLane(TWO_POOLS), { classes: ["genuine-out-of-pool"], targets: ["served-one"], gaps: [] });
+  // Control: the same two recalls, not a batch — r1 served the hit but is not linked, so the lane fails closed.
+  assert.deepEqual(await hookLane(TWO_POOLS), { classes: [], targets: [], gaps: ["load-served-by-unlinked-recall"] });
+  assert.deepEqual(await hookLane([TWO_POOLS[1]], "third"), {
+    classes: ["in-pool-not-selected"],
+    targets: ["third"],
+    gaps: [],
+  });
 });
 
 test("hook lane: only a batch that ran more than one phrasing has sibling pools to miss", async () => {

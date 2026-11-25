@@ -57,6 +57,7 @@ type GapKind =
   | "load-without-recall-link"
   | "link-without-pool"
   | "batch-link-without-sibling-pools"
+  | "load-served-by-unlinked-recall"
   | "load-not-found"
   | "unresolved-evidence"
   | "chain-without-pool"
@@ -135,6 +136,35 @@ function hookLanePool(
 }
 
 /**
+ * The daemon's `follows_recall` window (`RECALL_FOLLOWUP_WINDOW_MS` in
+ * telemetry-join-state.ts, not exported): only the newest recall inside it is linked.
+ */
+const FOLLOWUP_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * Separate recall calls are not grouped (#1126). When the joined pool did not
+ * serve the loaded memory but another recall of the same session served it
+ * within the follow-up window before the load, the load may have followed that
+ * recall: judging it against the joined pool alone would propose a served hit
+ * as out of pool, so the lane fails closed. An unknown session matches any.
+ */
+function servedByUnlinkedRecall(
+  load: TelemetryLoad,
+  joined: { pool: TelemetryPool; recallIds: string[] },
+  telemetry: Telemetry
+): boolean {
+  if (joined.pool.servedIds.includes(load.memoryId)) return false;
+  const loadMs = Date.parse(load.ts);
+  for (const other of telemetry.pools.values()) {
+    if (joined.recallIds.includes(other.recallId) || !other.servedIds.includes(load.memoryId)) continue;
+    if (load.session !== null && other.session !== null && other.session !== load.session) continue;
+    const age = loadMs - Date.parse(other.ts);
+    if (age >= 0 && age <= FOLLOWUP_WINDOW_MS) return true;
+  }
+  return false;
+}
+
+/**
  * Observe every daemon-joined load against its recall or batch pool.
  * Without a complete pool, count a gap and leave the load unclassified.
  */
@@ -175,6 +205,10 @@ export function observeHookLane(
     }
     if (!load.found) {
       gaps.push({ kind: "load-not-found", witness });
+      continue;
+    }
+    if (servedByUnlinkedRecall(load, joined, telemetry)) {
+      gaps.push({ kind: "load-served-by-unlinked-recall", witness });
       continue;
     }
     if (!engines.snapshot) {
@@ -382,6 +416,8 @@ const GAP_EXITS: Record<GapKind, string> = {
     "load links a recall_id with no recorded candidate_pool — event outside the window or pool not captured on that path",
   "batch-link-without-sibling-pools":
     "batch identity or complete sibling pools in one score space could not be proven; the session transcript can link the recall_ids",
+  "load-served-by-unlinked-recall":
+    "an earlier recall of the same session served the loaded memory, but the daemon linked the load to another one; separate recalls are not grouped — the session transcript can judge the chain",
   "load-not-found": "load_memory for an id the vault did not hold — moved or deleted memory; nothing to classify",
   "unresolved-evidence":
     "the evidence step had no inspectable identity (Grep/Glob/find_document) — nothing to check against the vault",
@@ -404,6 +440,8 @@ const GAP_RECOUNT: Record<GapKind, string> = {
     "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -vc 'from_hook_recall\\|follows_recall'",
   "link-without-pool": "harvester only: linked recall_id with no candidate_pool event in the window",
   "batch-link-without-sibling-pools": "harvester only: linked batch without a complete, unambiguous pool union",
+  "load-served-by-unlinked-recall":
+    "harvester only: load whose memory another recall of its session served within five minutes before it",
   "load-not-found": 'grep -h \'"kind":"load_memory"\' {events}/events-*.jsonl | grep -c \'"found":false\'',
   "unresolved-evidence": "harvester only: chains whose evidence step had no file_path or memory id",
   "chain-without-pool": "harvester only: chains with a load_memory or an in-vault read whose recalls joined no pool",
