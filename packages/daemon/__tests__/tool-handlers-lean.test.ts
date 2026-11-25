@@ -16,7 +16,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, AUTO_RELATED_START } from "@bastra-recall/core";
@@ -209,6 +209,33 @@ test("recall (#1299): every hit carries the day it was last written, lean and fu
   } finally {
     await close();
   }
+});
+
+test("recall uses UTC for timestamps and falls back to the file day for damaged dates", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-lean-dates-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const notes = [
+    ["bare", "updated: 2026-11-25T00:30:00+02:00", "2026-11-24"],
+    ["quoted", 'updated: "2026-11-25T00:30:00+02:00"', "2026-11-24"],
+    ["broken", 'updated: "2026-02-31"', "2026-10-12"],
+    ["missing", "", "2026-10-12"],
+  ] as const;
+  const mtime = new Date("2026-10-12T15:00:00Z");
+  for (const [id, updated] of notes) {
+    const file = join(dir, `${id}.md`);
+    await writeFile(file, leanMemory(id, "calendar timestamp lookup").replace(/^updated: .+$/m, updated));
+    await utimes(file, mtime, mtime);
+  }
+  const vault = new Vault(dir);
+  await vault.init();
+  const search = new SearchIndex(vault);
+  search.start();
+  t.after(() => search.stop());
+  const deps: ToolDeps = { vault, search, telemetry: new Telemetry(), vaultPath: dir };
+  const result = await recallHandler(deps, { query: "calendar timestamp lookup", k: notes.length, min_score: 0 });
+  const hits = result.hits as Array<{ id: string; updated?: string }>;
+  assert.equal(hits.length, notes.length);
+  for (const [id, , day] of notes) assert.equal(hits.find((hit) => hit.id === id)?.updated, day, id);
 });
 
 test("truncateSummary: cuts long summaries at a word boundary with ellipsis, keeps short ones", () => {
@@ -512,7 +539,7 @@ test("commons fusion: recall merges read-only commons hits (scope commons, dampe
   const dirC = await mkdtemp(join(tmpdir(), "bastra-commons-c-"));
   try {
     const ts = new Date().toISOString();
-    const mk = (id: string, scope: string, recallWhen: string): string =>
+    const mk = (id: string, scope: string, recallWhen: string, updated = "2026-11-12"): string =>
       [
         "---",
         `id: ${id}`,
@@ -527,7 +554,7 @@ test("commons fusion: recall merges read-only commons hits (scope commons, dampe
         "recall_when:",
         `  - ${recallWhen}`,
         `created: ${ts}`,
-        `updated: ${ts}`,
+        `updated: ${updated}`,
         "---",
         "",
         `Body for ${id}.`,
@@ -540,7 +567,11 @@ test("commons fusion: recall merges read-only commons hits (scope commons, dampe
       "utf8"
     );
     // ID-Kollision: gleiche ID in commons — der persönliche Treffer muss gewinnen.
-    await writeFile(join(dirC, "own-clone.md"), mk("own-note", "commons", "flux compensator drift tuning"), "utf8");
+    await writeFile(
+      join(dirC, "own-clone.md"),
+      mk("own-note", "commons", "flux compensator drift tuning", "2026-11-24"),
+      "utf8"
+    );
 
     const vault = new Vault(dirP);
     await vault.init();
@@ -556,16 +587,18 @@ test("commons fusion: recall merges read-only commons hits (scope commons, dampe
     // #542: RecallResult.hits is `unknown[]` — cast to what fused recall
     // actually returns (id + scope) for this fixture.
     const res = await recallHandler(deps, { query: "button spinner clipped width jumps", k: 5 });
-    const hits = res.hits as Array<{ id: string; scope: string }>;
+    const hits = res.hits as Array<{ id: string; scope: string; updated?: string }>;
     const recipeHit = hits.find((h) => h.id === "spinner-recipe");
     assert.ok(recipeHit, "commons recipe must surface in fused recall");
     assert.equal(recipeHit.scope, "commons");
+    assert.equal(recipeHit.updated, "2026-11-12");
 
     // 2. ID-Kollision: nur EIN own-note-Hit, und zwar der persönliche.
     const res2 = await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 });
-    const ownHits = (res2.hits as Array<{ id: string; scope: string }>).filter((h) => h.id === "own-note");
+    const ownHits = (res2.hits as typeof hits).filter((h) => h.id === "own-note");
     assert.equal(ownHits.length, 1, "id collision must not produce duplicates");
     assert.equal(ownHits[0].scope, "personal", "personal memory wins the collision");
+    assert.equal(ownHits[0].updated, "2026-11-12", "the date follows the selected memory");
 
     // 3. load_memory fällt für Commons-IDs auf den Commons-Index zurück.
     const loaded = await loadMemoryHandler(deps, { id: "spinner-recipe" });

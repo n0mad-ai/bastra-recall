@@ -8,7 +8,13 @@ import { missingVaultReason } from "./vault-presence.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { scopeEquals } from "@bastra-recall/core/scope";
-import { hasUnresolvedConflict, type StageListener, type RecallStage, type RecallHit } from "@bastra-recall/core";
+import {
+  hasUnresolvedConflict,
+  type Memory,
+  type StageListener,
+  type RecallStage,
+  type RecallHit,
+} from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
 import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
@@ -274,9 +280,15 @@ export function toLeanHit(
  *  a note that was corrected or extended later is as current as its last
  *  write. The day is enough to compare hits and keeps the lean hit short.
  *  Only the recall tool's answer carries it, not the hook hints. */
-function withUpdated<T extends { id: string }>(hit: T, vault: ToolDeps["vault"]): T & { updated?: string } {
-  const updated = vault.get(hit.id)?.fm.updated;
-  return updated ? { ...hit, updated: String(updated).slice(0, 10) } : hit;
+function withUpdated<T>(hit: T, memory: Memory | undefined): T & { updated?: string } {
+  if (!memory) return hit;
+  const updated = memory.fm.updated;
+  const day = updated.slice(0, 10);
+  const midnight = new Date(`${day}T00:00:00Z`);
+  const validDay = Number.isFinite(midnight.getTime()) && midnight.toISOString().slice(0, 10) === day;
+  const timestamp = validDay && (updated === day || /T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(updated));
+  const written = timestamp ? Date.parse(updated) : NaN;
+  return { ...hit, updated: new Date(Number.isFinite(written) ? written : memory.mtime).toISOString().slice(0, 10) };
 }
 
 export async function recallHandler(
@@ -481,9 +493,12 @@ async function recallAgainstVault(
   // die Hälfte seines Scores (163.934 → 81.967) und fiel unter jedes
   // REQUIRED-Band, obwohl Commons zu ihm nichts beigetragen hatte.
   let commonsFused = false;
+  let commonsOnly: Set<string> | undefined;
   if (deps.commonsSearch && (!parsed.data.scope || scopeEquals(parsed.data.scope, "commons"))) {
     const commonsHits = deps.commonsSearch.recall(query, { k: recallOpts.k, type: parsed.data.type });
     if (commonsHits.length > 0) {
+      const ownIds = new Set(rawHits.map((hit) => hit.id));
+      commonsOnly = new Set(commonsHits.map((hit) => hit.id).filter((id) => !ownIds.has(id)));
       rawHits = fuseCommonsHits(
         rawHits,
         commonsHits,
@@ -543,7 +558,7 @@ async function recallAgainstVault(
     new Set(hits.map((h) => h.id)),
     deps.vault,
     floor
-  ).map((h) => withUpdated(withSupersession(h, deps.vault, sources.get(h.id)), deps.vault));
+  ).map((h) => withUpdated(withSupersession(h, deps.vault, sources.get(h.id)), deps.vault.get(h.id)));
   // Codex-Gegenreview (P0): `score_kind: "rrf"` bezeichnet inzwischen MEHRERE
   // verschiedene Zahlen — BM25+Vector (≤163.934), BM25+Vector+Commons
   // (≤241.803) und den Kollaps-Pfad aus persönlichem Listenrang + Commons
@@ -581,7 +596,12 @@ async function recallAgainstVault(
   // #487: die projizierten Treffer in Rangfolge — was das Budget gleich
   // beschneidet, ist genau das, was der Aufrufer sonst bekäme.
   const projected = (full ? hits : hits.map(toLeanHit))
-    .map((hit) => withUpdated(withSupersession(hit, deps.vault, sources.get(hit.id)), deps.vault))
+    .map((hit) =>
+      withUpdated(
+        withSupersession(hit, deps.vault, sources.get(hit.id)),
+        commonsOnly?.has(hit.id) ? deps.commonsSearch?.loadFull(hit.id) : deps.vault.get(hit.id)
+      )
+    )
     .map(flagConflict);
   const budgeted = fitRecallWithReflexToBudget(
     projected,

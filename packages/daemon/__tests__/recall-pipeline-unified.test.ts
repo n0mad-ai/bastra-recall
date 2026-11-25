@@ -129,6 +129,7 @@ test("#421: recallHandler liefert verdrahtete Reflexe unter dem top-k-Schnitt", 
   assert.deepEqual(ids(res.reflex_hits), ["alpha-reflex"]);
   const reflex = (res.reflex_hits as Array<Record<string, unknown>>)[0]!;
   assert.equal(reflex.recall_mode, "reflex");
+  assert.equal(reflex.updated, deps.vault.get("alpha-reflex")?.fm.updated.slice(0, 10));
 });
 
 test("#421: Reflexe passieren denselben Floor wie die gerankten Treffer", async (t) => {
