@@ -722,13 +722,24 @@ async function padStore(path: string, taskId: string, target: number) {
 const storeBytes = (path: string) => Buffer.byteLength(readAppRecord("tasks", path));
 test("#1599 the automatic evaluation does not use the owner's control reserve", async () => {
   const f = await fixture();
-  await callTaskCrud(f.ctx, f.auth, "task_create", f.input);
+  await callTaskCrud(f.ctx, f.auth, "task_source_register", f.source);
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    schedule: { kind: "event", source_id: "source", predicate: "equals", expected: "yes" },
+  });
+  await callTaskCrud(f.ctx, f.agentAuth, "task_event", {
+    source_id: "source",
+    source_revision: 0,
+    dedup_key: "e1",
+    value: "yes",
+    state_updated_at: 1000,
+  });
   const id = (await readTaskStore(f.ctx.path)).tasks[0].id;
   await padStore(f.ctx.path, id, NORMAL_LIMIT - 50);
   f.setNow(3000);
   await assert.rejects(reconcileTaskTime(f.ctx), { code: "capacity" });
   const s = await readTaskStore(f.ctx.path);
-  assert.equal(s.occurrences.length, 0, "the refused evaluation wrote nothing");
+  assert.equal(s.occurrences.length, 0, "the refused event evaluation wrote nothing");
   assert.ok(Buffer.byteLength(JSON.stringify(s)) <= NORMAL_LIMIT);
   // The reserve above the normal limit is still there for the owner.
   await callTaskCrud(f.ctx, f.auth, "task_cancel", {
@@ -756,12 +767,34 @@ test("#1599 a full store does not hide an already scheduled reminder from next c
     await runtime.ready;
     assert.equal(runtime.lastError, "capacity");
     assert.equal(cachedTaskSnapshot(f.ctx.path)?.occurrences[0]?.id, before.occurrences[0].id);
-    assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1, "the owner reserve stays unused");
-    assert.ok(storeBytes(f.ctx.path) <= NORMAL_LIMIT);
   } finally {
     runtime.stop();
     await runtime.settle();
   }
+});
+test("a time reminder that becomes due in a full store fires from the reserve", async () => {
+  const f = await fixture();
+  await callTaskCrud(f.ctx, f.auth, "task_create", f.input);
+  await callTaskCrud(f.ctx, f.auth, "task_create", {
+    ...f.input,
+    idempotency_key: "later",
+    goal: "Later",
+    schedule: { kind: "instant", at: 4000 },
+  });
+  f.setNow(3000);
+  const before = await reconcileTaskTime(f.ctx);
+  assert.equal(before.occurrences.length, 1);
+  await padStore(f.ctx.path, before.tasks[0].id, NORMAL_LIMIT - 50);
+  f.setNow(5000);
+  await assert.rejects(reconcileTaskTime(f.ctx), { code: "capacity" });
+  const s = await readTaskStore(f.ctx.path);
+  const later = s.tasks.find((t) => t.goal === "Later")!;
+  assert.equal(later.state, "due");
+  assert.equal(s.occurrences.filter((o) => o.task_id === later.id).length, 1);
+  assert.ok(storeBytes(f.ctx.path) > NORMAL_LIMIT, "it used the reserve");
+  // A second pass has nothing to write and does not fire it again.
+  await reconcileTaskTime(f.ctx);
+  assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 2);
 });
 test("#1599 above the normal limit the evaluation still switches a full task off with one audit row", async () => {
   const { f, seriesId } = await fullHistoryFixture(9899);
@@ -773,7 +806,11 @@ test("#1599 above the normal limit the evaluation still switches a full task off
   assert.equal(series.armed, false);
   assert.equal(series.last_failure?.code, "history_capacity");
   assert.equal(series.history.length, 9900, "exactly one audit row");
-  assert.equal(s.occurrences.length, 0, "nothing else used the reserve");
+  // Besides that row, only the due one-shot reminder used the reserve.
+  assert.deepEqual(
+    s.occurrences.map((o) => o.task_id),
+    [once.id]
+  );
 });
 test("#1599 deleting a task is allowed above the normal limit because it makes the store smaller", async () => {
   const f = await fixture();

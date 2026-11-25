@@ -125,6 +125,64 @@ test("in a chain of three the advice names the current version, not the direct s
   assert.ok(result.save_quality?.suggestions.some((s) => s.includes("replaces: 'ingest-worker-batch-size-3'")));
 });
 
+/** A correction that changes only the value: same title, trigger and tags. */
+async function valueCorrectedVault(deps: ToolDeps): Promise<void> {
+  await saveMemoryHandler(deps, memo("Ingest worker batch size", OLD, "tuning the ingest worker flush"));
+  await saveMemoryHandler(
+    deps,
+    memo("Ingest worker batch size", NEW, "tuning the ingest worker flush", {
+      id: "ingest-worker-batch-size-v2",
+      replaces: "ingest-worker-batch-size",
+    })
+  );
+  assert.equal(deps.vault.get("ingest-worker-batch-size")?.fm.superseded_by, "ingest-worker-batch-size-v2");
+}
+
+test("restating the current version after a value-only correction gets no advisory", async (t) => {
+  const deps = await fixture(t);
+  await valueCorrectedVault(deps);
+  const result = (await saveMemoryHandler(
+    deps,
+    memo("Ingest worker batch size", NEW, "tuning the ingest worker flush", { id: "restated", dry_run: true })
+  )) as SaveMemoryResult;
+  assert.equal(replacedIssue(result), undefined);
+});
+
+test("writing the old value again after a value-only correction still warns", async (t) => {
+  const deps = await fixture(t);
+  await valueCorrectedVault(deps);
+  const result = (await saveMemoryHandler(
+    deps,
+    memo("Ingest worker batch size", OLD, "tuning the ingest worker flush", { id: "reasserted", dry_run: true })
+  )) as SaveMemoryResult;
+  assert.match(replacedIssue(result) ?? "", /was superseded by ingest-worker-batch-size-v2/);
+});
+
+test("on equal content words only a verbatim copy of the current text counts as restating it", () => {
+  // Single-character values drop out of the content words, so both versions tie.
+  const base = memo("Ingest worker batch size", "Batch size is 5 x.", "tuning the ingest worker flush");
+  const stored = (id: string, summary: string, extra: Record<string, unknown> = {}) => ({
+    fm: { ...base, id, summary, sensitivity: "team", ...extra },
+    body: `${summary} Measured on the staging cluster.`,
+  });
+  const rows = new Map([
+    ["old", stored("old", "Batch size is 5 x.", { superseded_by: "new" })],
+    ["new", stored("new", "Batch size is 8 x.")],
+  ]);
+  const deps = {
+    vault: { get: (id: string) => rows.get(id), list: () => [...rows.values()] },
+    search: { recall: () => [{ id: "old", title: base.title, summary: "Batch size is 5 x." }] },
+  } as unknown as ToolDeps;
+  const issue = (summary: string) =>
+    scoreSaveQuality(
+      deps,
+      { ...base, summary, body: `${summary} Measured on the staging cluster.` } as SaveMemoryInput,
+      "probe"
+    ).issues.find((i) => i.startsWith("re-asserts a replaced claim"));
+  assert.equal(issue("Batch size is 8 x."), undefined, "a verbatim copy of the current version");
+  assert.ok(issue("Batch size is 5 x."), "a verbatim copy of the old version still warns");
+});
+
 test("an unrelated save gets no replaced-claim advisory", async (t) => {
   const deps = await fixture(t);
   await correctedVault(deps);

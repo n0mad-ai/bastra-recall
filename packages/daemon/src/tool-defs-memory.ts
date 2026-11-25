@@ -114,7 +114,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "recall",
     annotations: READ_ONLY,
     description:
-      "Search the memory vault. Returns lean CANDIDATES (id, title, type, scope, summary, score), no bodies: call load_memory only for the hits you need.\n\n" +
+      "Search the memory vault. Returns lean CANDIDATES (id, title, type, scope, summary, score, updated = day last written), no bodies: call load_memory only for the hits you need.\n\n" +
       "WHEN TO CALL (recall is part of acting, not a separate step): at session start (active project, user preferences); " +
       "before writing or editing a file (describe what you are about to write); before a multi-step plan or recommendation; " +
       "when the prompt touches a stored lesson, decision, preference or project fact; before save_memory, to avoid a duplicate.\n\n" +
@@ -164,7 +164,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           type: "string",
           enum: ["lean", "full"],
           description:
-            "'lean' (default): id, title, type, scope, summary, score. 'full' adds matched_terms, mode, hop, topic_path and timings (debugging).",
+            "'lean' (default): id, title, type, scope, summary, score, updated. 'full' adds matched_terms, mode, hop, topic_path and timings (debugging).",
         },
         min_score: {
           type: "number",

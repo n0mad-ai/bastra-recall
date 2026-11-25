@@ -1476,7 +1476,7 @@
       "post": {
         "operationId": "recall",
         "summary": "recall",
-        "description": "Search the memory vault. Returns lean CANDIDATES (id, title, type, scope, summary, score), no bodies: call load_memory only for the hits you need.\n\nWHEN TO CALL (recall is part of acting, not a separate step): at session start (active project, user preferences); before writing or editin...",
+        "description": "Search the memory vault. Returns lean CANDIDATES (id, title, type, scope, summary, score, updated = day last written), no bodies: call load_memory only for the hits you need.\n\nWHEN TO CALL (recall is part of acting, not a separate step): at session start (active project, user preference...",
         "requestBody": {
           "required": true,
           "content": {

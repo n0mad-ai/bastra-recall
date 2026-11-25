@@ -184,6 +184,12 @@ test("#1492 bastra save writes a user-directed memory through the daemon, bastra
     out.some((l) => l.startsWith("kettle-descaling-interval")),
     out.join("\n")
   );
+  // #1299: the hit line names the day the memory was last written.
+  const writtenDay = String(vault.get("kettle-descaling-interval")?.fm.updated).slice(0, 10);
+  assert.ok(
+    out.some((l) => l.startsWith("kettle-descaling-interval") && l.includes(` · ${writtenDay}]`)),
+    out.join("\n")
+  );
   assert.ok(
     out.some((l) => l.includes("Descale the kettle every six weeks.")),
     out.join("\n")

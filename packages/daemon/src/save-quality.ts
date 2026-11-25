@@ -179,6 +179,7 @@ const CODE_FIX_RE = /```|`[^`\n]+`/;
  */
 function replacedClaimAdvisory(
   deps: ToolDeps,
+  input: SaveMemoryInput,
   similar: ReadonlyArray<{ id: string; similarity: number }>,
   excluded: (id: string) => boolean,
   issues: string[],
@@ -189,6 +190,7 @@ function replacedClaimAdvisory(
     if (successors.length === 0 || successors.some(excluded)) continue;
     const [direct] = successors;
     const current = successors[successors.length - 1];
+    if (restatesCurrent(deps, input, candidate.id, current)) continue;
     issues.push(
       `re-asserts a replaced claim: ${candidate.id} (similarity ${candidate.similarity}) was superseded by ${direct}` +
         (current === direct ? "" : ` (current version: ${current})`)
@@ -200,6 +202,29 @@ function replacedClaimAdvisory(
     return 15;
   }
   return 0;
+}
+
+/** The authored fields `fieldSimilarity` compares, read from a stored memory. */
+function storedFields(deps: ToolDeps, id: string): SimilarityFields | undefined {
+  const fm = deps.vault.get(id)?.fm;
+  return fm && { title: fm.title, summary: fm.summary, tags: fm.tags ?? [], recall_when: fm.recall_when ?? [] };
+}
+
+/** A save that is closer to the current version than to the replaced one
+ *  repeats the correction instead of the old claim: a corrected claim often
+ *  differs from its predecessor in one value only, so both match the save
+ *  (N48: 16 of 133 restated heads warned). On a tie of the content words, only
+ *  a verbatim copy of the current version's text counts as restating it. */
+function restatesCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, currentId: string): boolean {
+  const old = storedFields(deps, oldId);
+  const current = storedFields(deps, currentId);
+  if (!old || !current) return false;
+  const self = { title: input.title, summary: input.summary, tags: input.tags, recall_when: input.recall_when };
+  const toCurrent = fieldSimilarity(self, current);
+  const toOld = fieldSimilarity(self, old);
+  if (toCurrent !== toOld) return toCurrent > toOld;
+  const text = (summary: string, body: string | undefined) => `${summary}\n${body ?? ""}`.trim();
+  return text(input.summary, input.body) === text(current.summary, deps.vault.get(currentId)?.body);
 }
 
 /** The public `superseded_by` edges, oldest successor first. A private or missing
@@ -409,7 +434,7 @@ export function scoreSaveQuality(
     .sort((a, b) => b.similarity - a.similarity)
     .map((candidate) => ({ ...candidate, similarity: Math.round(candidate.similarity * 1000) / 1000 }));
   const duplicateCandidates = similar.slice(0, 3);
-  score -= replacedClaimAdvisory(deps, similar, excluded, issues, suggestions);
+  score -= replacedClaimAdvisory(deps, input, similar, excluded, issues, suggestions);
   if (duplicateCandidates.length > 0) {
     const top = duplicateCandidates[0];
     issues.push(`possible duplicate: ${top.id} (similarity ${top.similarity})`);

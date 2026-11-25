@@ -186,6 +186,10 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Changed
 
+- `recall` hits carry `updated`, the day the memory was last written, so an
+  agent can tell the newest of several similar hits apart; `bastra recall`
+  shows it next to type and area. Ranking is unchanged; hook hints do not
+  carry it (#1299).
 - Human-readable setup, removal and Doctor details follow `language.primary`.
   The terminal model recommendation has German wording. `status --json` and
   piped `models recommend` retain English output for scripts (#1602).
@@ -370,6 +374,13 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- Tasks: a time reminder that becomes due while the task store is above its
+  normal limit now fires from the owner's reserve instead of staying silent.
+  The rest of the automatic evaluation still stops at the normal limit (#1599).
+- Saving the current version of a corrected claim again no longer warns that
+  it re-asserts a replaced claim. A save that is closer to the current version
+  than to the replaced one counts as repeating the correction; writing the old
+  version again still warns (#643).
 - Task reports and report notes preserve joiners inside compound emoji when
   cleaning text (#1563).
 - Draft-store writes respect a live writer's lock. A competing write can be

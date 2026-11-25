@@ -420,7 +420,8 @@ function advanceEventCheckpoint(store: TaskStore): void {
 }
 export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskStore> {
   // Automatic disarming needs its audit row even at the history reserve
-  // (#1581), but the evaluation stays under the normal byte limit (#1599).
+  // (#1581), but the evaluation stays under the normal byte limit (#1599);
+  // a time reminder that is due always fires, if need be from the reserve.
   try {
     return await transactTaskStore(
       ctx.path,
@@ -433,14 +434,23 @@ export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskSt
     );
   } catch (error) {
     if (!(error instanceof TaskStoreError) || error.code !== "capacity") throw error;
-    // Only the audit row that switches a full task off may use the owner's
-    // control reserve; the refused evaluation itself stays visible.
+    // Only the audit row that switches a full task off and a time reminder
+    // that is due now may use the owner's control reserve; the refused
+    // evaluation itself stays visible.
     const now = (ctx.now ?? Date.now)();
     await transactTaskStore(
       ctx.path,
       undefined,
       (s) => {
-        if (s.controls.enabled) for (const task of s.tasks) historyFull(task, now);
+        if (!s.controls.enabled) return;
+        for (const task of s.tasks)
+          if (
+            !historyFull(task, now) &&
+            task.schedule.kind !== "event" &&
+            !taskRests(task, now) &&
+            !taskValidityExpired(task, now)
+          )
+            evaluateTimeTask(s, task, now);
       },
       "control"
     );

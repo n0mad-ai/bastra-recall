@@ -73,6 +73,7 @@ interface Hit {
   scope?: string;
   summary?: string;
   score?: number;
+  updated?: string;
 }
 
 /** The recall input, or a usage problem to print. */
@@ -94,7 +95,7 @@ function printHits(out: { hits: Hit[]; weak_result?: boolean }, w: MemoryCmdWord
   }
   if (out.weak_result) console.log(w.weakResult);
   for (const h of out.hits) {
-    const where = [h.type, h.scope].filter(Boolean).join(" · ");
+    const where = [h.type, h.scope, h.updated].filter(Boolean).join(" · ");
     console.log(`${h.id}${where ? `  [${where}]` : ""}`);
     console.log(`  ${h.title}`);
     if (h.summary) console.log(`  ${h.summary}`);

@@ -195,6 +195,22 @@ test("recall lean (default): only essential fields, no debug fields, no stages",
   }
 });
 
+test("recall (#1299): every hit carries the day it was last written, lean and full", async () => {
+  const { deps, close } = await makeDeps();
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const verbosity of ["lean", "full"] as const) {
+      const res = await recallHandler(deps, { query: "alpha bravo", verbosity });
+      assert.ok(res.hits.length > 0);
+      for (const hit of res.hits as Array<{ updated?: string }>) assert.equal(hit.updated, today, verbosity);
+    }
+    const batch = await recallHandler(deps, { queries: ["alpha bravo", "charlie delta"] });
+    for (const hit of batch.hits as Array<{ updated?: string }>) assert.equal(hit.updated, today, "batch");
+  } finally {
+    await close();
+  }
+});
+
 test("truncateSummary: cuts long summaries at a word boundary with ellipsis, keeps short ones", () => {
   const short = "alpha bravo charlie";
   assert.equal(truncateSummary(short), short, "short summary unchanged");

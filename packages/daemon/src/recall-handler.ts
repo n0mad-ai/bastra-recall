@@ -59,7 +59,7 @@ export const RecallArgs = z.object({
   expand_hops: z.number().int().min(0).max(1).optional(),
   /**
    * Payload-Verbosity (#50). Default `"lean"` — pro Hit nur
-   * `id, title, type, scope, summary, score`; `matched_terms`, `mode`,
+   * `id, title, type, scope, summary, score, updated`; `matched_terms`, `mode`,
    * `hop`, `topic_path` und der `stages`-Block fallen weg. Das Modell stockt
    * bei Bedarf via `load_memory` auf (Multistep-Validation). `"full"` liefert
    * alle Felder — für die Mac-App / Debug.
@@ -267,6 +267,16 @@ export function toLeanHit(
     // #1468: an expired memory is still found, and says so.
     ...(hit.expired_on ? { expired_on: hit.expired_on } : {}),
   };
+}
+
+/** #1299: the day the memory was last written (`updated`), so a caller can
+ *  tell the newest of several similar hits apart. `updated`, not `created`:
+ *  a note that was corrected or extended later is as current as its last
+ *  write. The day is enough to compare hits and keeps the lean hit short.
+ *  Only the recall tool's answer carries it, not the hook hints. */
+function withUpdated<T extends { id: string }>(hit: T, vault: ToolDeps["vault"]): T & { updated?: string } {
+  const updated = vault.get(hit.id)?.fm.updated;
+  return updated ? { ...hit, updated: String(updated).slice(0, 10) } : hit;
 }
 
 export async function recallHandler(
@@ -533,7 +543,7 @@ async function recallAgainstVault(
     new Set(hits.map((h) => h.id)),
     deps.vault,
     floor
-  ).map((h) => withSupersession(h, deps.vault, sources.get(h.id)));
+  ).map((h) => withUpdated(withSupersession(h, deps.vault, sources.get(h.id)), deps.vault));
   // Codex-Gegenreview (P0): `score_kind: "rrf"` bezeichnet inzwischen MEHRERE
   // verschiedene Zahlen — BM25+Vector (≤163.934), BM25+Vector+Commons
   // (≤241.803) und den Kollaps-Pfad aus persönlichem Listenrang + Commons
@@ -571,7 +581,7 @@ async function recallAgainstVault(
   // #487: die projizierten Treffer in Rangfolge — was das Budget gleich
   // beschneidet, ist genau das, was der Aufrufer sonst bekäme.
   const projected = (full ? hits : hits.map(toLeanHit))
-    .map((hit) => withSupersession(hit, deps.vault, sources.get(hit.id)))
+    .map((hit) => withUpdated(withSupersession(hit, deps.vault, sources.get(hit.id)), deps.vault))
     .map(flagConflict);
   const budgeted = fitRecallWithReflexToBudget(
     projected,
