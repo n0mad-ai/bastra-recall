@@ -700,6 +700,9 @@ export function mountMemoryBrowser(stage, { showMemory, ready = (cb) => cb() } =
 
   // ── keys: Esc closes (menu, then query, then window — not an area); ↑ ↓ walk the list ──
   function onKey(e) {
+    // Let the vault view handle Escape in its own zoom, but drop the link's
+    // completion callback so the browser does not open after cancellation.
+    if (e.key === "Escape") pending = null;
     if (!M.open || !root.classList.contains("is-grow")) return;
     const tag = e.target?.tagName;
     if (e.key === "Escape") return onEscape(e);

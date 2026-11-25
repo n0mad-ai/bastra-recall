@@ -426,6 +426,7 @@ type Env = {
   /** The browser's timers (grow, reveal, close) wait for runTimers(); the test's own waits use setImmediate. */
   timers: Map<number, { fn: () => void; ms: number }>;
   resize: () => void;
+  keydown: (event: Pick<KeyboardEvent, "key">) => void;
 };
 
 /** The browser's world: fake DOM, stand-in daemon, a fixed clock and held timers. */
@@ -444,6 +445,7 @@ function fakeGlobals(): Env {
     vault: vaultOf(MEMS),
     timers: new Map(),
     resize: () => {},
+    keydown: () => {},
   };
   g.__mb = env;
   g.Node = FakeNode;
@@ -456,7 +458,14 @@ function fakeGlobals(): Env {
     addEventListener() {},
     removeEventListener() {},
   };
-  g.window = { addEventListener() {}, removeEventListener() {}, innerWidth: 1440, innerHeight: 900 };
+  g.window = {
+    addEventListener(type: string, listener: Env["keydown"]) {
+      if (type === "keydown") env.keydown = listener;
+    },
+    removeEventListener() {},
+    innerWidth: 1440,
+    innerHeight: 900,
+  };
   g.CSS = { escape: (s: string) => s };
   g.ResizeObserver = class {
     constructor(fn: () => void) {
@@ -702,5 +711,26 @@ test("a memory link from outside shows the last vault view, glides, then grows",
     assert.deepStrictEqual(calls, []);
     assert.ok(root.classes.has("is-on"));
     assert.strictEqual(env.state.browser, "vault");
+  });
+});
+
+test("Escape during a linked memory's flight cancels the browser opening", async () => {
+  await withBrowser(async (mb, env) => {
+    env.lastView = "mindspace";
+    env.state.view = "tasks";
+    mb.openMemoryBrowser("all", "full", RECT);
+    let landed: (() => void) | undefined;
+    const root = mounted(mb, {
+      showMemory: (_id, done) => {
+        landed = done;
+        return true;
+      },
+    });
+    await settle();
+    assert.ok(landed, "flight has started");
+    env.keydown({ key: "Escape" });
+    landed();
+    assert.equal(env.state.browser, null);
+    assert.ok(!root.classes.has("is-on"));
   });
 });
