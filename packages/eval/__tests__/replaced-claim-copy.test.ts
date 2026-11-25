@@ -84,8 +84,9 @@ function setup() {
   mkdirSync(vault, { mode: 0o700 });
   return { root, vault, out: join(root, "aggregate.json"), stop: () => rmSync(root, { recursive: true, force: true }) };
 }
-function note(id: string, next?: string, sensitivity = "team") {
-  return `---\nid: ${id}\ntitle: Synthetic relay queue capacity\ntype: project-fact\nsummary: The relay queue capacity is 500 messages per batch.\ntopic_path: [relay, capacity]\ntags: [relay-capacity]\nscope: relay\nrecall_when: [tuning the relay queue capacity]\ncreated: '2026-11-01'\nupdated: '2026-11-01'\nsensitivity: ${sensitivity}\n${next ? `superseded_by: ${next}\n` : ""}---\n\nThe relay queue capacity is 500 messages per batch.\n`;
+function note(id: string, next?: string, sensitivity = "team", capacity = 500) {
+  const claim = `The relay queue capacity is ${capacity} messages per batch.`;
+  return `---\nid: ${id}\ntitle: Synthetic relay queue capacity\ntype: project-fact\nsummary: ${claim}\ntopic_path: [relay, capacity]\ntags: [relay-capacity]\nscope: relay\nrecall_when: [tuning the relay queue capacity]\ncreated: '2026-11-01'\nupdated: '2026-11-01'\nsensitivity: ${sensitivity}\n${next ? `superseded_by: ${next}\n` : ""}---\n\n${claim}\n`;
 }
 
 test("copy reader uses stored links, preserves source bytes, and exports aggregates without IDs", () => {
@@ -93,8 +94,8 @@ test("copy reader uses stored links, preserves source bytes, and exports aggrega
   try {
     const notes = new Map([
       ["old.md", note(`${marker}-old`, `${marker}-middle`)],
-      ["middle.md", note(`${marker}-middle`, `${marker}-head`)],
-      ["head.md", note(`${marker}-head`)],
+      ["middle.md", note(`${marker}-middle`, `${marker}-head`, "team", 550)],
+      ["head.md", note(`${marker}-head`, undefined, "team", 600)],
       ["missing.md", note(`${marker}-missing`, `${marker}-absent`)],
       ["cycle.md", note(`${marker}-cycle`, `${marker}-cycle`)],
       ["private.md", note(`${marker}-private`, undefined, "private")],
@@ -116,6 +117,7 @@ test("copy reader uses stored links, preserves source bytes, and exports aggrega
     assert.equal(result.probes.overwrite.executed, 1);
     assert.equal(result.probes.edit.executed, 1);
     assert.equal(result.probes.predecessor_replay.names_head, 2);
+    assert.equal(result.probes.head_restatement.warning_frequency, 0);
     assert.equal(result.precision, undefined);
     assert.equal(result.recall, undefined);
     assert.ok(!raw.includes(marker));
