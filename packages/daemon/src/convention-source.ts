@@ -1,6 +1,5 @@
 /** Hook projections use the Vault index; direct MCP reads retain byte-source
  * validation. Both pair revision, validator and rulebook metadata coherently. */
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
   parseMemory,
@@ -141,15 +140,20 @@ export async function readRulebookSources(
 
 type HookVault = Pick<Vault, "get"> & Partial<Pick<Vault, "indexRootIdentity" | "confirmsAbsent">>;
 
-export function vaultConventionOf(vault: HookVault): (id: string) => Promise<ConventionSource> {
-  const root = vault.indexRootIdentity?.();
-  const vaultIdentity = root ? createHash("sha256").update(root).digest("hex") : undefined;
-  return async (id) => {
+export type ConventionLookup = (id: string, boundVaultIdentity?: string) => Promise<ConventionSource>;
+
+export function vaultConventionOf(vault: HookVault): ConventionLookup {
+  const vaultIdentity = vault.indexRootIdentity?.();
+  return async (id, boundVaultIdentity) => {
     let memory = vault.get(id);
-    if (vaultIdentity && !memory) {
+    // Only a matching binding can retire this active rule. In particular the
+    // Stop validator and an old unbound session need no filesystem probe.
+    if (!memory && vaultIdentity && boundVaultIdentity === vaultIdentity) {
       if (await vault.confirmsAbsent?.(id)) return { revision: null, absent: true, vaultIdentity };
       memory = vault.get(id);
     }
-    return { ...indexedConventionSource(memory), vaultIdentity };
+    const source = indexedConventionSource(memory);
+    if (vaultIdentity) source.vaultIdentity = vaultIdentity;
+    return source;
   };
 }

@@ -2,7 +2,7 @@
  * Prompt words and recall hits never create tasks, select channels or change stages.
  */
 import type { Vault } from "@bastra-recall/core";
-import { indexedConventionSource, type ConventionSource } from "./convention-source.js";
+import { indexedConventionSource, type ConventionLookup, type ConventionSource } from "./convention-source.js";
 import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
 import { compactContextNotice } from "./context-notice.js";
 import { currentReceipt } from "./receipt-store.js";
@@ -12,7 +12,7 @@ export interface TaskStepInput {
   sessionId: string;
   snapshot: ReadonlySessionState;
   revisionOf?: (id: string) => Promise<string | null>;
-  conventionOf?: (id: string) => Promise<ConventionSource>;
+  conventionOf?: ConventionLookup;
   surface: string;
   now?: number;
   maxChars?: number;
@@ -56,7 +56,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const entries = await Promise.all(
     active.map(async (c): Promise<[string, ConventionSource]> => {
       const source: ConventionSource = input.conventionOf
-        ? await input.conventionOf(c.id).catch(() => ({ revision: null }))
+        ? await input.conventionOf(c.id, c.vaultIdentity).catch(() => ({ revision: null }))
         : { revision: await input.revisionOf!(c.id).catch(() => null) };
       return [c.id, source];
     })

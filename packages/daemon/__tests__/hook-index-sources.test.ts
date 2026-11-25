@@ -211,3 +211,22 @@ test("fix8: real /hook/recall returns indexed hints despite a blocked rule sourc
   assert.equal(hit.rulebook, "always");
   assert.equal(reads(), 0);
 });
+
+test("a hook only confirms a missing rule when the caller has that vault binding", async () => {
+  const f = fixture();
+  let checks = 0;
+  const sourceOf = vaultConventionOf({
+    ...f.vault,
+    indexRootIdentity: () => "fixture-vault",
+    confirmsAbsent: async () => {
+      checks++;
+      return true;
+    },
+  });
+  const known = await sourceOf(f.m.fm.id);
+  assert.equal((await sourceOf("unbound")).absent, undefined);
+  assert.equal((await sourceOf("other-profile", "other")).absent, undefined);
+  assert.equal(checks, 0);
+  assert.equal((await sourceOf("bound", known.vaultIdentity)).absent, true);
+  assert.equal(checks, 1);
+});

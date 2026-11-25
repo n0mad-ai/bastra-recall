@@ -1,4 +1,5 @@
 import { isCloudPlaceholderError, CLOUD_OFFLINE_GUIDANCE } from "./cloud-placeholder.js";
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, basename, relative, sep } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -91,6 +92,7 @@ export class Vault {
    * nicht lesen kann, verbergen beide eine id.
    */
   private rootIdentity?: string;
+  private rootFingerprint?: string;
   private reconciling = 0;
   // Watcher unlinks may be the first half of a rename. Only a later complete
   // scan can settle them. The pathname also protects notes being edited in place.
@@ -131,7 +133,7 @@ export class Vault {
     // #892: a root found present is recorded outside the vault, so a later
     // start with the drive not mounted knows not to recreate it.
     vaultRootPresent(this.root);
-    this.rootIdentity = undefined;
+    this.setIndexRootIdentity(undefined);
     const rootIdentity = await this.readRootIdentity();
     // Reihenfolge stabil halten: nach Pfad sortieren bevor wir parallel laden.
     // So bleibt die Map-Iterationsordnung deterministisch (Maps iterieren in
@@ -189,7 +191,7 @@ export class Vault {
       const refused = this.claimAtInit(r.memory, r.file);
       if (refused) skipped.push(refused);
     }
-    this.rootIdentity = rootIdentity;
+    this.setIndexRootIdentity(rootIdentity);
     return { loaded: this.memorys.size, skipped };
   }
 
@@ -354,9 +356,14 @@ export class Vault {
     }
   }
 
+  private setIndexRootIdentity(identity: string | undefined): void {
+    this.rootIdentity = identity;
+    this.rootFingerprint = identity ? createHash("sha256").update(identity).digest("hex") : undefined;
+  }
+
   /** Identity of the directory used to build this index. */
   indexRootIdentity(): string | undefined {
-    return this.rootIdentity;
+    return this.rootFingerprint;
   }
 
   private hasAuthoritativeMiss(id: string): boolean {
