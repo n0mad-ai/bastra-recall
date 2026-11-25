@@ -35,6 +35,7 @@ import { calendarStyle, onCalendarStyles } from "./tasks-styles.js";
 import { KEYS, label, ICON as KICON, onSelect, endDrag } from "./tasks-cal.js";
 import { splitPanel, weekDays, monthStart, rangeOf } from "./tasks-ledger.js";
 import { overlayRenderer } from "./tasks-overlays.js";
+import { watchSettledWidth } from "./tasks-width.js";
 import { detailTab, viewTab, controlTab, statusTiles, dueList } from "./tasks-panel.js";
 import {
   reportsRenderer,
@@ -292,14 +293,10 @@ function mount(el, ctx) {
   root.append(headSlot, overlaySlot, reportSlot, calSlot);
   drawOverlays = overlayRenderer(overlaySlot);
   drawReports = reportsRenderer(reportSlot);
-  const sro = new ResizeObserver(() => {
-    const w = el.clientWidth;
-    if (w > 0 && Math.abs(w - S.W) > 1) {
-      S.W = w;
-      draw();
-    }
+  const sro = watchSettledWidth(el, document.querySelector("main.stage"), (w) => {
+    S.W = w;
+    draw();
   });
-  sro.observe(el);
   S.W = el.clientWidth || S.W;
   const off = onTasks((what) => {
     draw();
@@ -332,7 +329,7 @@ function mount(el, ctx) {
   return () => {
     off();
     offStyles();
-    sro.disconnect();
+    sro.stop();
     ro?.disconnect();
     ro = null;
     clearInterval(poll);
