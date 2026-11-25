@@ -11,9 +11,10 @@ import { dirname, join, resolve, relative } from "node:path";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
 import { taskIdentitySchema as id, type TaskStore, type Task } from "./task-schema.js";
 import { TASK_CARD_TEXT } from "./task-card-text.js";
-import { cleanText, withTaskStoreGuard, TaskStoreError } from "./task-store.js";
+import { withTaskStoreGuard, TaskStoreError } from "./task-store.js";
 import {
   taskActionRegistry,
+  canPreviewActionPayload,
   requireReversiblePayload,
   requireTaskActionEnabled,
   validateTaskProposal,
@@ -297,7 +298,7 @@ export async function executeTaskAction(
       const dataRoot = await realpath(dirname(ctx.path));
       const backupPath = join(dataRoot, "task-action-backups", `${id.parse(receipt.backup_id)}.json`);
       const backup = JSON.parse(await boundedTaskRead(backupPath, 2 * 1024 * 1024));
-      if (typeof backup.payload !== "string" || cleanText(backup.payload) !== backup.payload)
+      if (typeof backup.payload !== "string" || !canPreviewActionPayload(backup.payload))
         fail("validation", "Rollback cannot be safely previewed");
       if (backup.intent_id !== receipt.intent_id || bytesHash(backup.payload) !== receipt.before_hash)
         fail("approval_stale", "Backup binding changed");

@@ -4,7 +4,9 @@ import { taskAuthorizationSchema } from "./task-action-schema.js";
 import { taskValidityExpired } from "./task-validity.js";
 import { randomUUID, randomBytes } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import { resolve, relative, isAbsolute } from "node:path";
+import { redactSecrets } from "@bastra-recall/core/scrub";
 import { authenticateTask, requireTaskDomains, requireTaskOwner, type TaskPrincipal } from "./task-auth.js";
 import { taskIdentitySchema as id, type TaskStore, type Task } from "./task-schema.js";
 import { readTaskStore, transactTaskStore, cleanText, TaskStoreError } from "./task-store.js";
@@ -82,8 +84,17 @@ export async function taskActionRegistry(ctx: TaskServiceContext) {
   return registry;
 }
 
+/** Exact action previews and backups must stay safe regardless of the user-content switch. */
+export function canPreviewActionPayload(payload: string): boolean {
+  return cleanText(payload) === payload && redactSecrets(payload, homedir()).text === payload;
+}
+
 export function requireReversiblePayload(payload: string) {
-  if (payload.length > 16384 || cleanText(payload) !== payload || /[\p{Cc}\p{Cf}]/u.test(payload.replaceAll("\n", "")))
+  if (
+    payload.length > 16384 ||
+    !canPreviewActionPayload(payload) ||
+    /[\p{Cc}\p{Cf}]/u.test(payload.replaceAll("\n", ""))
+  )
     fail("adapter_not_reversible", "Reference adapter requires rollback-safe bounded clean UTF-8 before-state");
 }
 export async function readTaskTarget(registry: ApprovalRegistry, targetId: string) {
@@ -683,7 +694,7 @@ function requirePreparableTask(
   )
     return conflict("Task is not reviewed for preparation");
   if (
-    cleanText(input.payload) !== input.payload ||
+    !canPreviewActionPayload(input.payload) ||
     /[\p{Cc}\p{Cf}]/u.test(input.payload.replaceAll("\n", "").replaceAll("\t", ""))
   )
     throw Object.assign(new Error("Exact payload cannot be safely previewed"), { code: "validation" });

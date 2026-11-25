@@ -19,7 +19,20 @@ import {
   readApprovalRegistry,
   type ApprovalRegistry,
 } from "../src/task-approval-keys.js";
-import { approvalBinding, validateTaskProposal } from "../src/task-actions.js";
+import { approvalBinding, requireReversiblePayload, validateTaskProposal } from "../src/task-actions.js";
+import { mutateSettings, settingsFilePath } from "../src/settings-file.js";
+import { applySettingChanges } from "../src/settings-registry.js";
+
+test("the user-content switch cannot make exact action backups accept credentials", async (t) => {
+  const setRedaction = (value: boolean | null) =>
+    mutateSettings(settingsFilePath(), (config) => applySettingChanges(config, { "redaction.enabled": value }));
+  t.after(() => setRedaction(null));
+  await setRedaction(false);
+  const text = "GITHUB_TOKEN=" + ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
+  assert.doesNotThrow(() => requireReversiblePayload("Deployment succeeded."));
+  assert.throws(() => requireReversiblePayload(text), { code: "adapter_not_reversible" });
+});
+
 async function fixture(domains = ["personal"], protectedBoundary = true) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "task-actions-"))),
     targetPath = join(root, "artifact.txt");
