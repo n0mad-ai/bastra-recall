@@ -88,9 +88,9 @@ export function dispatchUiRoutes(
     );
     return true;
   }
-  // Skills registry (#215): list + declare ("mark as skill" on a ghost) —
-  // classifies the node into the skills ring on the next graph render.
-  if ((method === "GET" || method === "POST") && url === "/ui/skills") {
+  // Skills registry (#215): declare ("mark as skill" on a ghost) — classifies
+  // the node into the skills ring on the next graph render.
+  if (method === "POST" && url === "/ui/skills") {
     handleUiSkills(req, res).catch(() => sendJson(res, 500, { error: "skills error" }));
     return true;
   }

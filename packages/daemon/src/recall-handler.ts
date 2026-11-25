@@ -279,8 +279,10 @@ export function toLeanHit(
  *  tell the newest of several similar hits apart. `updated`, not `created`:
  *  a note that was corrected or extended later is as current as its last
  *  write. The day is enough to compare hits and keeps the lean hit short.
- *  Only the recall tool's answer carries it, not the hook hints. */
-function withUpdated<T extends { id: string }>(hit: T, memory: Memory | undefined): T & { updated?: string } {
+ *  Only the recall tool's answer carries it — over REST and over the stdio
+ *  forwarder's `/hook/recall` stream (`hook-recall-payload.ts`) — not the
+ *  hook hints. */
+export function withUpdated<T extends { id: string }>(hit: T, memory: Memory | undefined): T & { updated?: string } {
   if (!memory) return hit;
   const updated = memory.fm.updated;
   const day = updated.slice(0, 10);
