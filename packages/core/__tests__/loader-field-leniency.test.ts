@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import matter from "gray-matter";
 import { parseMemoryWith, NotAMemoryFile } from "../src/schema.js";
 import { rescueFrontmatter } from "../src/frontmatter-rescue.js";
+import { computeStaleness, pastValidUntil } from "../src/search-staleness.js";
 
 const parse = (raw: string, path = "/vault/memories/note.md", mtime = Date.UTC(2026, 4, 17)) =>
   parseMemoryWith((input) => matter(input), raw, path, mtime);
@@ -285,6 +286,17 @@ const IMPOSSIBLE_DATE_LINES = [
   "{f}: 2026-05-01T24:00:00Z",
   '{f}: "2026-02-31"',
   "{f}: '2026-02-30T10:00:00Z'",
+  // #1737: a quoted early year outside the ISO format, which `Date.parse` maps into the 1900s.
+  "{f}: '0099-3-1'",
+  // #1737: a folded time line, explicit tags and an alias to an anchored timestamp.
+  "{f}: 2026-02-31\n  12:30:00Z",
+  "{f}: 2026-05-01\n  24:00:00Z",
+  '{f}: !!timestamp "2026-02-31"',
+  "{f}: !!timestamp '2026-02-30T10:00:00Z'",
+  "{f}: !<tag:yaml.org,2002:timestamp> 2026-02-31",
+  "{f}: !!timestamp >-\n  2026-02-31",
+  "x_when: &when 2026-02-31\n{f}: *when",
+  '{f}: &when !!timestamp "2026-02-31"',
 ];
 const VALID_DATE_LINES: Array<[line: string, day: string]> = [
   ["{f}: 2024-02-29", "2024-02-29"],
@@ -294,6 +306,12 @@ const VALID_DATE_LINES: Array<[line: string, day: string]> = [
   ["{f}: 2026-05-01T23:30:00-02:00", "2026-05-02"],
   ["{f}: 1999-12-31", "1999-12-31"],
   ['{f}: "2026-05-02"', "2026-05-02"],
+  // #1737: a quoted early year in the ISO format keeps its year; only YAML's unquoted reading moves it.
+  ["{f}: '0099-03-01'", "0099-03-01"],
+  ['{f}: "0026-05-01T10:00:00Z"', "0026-05-01T10:00:00Z"],
+  ["{f}: 2026-05-01\n  23:30:00-02:00", "2026-05-02"],
+  ['{f}: !!timestamp "2026-05-02"', "2026-05-02"],
+  ["x_when: &when 2026-05-02\n{f}: *when", "2026-05-02"],
 ];
 const datedNote = (field: string, line: string) =>
   [
@@ -367,9 +385,29 @@ test("#1731: a second load of the same bytes reports the same repair (gray-matte
   assert.ok(second.damaged?.some((d) => d.field === "updated"));
 });
 
-test("#1731: `valid_until` is outside this repair — its handling is an open product decision", () => {
-  // Dropping an expiry would serve an expired note again; see the #1731 report.
+test("#1731: a valid `valid_until` loads as written and is not reported", () => {
   const m = parse(datedNote("last_reviewed_at", "valid_until: 2026-05-20"));
   assert.equal(m.fm.valid_until, "2026-05-20");
   assert.equal(m.damaged, undefined);
+});
+
+test("#1731: an impossible `valid_until` keeps its rolled expiry and is reported", () => {
+  // Owner decision pending in #1731: dropping the expiry would serve an expired note again, so the
+  // value and its delivery stay exactly as before; only the diagnosis is new.
+  const now = new Date("2026-11-25T12:00:00Z");
+  for (const [line, loaded] of [
+    ["valid_until: 2026-02-31", "2026-03-03"],
+    ['valid_until: "2026-02-31"', "2026-02-31"],
+    ["valid_until: !!timestamp '2026-02-31'", "2026-03-03"],
+  ]) {
+    const m = parse(datedNote("last_reviewed_at", line));
+    assert.equal(m.fm.valid_until, loaded, `${line}: the value is unchanged`);
+    assert.equal(pastValidUntil(m.fm, now), true, `${line}: still expired, so hooks keep withholding it`);
+    assert.equal(computeStaleness(m.fm, now), "expired", line);
+    assert.deepEqual(
+      m.damaged?.map((d) => d.field),
+      ["valid_until"],
+      `${line}: the typo is reported, got ${JSON.stringify(m.damaged)}`
+    );
+  }
 });

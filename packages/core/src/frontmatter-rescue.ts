@@ -240,33 +240,49 @@ export function repairRequired(
 const WRITTEN_DATE =
   /^(\d{4})-(\d\d?)-(\d\d?)(?:(?:[Tt]|[ \t]+)(\d\d?):(\d\d):(\d\d)(?:\.\d*)?(?:[ \t]*(?:Z|[-+](\d\d?)(?::?(\d\d))?))?)?$/;
 
+/** Anything `Date.parse` reads before this instant kept a year below 100 (with a day of zone slack). */
+const EARLY_YEAR_LIMIT = Date.parse("0100-01-02T00:00:00Z");
+
 /** False when `text` is written as a date but names an instant the calendar lacks. js-yaml and
- *  `Date.parse` roll such a value silently (`2026-02-31` → March 3, `T24:00` → next day), and
- *  js-yaml maps years below 100 into the 1900s. Text in any other shape is not judged here. */
-function writtenDateExists(text: string): boolean {
+ *  `Date.parse` roll such a value silently (`2026-02-31` → March 3, `T24:00` → next day). Years
+ *  below 100 move into the 1900s when YAML builds the Date (`yamlDate`), and when `Date.parse`
+ *  reads a string outside its ISO format; `'0099-03-01'` keeps its year. Text in any other shape
+ *  is not judged here. */
+function writtenDateExists(text: string, yamlDate: boolean): boolean {
   const m = WRITTEN_DATE.exec(text.trim());
   if (!m) return true;
   const [y, mo, d, h, mi, s, zh, zm] = m.slice(1).map((part) => Number(part ?? 0));
   // 2000 + y % 400 has the same leap years as y, and stays clear of Date.UTC's 0–99 mapping.
   const daysInMonth = new Date(Date.UTC(2000 + (y % 400), mo, 0)).getUTCDate();
-  const dayExists = y >= 100 && mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth;
-  return dayExists && h < 24 && mi < 60 && s < 60 && zh < 24 && zm < 60;
+  const dayExists = mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth;
+  const yearKept = y >= 100 || (!yamlDate && Date.parse(text.trim()) < EARLY_YEAR_LIMIT);
+  return dayExists && yearKept && h < 24 && mi < 60 && s < 60 && zh < 24 && zm < 60;
 }
 
 /** #1731: the date fields the loader checks. `created` and `updated` that name an impossible day
  *  become missing, so `repairRequired` takes them from the file mtime; `last_reviewed_at` is
- *  dropped. `valid_until` is left out on purpose: dropping an end date would serve a note that is
- *  expired today again, so its fallback is an open product decision. */
-const CHECKED_DATE_FIELDS = ["created", "updated", "last_reviewed_at"] as const;
+ *  dropped. `valid_until` keeps the day it rolls into and is only reported: dropping an end date
+ *  would serve a note that is expired today again (owner decision pending in #1731). */
+const CHECKED_DATE_FIELDS = ["created", "updated", "last_reviewed_at", "valid_until"] as const;
 
 /** An implicit YAML Date needs either a literal YYYY-MM-DD or a clock. Explicit tags
  * can also construct timestamps from quoted or folded text. Leave those forms to YAML. */
 function mayContainRolledDate(block: string): boolean {
   if (/!|\d{1,2}:\d{2}:\d{2}/.test(block)) return true;
   for (const [day] of block.matchAll(/\d{4}-\d{2}-\d{2}/g)) {
-    if (!writtenDateExists(day)) return true;
+    if (!writtenDateExists(day, true)) return true;
   }
   return false;
+}
+
+/** The text YAML read a timestamp from, given the node's source: without anchor and tag, quotes or
+ *  a block header (`!!timestamp "…"`, `>-`), and with line breaks folded to spaces as YAML folds
+ *  a multi-line scalar (`2026-02-31\n  12:30:00Z`). */
+function timestampText(source: string): string {
+  const text = source.trim().replace(/^(?:[&!]\S*\s+)+/, "");
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(text)?.[2];
+  const content = quoted ?? text.replace(/^[|>][-+\d]*[ \t]*(?:#.*)?\n/, "");
+  return content.replace(/\s+/g, " ").trim();
 }
 
 /** The source text of each checked field js-yaml turned into a Date, whatever the key's quoting,
@@ -276,18 +292,19 @@ function writtenDates(raw: string): Record<string, unknown> {
   const block = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(raw)?.[1] ?? "";
   if (!mayContainRolledDate(block)) return {};
   const starts: number[] = [];
+  // An alias (`*when`) hands back the anchored node's own Date; its text is where the anchor was written.
+  const texts = new Map<Date, string>();
   const listener: YamlListener = (event, state) => {
     if (event === "open") {
       starts.push(state.position);
       return;
     }
     const start = starts.pop() ?? state.position;
-    if (!(state.result instanceof Date)) return;
-    // Drop an anchor or explicit tag in front of the scalar (`&d 2026-05-01`).
-    state.result = state.input
-      .slice(start, state.position)
-      .trim()
-      .replace(/^(?:[&!]\S*\s+)+/, "");
+    const date = state.result;
+    if (!(date instanceof Date)) return;
+    const text = texts.get(date) ?? timestampText(state.input.slice(start, state.position));
+    texts.set(date, text);
+    state.result = text;
   };
   const written: Record<string, unknown> = {};
   const read = (fragment: string): void => {
@@ -315,16 +332,17 @@ function writtenDates(raw: string): Record<string, unknown> {
 /** True when a checked field holds a day the calendar lacks: a Date js-yaml rolled over, or a
  *  string written as such a day. Any other value is left to the schema as before. */
 function namesImpossibleDay(value: unknown, written: () => Record<string, unknown>, field: string): boolean {
-  if (typeof value === "string") return !writtenDateExists(value);
+  if (typeof value === "string") return !writtenDateExists(value, false);
   if (!(value instanceof Date)) return false;
   const text = written()[field];
-  return !Number.isFinite(value.getTime()) || (typeof text === "string" && !writtenDateExists(text));
+  return !Number.isFinite(value.getTime()) || (typeof text === "string" && !writtenDateExists(text, true));
 }
 
 /** #1720/#1731: an impossible calendar day in `created`, `updated` or `last_reviewed_at` — in any
  *  YAML spelling, quoted or not — is treated as not set and reported, instead of loading as the
  *  day it rolls into. An `updated` that is no date at all (`false`, a list) is treated the same
- *  way; the other fields keep their validation. Only the loader's copy changes, never the file. */
+ *  way; the other fields keep their validation. `valid_until` keeps its value and is only
+ *  reported. Only the loader's copy changes, never the file. */
 export function repairDates(data: Record<string, unknown>, raw: string, damaged: DamagedField[]): void {
   let cache: Record<string, unknown> | undefined;
   const written = (): Record<string, unknown> => (cache ??= writtenDates(raw));
@@ -333,6 +351,13 @@ export function repairDates(data: Record<string, unknown>, raw: string, damaged:
     if (v == null || v === "") continue;
     const noDate = field === "updated" && typeof v !== "string" && !(v instanceof Date);
     if (!noDate && !namesImpossibleDay(v, written, field)) continue;
+    if (field === "valid_until") {
+      damaged.push({
+        field,
+        reason: "valid_until was not a valid date — kept as read, so the note expires on that day",
+      });
+      continue;
+    }
     delete data[field];
     const fallback = field === "last_reviewed_at" ? "dropped" : "taken from the file mtime";
     damaged.push({ field, reason: `${field} was not a valid date — ${fallback}` });
