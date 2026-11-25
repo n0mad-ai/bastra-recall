@@ -374,8 +374,8 @@ export async function handleUiAnnotate(
   }
   const date = new Date().toISOString().slice(0, 10);
   try {
-    await appendCareEntry(file, { date, kind, id, note });
-    sendJsonPlain(res, 200, { ok: true, entry: { done: false, date, kind, id, note } });
+    const entry = await appendCareEntry(file, { date, kind, id, note });
+    sendJsonPlain(res, 200, { ok: true, entry });
   } catch (err) {
     sendJsonPlain(res, 500, { error: (err as Error).message });
   }

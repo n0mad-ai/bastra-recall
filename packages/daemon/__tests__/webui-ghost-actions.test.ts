@@ -156,9 +156,20 @@ test("daemon: the card's two requests flag the ghost for writing and turn it int
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const port = (server.address() as { port: number }).port;
     try {
-      assert.equal(await post(port, "/ui/annotate", { id: "wanted-note", kind: "write", note: "" }), 200);
+      const flag = { id: "wanted-note", kind: "write", note: "" };
+      assert.deepEqual(
+        await Promise.all([post(port, "/ui/annotate", flag), post(port, "/ui/annotate", flag)]),
+        [200, 200]
+      );
       const care = await readFile(join(vaultDir, CARE_FILE), "utf8");
-      assert.match(care, /^- \[ \] \d{4}-\d{2}-\d{2} · write · \[\[wanted-note\]\]$/m);
+      const openFlag = /^- \[ \] \d{4}-\d{2}-\d{2} · write · \[\[wanted-note\]\]$/gm;
+      assert.equal([...care.matchAll(openFlag)].length, 1);
+      await writeFile(
+        join(vaultDir, CARE_FILE),
+        care.replace(openFlag, (line) => line.replace("[ ]", "[x]"))
+      );
+      assert.equal(await post(port, "/ui/annotate", flag), 200);
+      assert.equal([...(await readFile(join(vaultDir, CARE_FILE), "utf8")).matchAll(openFlag)].length, 1);
       assert.equal(await post(port, "/ui/skills", { id: "wanted-note" }), 200);
       const skills = await listSkills(registryPath);
       assert.deepEqual(

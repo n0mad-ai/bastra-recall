@@ -151,13 +151,23 @@ async function rewriteCareNoteLocked(file: string, target: CareTarget, note: str
 
 /** Append and rewrite share the same transaction queue: a successful append
  * cannot disappear under an overlapping rewrite's rename. */
-export function appendCareEntry(file: string, entry: Omit<CareEntry, "done">): Promise<void> {
+export function appendCareEntry(file: string, entry: Omit<CareEntry, "done">): Promise<CareEntry> {
   return withPathLock(file, async () => {
     try {
       await writeFile(file, CARE_HEADER, { encoding: "utf8", flag: "wx" });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
+    // A ghost's empty write request only asks to put it on the list. Reuse an
+    // open flag even if the card was reopened or the first reply was lost.
+    if (entry.kind === "write" && !entry.note) {
+      const current = await readPrivateFile(file, CARE_FILE_MAX_BYTES);
+      const existing = parseCareFile(current.bytes.toString("utf8")).find(
+        (item) => !item.done && item.kind === "write" && item.id === entry.id
+      );
+      if (existing) return existing;
+    }
     await appendFile(file, formatCareEntry(entry), "utf8");
+    return { done: false, ...entry };
   });
 }
