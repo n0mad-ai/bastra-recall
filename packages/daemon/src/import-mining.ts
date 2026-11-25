@@ -17,6 +17,7 @@ import { mkdir } from "node:fs/promises";
 import { readAppRecord, writeAppRecord, deleteAppRecord } from "./app-record-store.js";
 import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
+import { redactUserText } from "./user-text-redaction.js";
 
 export const QUEUE_FILE = "import-queue.jsonl";
 export const CURSOR_FILE = "import-queue.cursor";
@@ -221,7 +222,11 @@ export async function buildQueue(
     async () => {
       await mkdir(dir, { recursive: true });
       const existing = await readQueueRaw(dir);
-      const lines = conversations.map((c) => JSON.stringify(c)).join("\n") + "\n";
+      const clean = (text: string) => redactUserText(text).text;
+      const lines =
+        conversations
+          .map((c) => JSON.stringify({ ...c, title: clean(c.title), messages: c.messages.map(clean) }))
+          .join("\n") + "\n";
       const head = existing.length > 0 && !existing.endsWith("\n") ? `${existing}\n` : existing;
       await writeAtomic(queueFile, head + lines);
       if (existing.trim().length === 0) await writeAtomic(join(dir, CURSOR_FILE), "0");

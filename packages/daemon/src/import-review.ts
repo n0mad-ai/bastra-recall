@@ -20,6 +20,7 @@ import { getUiEnabled } from "./settings.js";
 import { queueStatus } from "./import-mining.js";
 import { withPathLock } from "./path-lock.js";
 import { ensureVaultDir } from "@bastra-recall/core";
+import { redactUserText } from "./user-text-redaction.js";
 
 export const IMPORT_FILE = "import-review.md";
 export const IMPORT_SOURCES = ["chatgpt", "claude", "gemini", "text", "rules"] as const;
@@ -197,7 +198,8 @@ export async function stageImport(vaultPath: string, source: ImportSource, candi
       let staged = 0;
       let skipped = 0;
       const lines: string[] = [];
-      for (const c of candidates) {
+      for (const candidate of candidates) {
+        const c = redactUserText(candidate).text;
         if (existing.has(c.toLowerCase())) {
           skipped++;
           continue;

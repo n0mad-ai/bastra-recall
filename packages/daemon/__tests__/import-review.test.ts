@@ -24,7 +24,9 @@ import {
   handleUiImport,
   IMPORT_FILE,
 } from "../src/import-review.js";
-import { setUiEnabled } from "../src/settings.js";
+import { setUiEnabled, mutateSettings, settingsFilePath } from "../src/settings.js";
+import { applySettingChanges } from "../src/settings-registry.js";
+import { buildQueue, readNextChunk } from "../src/import-mining.js";
 
 test("extractCandidates: strips bullets/numbering, drops noise, dedupes", () => {
   const raw = [
@@ -112,6 +114,25 @@ test("stageImport: creates the review file, dedupes against ticked AND open entr
     assert.ok(entries.every((e) => e.source === "chatgpt" && /\d{4}-\d{2}-\d{2}/.test(e.date)));
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("the switch controls new import candidates and imported conversation text", async (t) => {
+  const setRedaction = (value: boolean | null) =>
+    mutateSettings(settingsFilePath(), (config) => applySettingChanges(config, { "redaction.enabled": value }));
+  t.after(() => setRedaction(null));
+  const token = ["gh", "p_", "a1B2c3D4e5F6", "g7H8i9J0k1L2", "m3N4o5P6q7R8"].join("");
+  const text = `Deploy with GITHUB_TOKEN=${token}`;
+  for (const on of [true, false]) {
+    await setRedaction(on);
+    const root = await mkdtemp(join(tmpdir(), "bastra-import-redaction-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const staged = await stageImport(root, "text", [text]);
+    assert.equal((await readFile(staged.filePath, "utf8")).includes(token), !on, "memory list staging");
+    await buildQueue([{ source: "chatgpt", title: "Deployment", date: "2026-11-25", messages: [text] }], root);
+    const chunk = await readNextChunk(root);
+    assert.ok(chunk);
+    assert.equal(chunk.body.includes(token), !on, "conversation queue");
   }
 });
 
