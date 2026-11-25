@@ -8,6 +8,7 @@ import type { RecallHit, Vault } from "@bastra-recall/core";
 import { missingVaultReason } from "./vault-presence.js";
 import { vaultKnowsProject } from "./scope-filter.js";
 import { toLeanHit } from "./tool-handlers.js";
+import { withUpdated } from "./recall-handler.js";
 import { armsOf, currentScoreVersion } from "./score-space.js";
 import { collectPoolReflexHits } from "./recall-pipeline.js";
 import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
@@ -27,6 +28,9 @@ export interface HookRecallPayloadInput {
   hookProject: string | null;
   hybridActiveAtRecall: boolean;
   degradedReason: string | undefined;
+  /** #1299: the MCP forwarder's recall gets each hit's `updated` day like the
+   *  REST tool. The hook lanes do not: their hints and budget stay unchanged. */
+  dated?: boolean;
 }
 
 /** Builds the budgeted response payload; `.payload` is what goes on the wire. */
@@ -68,35 +72,38 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   // and the lane keeps every floor and dedup it already applies.
   // #421: derselbe Schritt, den der MCP-`recallHandler` fährt
   // (`recall-pipeline.ts`). Floor 0: Die Lanes wenden ihren eigenen an.
+  const dated = <T extends { id: string }>(hit: T): T => (input.dated ? withUpdated(hit, vault.get(hit.id)) : hit);
   const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault).map((h) =>
-    withSupersession(h, vault, input.conventionSources?.get(h.id))
+    dated(withSupersession(h, vault, input.conventionSources?.get(h.id)))
   );
   // recall_mode rides along only when the user wired the memory as
   // reflex: the prompt lane's mode-"none" semantic filter keys on it
   // (19.08. incident — see prompt-lane.ts).
   const leanHits = hits.map((h) =>
-    withSupersession(
-      {
-        ...toLeanHit(h),
-        ...(vault.get(h.id)?.fm.validator ? { validator: vault.get(h.id)!.fm.validator } : {}),
-        matched_recall_when: h.matched_recall_when ?? false,
-        // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
-        // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
-        // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
-        ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
-        ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
-        // #1303: the gate's evidence that the user dictated the rule.
-        ...(vault.get(h.id)?.fm.write_origin ? { write_origin: vault.get(h.id)!.fm.write_origin } : {}),
-        ...(input.conventionSources
-          ? {
-              revision: input.conventionSources.get(h.id)?.revision ?? null,
-              write_origin: input.conventionSources.get(h.id)?.write_origin,
-              summary: input.conventionSources.get(h.id)?.summary ?? h.summary,
-            }
-          : {}),
-      },
-      vault,
-      input.conventionSources?.get(h.id)
+    dated(
+      withSupersession(
+        {
+          ...toLeanHit(h),
+          ...(vault.get(h.id)?.fm.validator ? { validator: vault.get(h.id)!.fm.validator } : {}),
+          matched_recall_when: h.matched_recall_when ?? false,
+          // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
+          // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
+          // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
+          ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
+          ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
+          // #1303: the gate's evidence that the user dictated the rule.
+          ...(vault.get(h.id)?.fm.write_origin ? { write_origin: vault.get(h.id)!.fm.write_origin } : {}),
+          ...(input.conventionSources
+            ? {
+                revision: input.conventionSources.get(h.id)?.revision ?? null,
+                write_origin: input.conventionSources.get(h.id)?.write_origin,
+                summary: input.conventionSources.get(h.id)?.summary ?? h.summary,
+              }
+            : {}),
+        },
+        vault,
+        input.conventionSources?.get(h.id)
+      )
     )
   );
   // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und

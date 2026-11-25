@@ -506,6 +506,7 @@ export async function runHookRecall(
     hybridActiveAtRecall,
     degradedReason: stages.degradedReason(),
     conventionSources,
+    dated: body.hook_source === "mcp",
   });
   const { payload, budgetSize, budgetDropped } = await completeHookRecallPayload({
     budgeted,
