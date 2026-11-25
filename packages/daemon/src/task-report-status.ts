@@ -52,6 +52,20 @@ function formattedUntil(text: string): number {
   return inlineMatches(text).at(-1)?.end ?? 0;
 }
 
+/** `text` as the reader shows it (textContent of its inline rendering): elements give their inner text.
+ * The separator before a marker counts where the owner sees it, also inside bold, code or a link (#1729).
+ * A [[wiki link]] shows its memory's title in the reader, which is not known here: its raw id stands in. */
+function renderedText(text: string): string {
+  let out = "",
+    last = 0;
+  for (const { index, end, groups: g } of inlineMatches(text)) {
+    const start = index + (g[9] === undefined ? 0 : (g[8]?.length ?? 0));
+    out += text.slice(last, start) + (g[2] ?? g[1] ?? g[3] ?? g[4] ?? g[5] ?? g[7] ?? g[9] ?? "");
+    last = end;
+  }
+  return out + text.slice(last);
+}
+
 /** The lines of one markdown() call outside code and whether the reader shows answer options. */
 function* proseQuestions(md: string) {
   // HTML comments are bookkeeping the reader drops before it reads the lines
@@ -65,11 +79,14 @@ function* proseQuestions(md: string) {
       if (!code[i]) yield { line, asks: false, before: line };
     } else if (line.trim()) {
       const text = ITEM.exec(line)?.[1] ?? line;
-      const ask = askOf(text, previous),
-        asks = ask !== null && formattedUntil(text) <= ask.at;
+      const shown = renderedText(text),
+        ask = askOf(shown, previous);
+      // the marker stands in the last text node: no element ends after where it starts
+      const at = ask === null ? -1 : text.length - (shown.length - ask.at),
+        asks = ask !== null && formattedUntil(text) <= at;
       // `before`: the text in front of the shown marker, where another "[?" is still plain text (#1718)
-      yield { line, asks, before: asks ? text.slice(0, ask.at) : line };
-      previous = text;
+      yield { line, asks, before: asks ? text.slice(0, at) : line };
+      previous = shown;
     }
   }
 }

@@ -1,0 +1,20 @@
+[
+  { "name": "plain space", "body": "Ship it? [? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "list item", "body": "- Ship it? [? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "own line after its question", "body": "Ship it?\n\n[? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "own line without a question", "body": "[? Yes | No]", "asks": 0, "unread": ["[? Yes | No]"] },
+  { "name": "marker glued to the word", "body": "Read the Matrix[?a|b]", "asks": 0, "unread": ["Read the Matrix[?a|b]"] },
+  { "name": "nonbreaking space before", "body": "Ship it? [? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "space inside bold", "body": "**Ship it? **[? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "nonbreaking space inside bold", "body": "**Ship it? **[? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "space inside code", "body": "`code `[? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "space inside link text", "body": "[the plan ](https://example.com/p)[? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "space inside emphasis", "body": "*Ship it? *[? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "list item, space inside bold", "body": "- **Ship it? **[? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "bold glued to the marker", "body": "**Ship it?**[? Yes | No]", "asks": 0, "unread": ["**Ship it?**[? Yes | No]"] },
+  { "name": "code glued to the marker", "body": "`code`[? Yes | No]", "asks": 0, "unread": ["`code`[? Yes | No]"] },
+  { "name": "bold then a space", "body": "**Ship it?** [? Yes | No]", "asks": 1, "unread": [] },
+  { "name": "marker inside bold", "body": "**Ship it? [? Yes | No]**", "asks": 0, "unread": ["**Ship it? [? Yes | No]**"] },
+  { "name": "escaped marker", "body": "Ship it? \\[? Yes | No]", "asks": 0, "unread": [] },
+  { "name": "marker in inline code", "body": "Ship it? `[? Yes | No]`", "asks": 0, "unread": [] }
+]
