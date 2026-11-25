@@ -324,6 +324,9 @@ export default {
   "st.k.scope.filterLanes": "Scope-Filter",
   "st.k.scope.filterLanes.d":
     "Ob Hinweise außerhalb deines aktuellen Projekts (Scope) auffallen. Beobachten (Standard): Recall misst nur, wie oft das vorkommt. Erzwingen: solche Hinweise werden wirklich ausgeblendet.",
+  "st.k.redaction.enabled": "Zugangsdaten schwärzen",
+  "st.k.redaction.enabled.d":
+    "Ersetzt Text, der wie ein Passwort oder Zugangsschlüssel aussieht, durch [REDACTED], bevor Recall ihn speichert: in Notizen, Dokumenten, Entwürfen, Aufgaben und Berichten. Aus = dein Text wird genau so gespeichert, wie du ihn geschrieben hast. Protokolle bleiben in jedem Fall geschwärzt. Standard: an.",
   "st.k.saveNotice": "Speicherhinweis",
   "st.k.saveNotice.d":
     "Zeigt in der Sitzung einen kurzen Hinweis, sobald Recall eine Memory gespeichert hat, damit du immer weißt, was gemerkt wurde. Standard: an.",

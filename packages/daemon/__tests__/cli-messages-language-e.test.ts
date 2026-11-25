@@ -100,6 +100,7 @@ const FEATURES: FeatureState = {
   semanticRecall: { state: "off", detail: "x" },
   paraphrasing: { state: "on", model: "m", modelPulled: false },
   reflex: { enabled: true },
+  redaction: true,
   codeAwareness: { repos: 2, offByEnv: false },
   promptImpact: false,
   coverageMap: true,
@@ -164,7 +165,7 @@ test("each part-E formatter speaks German for 'de' and English for an unlisted l
       (l) =>
         deliveryLines(
           [
-            { surface: "codex", mcpSurface: "full", probe: { ok: true, tools: 9, bytes: 400 } },
+            { surface: "codex", mcpSurface: "full", probe: { ok: true, tools: 9, bytes: 400, names: 40 } },
             { surface: "cursor", mcpSurface: "search", probe: { ok: false, detail: "d" } },
           ],
           l

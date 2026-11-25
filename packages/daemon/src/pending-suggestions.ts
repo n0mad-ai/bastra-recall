@@ -22,7 +22,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
 import { envInt, envOff } from "./env.js";
-import { redactSecrets } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 import { clipDraftText } from "./draft-text.js";
 
 function validateLegacyJson(text: string): void {
@@ -205,7 +205,7 @@ function capPendingBlocks(blocks: string): string {
 
 /** Same credential inventory and clipping boundary as local drafts. */
 function safePendingBlocks(blocks: string): string {
-  return capPendingBlocks(redactSecrets(capPendingBlocks(blocks), homedir()).text);
+  return capPendingBlocks(redactUserText(capPendingBlocks(blocks), homedir()).text);
 }
 
 function scrubPendingRows(rows: PendingSuggestion[]): void {

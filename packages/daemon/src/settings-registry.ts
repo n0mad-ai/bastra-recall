@@ -426,6 +426,11 @@ export const SETTINGS_REGISTRY = {
       readonly: true,
     }),
   },
+  // Credential redaction in user content (drafts, notes, documents, tasks, reports).
+  // Off keeps the text byte for byte; logs and learning data stay redacted.
+  redaction: {
+    enabled: setting(bool, { area: "general", label: "Zugangsdaten schwärzen", default: true, required: true }),
+  },
   telemetry: {
     enabled: setting(bool, {
       area: "general",

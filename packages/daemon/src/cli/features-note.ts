@@ -54,6 +54,8 @@ export interface FeatureState {
   paraphrasing: { state: "on" | "off" | "n/a"; model?: string; modelPulled?: boolean };
   /** Reflex memories; `offBy` names the switch when off. */
   reflex: { enabled: boolean; offBy?: string };
+  /** Credential redaction in user content (`redaction.enabled`, default on). */
+  redaction: boolean;
   codeAwareness: { repos: number; offByEnv: boolean };
   promptImpact: boolean;
   coverageMap: boolean;
@@ -139,6 +141,8 @@ export function featureLines(s: FeatureState, language?: string): string[] {
       )
     );
 
+  lines.push(redactionLine(s.redaction, w));
+
   lines.push(w.optionalHeading, ...optionalLines(s, w));
   return lines;
 }
@@ -218,6 +222,13 @@ function optionalLines(s: FeatureState, w: FeaturesWords): string[] {
   return lines;
 }
 
+/** Owner decision 25.11.2026: the off state of credential redaction is named, with the command back. */
+function redactionLine(on: boolean, w: FeaturesWords): string {
+  return on
+    ? row(ON, w.redaction, w.on)
+    : row(OFF, w.redaction, w.redactionOff, "bastra config set redaction.enabled true");
+}
+
 function batteryLine(battery: FeatureState["battery"], w: FeaturesWords): string {
   if (!battery.saver) return row(INFO, w.battery, w.off, "bastra config set battery.saver on");
   if (battery.live?.saving) return row(ON, w.battery, w.batterySaving);
@@ -271,6 +282,11 @@ function archiveFeature(
 ): Pick<FeatureState, "archive" | "archiveProblem"> {
   const archive = archiveMode(enabled ?? false);
   return { archive, archiveProblem: archive === "bastra" ? archiveRootProblem(env) : null };
+}
+
+/** Only a stored `false` turns redaction off (user-text-redaction.ts reads it the same way). */
+function redactionOn(settings: CliSettings): boolean {
+  return settings.redaction?.enabled !== false;
 }
 
 function reflexState(settings: CliSettings, env: NodeJS.ProcessEnv): FeatureState["reflex"] {
@@ -343,6 +359,7 @@ export async function collectFeatureState(
     semanticRecall,
     paraphrasing: await paraphrasingState(live, semanticRecall, env),
     reflex: reflexState(settings, env),
+    redaction: redactionOn(settings),
     codeAwareness: { repos: (await enabledRepos(undefined, env)).length, offByEnv: codeAwarenessDisabledByEnv(env) },
     promptImpact: await getPromptImpactEnabled(undefined, env),
     coverageMap: await getCoverageMapEnabled(undefined, env),

@@ -458,16 +458,24 @@ test("N6/N29: answer options are fixed syntax at the end of a line, in any langu
     "Ship it? [? Yes | ]",
     "Ship it? [? Yes | Yes]",
     "Ship it? [? a | b | c | d | e | f | g]",
-    `Ship it? [? ${"x".repeat(81)} | No]`,
-    // a long explanation as an option: the line stays text, nothing is cut (Daniel 18.11.2026)
-    `Ship it? [? ${"x".repeat(41)} | No]`,
+    // a whole paragraph as an option: the line stays text, nothing is cut (Daniel 18.11.2026)
+    `Ship it? [? ${"x".repeat(121)} | No]`,
     "[? Yes | No]",
     "Ship it? [? Yes | No] later",
     "Ship it? [Yes | No]",
     "Ship it? [? [a] | b]",
   ])
     assert.equal(m.askOf(text), null, text);
-  assert.equal(ask(`Ship it? [? A – ${"x".repeat(36)} | No]`).options[0].length, 40, "40 characters still fit");
+  assert.equal(ask(`Ship it? [? A – ${"x".repeat(116)} | No]`).options[0].length, 120, "120 characters still fit");
+  // the real lines that showed no buttons with the old 40-character limit (Daniel 25.11.2026)
+  for (const line of [
+    "**Deine Antwort:** [? A – Bei der Messung mitzählen, dann entscheiden | B – Nicht weiter verfolgen]",
+    "**Deine Antwort:** [? A – In 1.3.0 bauen | B – Erst in der eigenen Sitzung besprechen]",
+    "**Deine Antwort:** [? A – Modellmeinung erst danach (wie gebaut) | B – Vorher zeigen]",
+    "**Deine Antwort:** [? A – Die 18 deutlichen zeigen, ich entscheide | B – So lassen]",
+    "**Deine Antwort:** [? A – Minute beibehalten | B – Als Einstellung für große Vaults prüfen]",
+  ])
+    assert.equal(ask(line).options.length, 2, line);
 });
 
 test("N6/N29: the tool agents file reports with teaches the syntax the reading view understands", async () => {
@@ -720,8 +728,9 @@ test("#1656/#1652: the daemon's question status and the reader's answer buttons 
   const { asksOwner } = await import("../src/task-report-status.js");
   const corpus: [string, boolean][] = [
     ["Ship it? [? Yes | No]", true],
-    [`Ship it? [? ${"x".repeat(40)} | No]`, true],
-    [`Ship it? [? ${"x".repeat(41)} | No]`, false],
+    [`Ship it? [? ${"x".repeat(120)} | No]`, true],
+    [`Ship it? [? ${"x".repeat(121)} | No]`, false],
+    ["**Deine Antwort:** [? A – Bei der Messung mitzählen, dann entscheiden | B – Nicht weiter verfolgen]", true],
     ["Ship it? [? Yes | Yes]", false],
     ["Ship it? [? Yes]", false],
     ["- Ship it? [? Yes | No]", true],

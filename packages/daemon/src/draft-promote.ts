@@ -5,7 +5,7 @@ import { basename, join } from "node:path";
 import { homedir } from "node:os";
 import { setImmediate } from "node:timers/promises";
 import { cosine, deleteMemoryFile, type SaveMemoryInput, type Vault } from "@bastra-recall/core";
-import { redactSecrets } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 import { scanForInjection } from "@bastra-recall/core";
 import { localDraftProvider, readDraftVectorState, type DraftShadowOptions } from "./draft-shadow.js";
 import { listDrafts, transactDrafts, withDraftPublication, type Draft } from "./draft-store.js";
@@ -679,8 +679,8 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         continue;
       }
       for (const field of ["title", "summary", "body"] as const)
-        input[field] = redactSecrets(input[field], homedir()).text;
-      input.recall_when = input.recall_when.map((c) => redactSecrets(c, homedir()).text);
+        input[field] = redactUserText(input[field], homedir()).text;
+      input.recall_when = input.recall_when.map((c) => redactUserText(c, homedir()).text);
       if (scanForInjection([input.title, input.summary, input.body, ...input.recall_when].join("\n")).length) {
         result.blocked++;
         await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "injection-scan" });

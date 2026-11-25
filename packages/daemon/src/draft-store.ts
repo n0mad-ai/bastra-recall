@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 import { writeDraftEvent } from "./draft-events.js";
 import { cleanDraftText, cleanDraftField, cleanDraftLine, clipDraftText } from "./draft-text.js";
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
@@ -129,7 +130,7 @@ function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const time = (ts: number) => (ts > now ? Math.min(now, fallback) : ts);
   const proofTime = (ts: number) => (ts > Math.max(now, Date.now()) ? Math.min(now, fallback) : ts);
   const quoteInput = clipDraftText(d.quote, 600);
-  const quote = redactSecrets(quoteInput, homedir());
+  const quote = redactUserText(quoteInput, homedir());
   if (quote.redactedChars > quoteInput.length * 0.3) return null;
   const clean = cleanDraftText;
   const optional = (text: string | undefined, clean = cleanDraftLine) => (text === undefined ? undefined : clean(text));

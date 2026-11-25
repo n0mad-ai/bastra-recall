@@ -189,7 +189,7 @@ test("INV-SCRUB-03: #1553: the body is cleaned before storage, and the tool desc
   const description = taskTools.find((t) => t.name === "task_report_save")!.description;
   assert.doesNotMatch(description, /unchanged/i);
   assert.match(description, /cleaned before storage/);
-  assert.match(description, /secrets are replaced by redaction placeholders/);
+  assert.match(description, /secrets become placeholders when redaction is on/);
   assert.match(description, /CR in CRLF, a lone zero-width joiner\); the joiners inside combined emoji stay/);
 });
 

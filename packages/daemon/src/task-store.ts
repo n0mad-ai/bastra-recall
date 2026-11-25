@@ -10,7 +10,8 @@ import { mkdir } from "node:fs/promises";
 import { readTaskSnapshotText, writeTaskSnapshotText } from "./task-database.js";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
-import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core/scrub";
+import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 import { withPathLock } from "./path-lock.js";
 import {
   emptyTaskStore,
@@ -52,7 +53,7 @@ export async function readTaskStore(path = tasksPath()): Promise<TaskStore> {
 
 /** Private text is scrubbed, while opaque IDs/revisions keep exact identity. */
 export function cleanText(value: string): string {
-  return redactSecrets(scrubInjectedBlocks(value).text, homedir()).text.replace(/[\p{Cc}\p{Cf}]/gu, (c) =>
+  return redactUserText(scrubInjectedBlocks(value).text, homedir()).text.replace(/[\p{Cc}\p{Cf}]/gu, (c) =>
     c === "\n" ? c : ""
   );
 }

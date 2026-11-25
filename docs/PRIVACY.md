@@ -70,6 +70,8 @@ Recognizable credentials are redacted before storage; useful paths and variable
 references remain. The filter is a heuristic with [known limits](./secret-redaction.md):
 word-only passwords in ordinary prose and unsupported forms can remain visible.
 It does not repair the original client transcript, old vault notes or backups.
+`redaction.enabled false` switches it off for your own content (see
+[Switching it off](./secret-redaction.md#switching-it-off)).
 Quotes are clipped to 600 characters and context to 160; the store holds at most
 500 rows and 1 MiB, so its limits can evict rows earlier.
 
@@ -273,7 +275,9 @@ Erkennbare Zugangsdaten werden vor dem Speichern geschwärzt; nützliche Pfade u
 Variablenreferenzen bleiben erhalten. Der Filter ist eine Heuristik mit
 [bekannten Grenzen](./secret-redaction.md#deutsch-fester-maßstab-und-grenzen):
 Passwörter nur aus Wörtern in gewöhnlicher Prosa und nicht unterstützte Formen
-können lesbar bleiben. Er repariert weder das ursprüngliche Client-Transcript
+können lesbar bleiben. `redaction.enabled false` schaltet ihn für die eigenen
+Inhalte aus (siehe [Schwärzung ausschalten](./secret-redaction.md#deutsch-schwärzung-ausschalten)).
+Er repariert weder das ursprüngliche Client-Transcript
 noch alte Vault-Notizen oder Backups. Zitate werden auf 600 Zeichen und Kontext
 auf 160 gekürzt; die Ablage hält höchstens 500 Zeilen und 1 MiB, sodass diese
 Grenzen Zeilen früher verdrängen können.

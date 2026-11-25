@@ -21,14 +21,15 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core/scrub";
+import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 import { readAppRecord, writeAppRecord } from "./app-record-store.js";
 import { withPathLock } from "./path-lock.js";
 import { authenticateTask, type TaskPrincipal } from "./task-auth.js";
 import { MAX_BODY_BYTES } from "./http-util.js";
 import { readSettings } from "./settings-file.js";
 import { parseReportUndo, REPORT_UNDO_DEFAULT } from "./task-report-undo-window.js";
-import { followUpOf, reportStatus } from "./task-report-status.js";
+import { followUpOf, OPTION_MAX, questionCheck, reportStatus } from "./task-report-status.js";
 
 /** Nothing piles up silently: past this the agent is told, nothing is dropped. */
 export const TASK_REPORT_LIMIT = 200;
@@ -165,7 +166,7 @@ const emojiJoiner = (text: string, at: number) => ((EMOJI_JOINER.lastIndex = at)
 /** Secrets redacted like task text; control and format characters go except `keep` and the
  * joiners inside combined emoji (#1563), so a family emoji stays one emoji. */
 function cleanReportText(value: string, keep: string): string {
-  return redactSecrets(scrubInjectedBlocks(value).text, homedir()).text.replace(
+  return redactUserText(scrubInjectedBlocks(value).text, homedir()).text.replace(
     /[\p{Cc}\p{Cf}]/gu,
     (c, at: number, text: string) => (keep.includes(c) || (c === "‍" && emojiJoiner(text, at)) ? c : "")
   );
@@ -354,6 +355,29 @@ const unread = (r: TaskReport) => r.read_at === undefined && r.outdated_at === u
 const group = (r: TaskReport) => (r.outdated_at !== undefined ? 2 : r.read_at === undefined ? 0 : 1);
 const order = (a: TaskReport, b: TaskReport) => group(a) - group(b) || b.created_at - a.created_at;
 
+/** Questions a report should hold at most (Daniel 25.11.2026); more only earn a hint, never a refusal. */
+const QUESTIONS_MAX = 20;
+const HINT_LINE_MAX = 160;
+
+/** Hints for the saving agent (Daniel 25.11.2026): lines that open answer options "[?" but show as
+ * plain text without buttons, and more than QUESTIONS_MAX questions. The report is stored either way. */
+function saveHints(body: string): string[] {
+  const { asks, unread } = questionCheck(body);
+  const hints = unread.map(
+    (line) =>
+      `Shown as plain text without answer buttons: "${line.length > HINT_LINE_MAX ? line.slice(0, HINT_LINE_MAX - 1) + "…" : line}"`
+  );
+  if (hints.length)
+    hints.push(
+      `Answer options need 2-6 different options of at most ${OPTION_MAX} characters, no brackets or formatting inside, at the end of a list item or paragraph line after the question text.`
+    );
+  if (asks > QUESTIONS_MAX)
+    hints.push(
+      `${asks} questions with answer options; keep at most ${QUESTIONS_MAX} per report and put the rest in a part 2.`
+    );
+  return hints;
+}
+
 function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
   const input = taskReportSaveInput.parse(raw);
   const report: TaskReport = {
@@ -377,7 +401,8 @@ function saveReport(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
     if (input.follow_up_of !== undefined && !reports.some((r) => r.id === input.follow_up_of && visible(r, principal)))
       throw notFound();
     reports.push(report);
-    return meta(report, isOwner(ctx));
+    const hints = saveHints(report.body);
+    return { ...meta(report, isOwner(ctx)), ...(hints.length ? { hints } : {}) };
   });
 }
 

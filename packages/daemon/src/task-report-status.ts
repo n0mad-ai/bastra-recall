@@ -18,7 +18,7 @@
 // finds next to its code as it finds the rest of the web UI (webui.ts).
 import { inlineMatches } from "../webui/app/js/views/inline-scan.js";
 import { codeLines } from "../webui/app/js/views/code-lines.js";
-import { reportBlocks } from "../webui/app/js/sections/tasks-reports-model.js";
+import { OPTION_MAX, optionsOf, reportBlocks } from "../webui/app/js/sections/tasks-reports-model.js";
 
 export type ReportStatus = "new" | "read" | "in_progress" | "handed" | "question" | "done" | "outdated";
 
@@ -37,15 +37,12 @@ export interface StatusReport {
 }
 
 // The marker the UI shows as answer buttons (tasks-reports-model.js askOf, tasks-report-notes.js
-// takeAsk): 2 to 6 distinct options of at most 40 characters after a question, at the end of a list
-// item or paragraph line. One contract with the reader (#1656): the lines are taken apart as its
-// renderer (webui views/markdown.js markdown()) does, so a marker in code (fenced or indented, the
-// reader's own rule in code-lines.js), in a heading, behind a backslash (#1652) or with formatting
+// takeAsk): 2 to 6 distinct options (optionsOf, the reader's own check) after a question, at the end
+// of a list item or paragraph line. One contract with the reader (#1656): the lines are taken apart
+// as its renderer (webui views/markdown.js markdown()) does, so a marker in code (fenced or indented,
+// the reader's own rule in code-lines.js), in a heading, behind a backslash (#1652) or with formatting
 // inside it stays text here as well.
 const ASK = /\[\?([^[\]]*)\]\s*$/;
-const ASK_MIN = 2;
-const ASK_MAX = 6;
-const OPTION_MAX = 40;
 
 const HEADING = /^#{1,6}\s/;
 const ITEM = /^\s*(?:[-*]|\d+\.)\s+(.*)$/;
@@ -60,33 +57,49 @@ function formattedUntil(text: string): number {
 function asksIn(text: string): boolean {
   const m = ASK.exec(text);
   if (!m || text[m.index - 1] === "\\" || !text.slice(0, m.index).trim()) return false;
-  if (formattedUntil(text) > m.index) return false;
-  const options = m[1]!.split("|").map((o) => o.trim());
-  return (
-    options.length >= ASK_MIN &&
-    options.length <= ASK_MAX &&
-    options.every((o) => o !== "" && o.length <= OPTION_MAX) &&
-    new Set(options).size === options.length
-  );
+  return formattedUntil(text) <= m.index && optionsOf(m[1]!) !== null;
 }
 
-/** True when one piece of prose (a markdown() call of the reader) holds a question. */
-function proseAsks(md: string): boolean {
+/** One line of prose as the reader shows it: does it hold a question? */
+const lineAsks = (line: string) => !HEADING.test(line) && asksIn(ITEM.exec(line)?.[1] ?? line);
+
+/** The lines of one piece of prose (a markdown() call of the reader) outside code. */
+function proseLines(md: string): string[] {
   // HTML comments are bookkeeping the reader drops before it reads the lines
   const lines = md.replace(/<!--[\s\S]*?-->/g, "").split("\n"),
     code = codeLines(lines);
-  return lines.some((raw, i) => {
-    const line = raw.trimEnd();
-    return !code[i] && !HEADING.test(line) && asksIn(ITEM.exec(line)?.[1] ?? line);
-  });
+  return lines.filter((_, i) => !code[i]).map((l) => l.trimEnd());
 }
 
 /** True when the report text holds at least one question with answer options. The reader renders
  *  the prose between pipe tables piece by piece (tasks-reports.js bodyNodes), so a line right under
  *  a table starts a new piece there; this status reads the same pieces (#1665). */
 export function asksOwner(body: string): boolean {
-  return reportBlocks(body).some((b) => b.kind === "md" && proseAsks(b.text));
+  return reportBlocks(body).some((b) => b.kind === "md" && proseLines(b.text).some(lineAsks));
 }
+
+// An opening marker outside inline code and not escaped: the agent meant answer options here.
+const OPENS = /(?<!\\)\[\?/;
+const INLINE_CODE = /`[^`]*`/g;
+
+/** What task_report_save tells the agent about a report's questions (Daniel 25.11.2026): `asks`
+ *  counts the questions the reader shows with answer buttons; `unread` lists the lines that open a
+ *  marker "[?" but are not read as answer options, so the owner would see them as plain text. */
+export function questionCheck(body: string): { asks: number; unread: string[] } {
+  let asks = 0;
+  const unread: string[] = [];
+  for (const b of reportBlocks(body)) {
+    const prose = b.kind === "md";
+    const lines = prose ? proseLines(b.text) : [b.head, ...b.rows].map((cells) => cells.join(" | "));
+    for (const line of lines) {
+      if (prose && lineAsks(line)) asks++;
+      else if (OPENS.test(line.replace(INLINE_CODE, ""))) unread.push(line.trim());
+    }
+  }
+  return { asks, unread };
+}
+
+export { OPTION_MAX };
 
 /** The state from the notes alone (the first four rules without the follow-up). */
 function notesStatus(notes: readonly StatusNote[]): ReportStatus | null {

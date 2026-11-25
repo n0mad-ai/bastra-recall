@@ -46,6 +46,7 @@ import {
 } from "@bastra-recall/core";
 import { writeCallerStore } from "./caller-session.js";
 import { redactSaveInput, withRedactionReceipt, WriteRedaction, type RedactionReceipt } from "./save-redaction.js";
+import { redactionEnabled } from "./user-text-redaction.js";
 
 /** One AuditLog per vault — it caches reads, and re-creating it per write
  *  would throw that cache away on every save. */
@@ -122,14 +123,19 @@ export interface AuditTrailInput {
  * geschriebenen Zustand.
  */
 export async function recordAudit(input: AuditTrailInput): Promise<string | undefined> {
+  // The log is append-only: with the owner's redaction switched off, the note
+  // keeps its text, but the content fields copied into this log stay redacted.
+  const sealed = redactionEnabled() ? undefined : new WriteRedaction(true);
+  const diff = (snapshot: Record<string, unknown> | null, prefix: string) =>
+    sealed ? auditContentSnapshot(snapshot, prefix, sealed) : snapshot;
   try {
     await logFor(input.vaultRoot).record({
       memory_id: input.memoryId,
       actor: input.actor,
       actor_detail: input.actorDetail,
       operation: input.operation,
-      diff_before: input.diffBefore,
-      diff_after: input.diffAfter,
+      diff_before: diff(input.diffBefore, "audit_before"),
+      diff_after: diff(input.diffAfter, "audit_after"),
       ...(input.filePath ? { file_path: input.filePath } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
       ...(input.sessionId ? { session_id: input.sessionId } : {}),

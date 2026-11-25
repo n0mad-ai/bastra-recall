@@ -66,6 +66,20 @@ Paths stay verbatim here (no home-directory abbreviation), and text without a
 recognized credential is written byte for byte. Memories written before 1.3.0
 are not rewritten.
 
+## Switching it off
+
+Since 1.3.0 redaction of your own content can be switched off:
+`bastra config set redaction.enabled false`, or in the web UI under Settings ›
+Writing & docs › "Redact credentials". It is on by default. Off, drafts, the
+suggestion relay, notes (`save_memory`, `edit_memory`), documents
+(`save_document`), tasks and reports (`task_report_save`) keep their text byte for
+byte as written; the home-directory abbreviation in drafts, tasks and reports is
+dropped too. The setting needs no restart (from the web UI at once, from the
+terminal within a second). `bastra doctor` names the off state. Redacted
+regardless of the switch: the content fields in the vault's append-only audit log,
+training data, the recall signals learned from telemetry and the queries in the
+vault report.
+
 ## Fixed acceptance corpus
 
 `packages/core/__tests__/redact-secrets-corpus.test.ts` retains every literal and
@@ -233,6 +247,21 @@ viele Werte es verloren hat, `warning` sagt es in einem Satz. Pfade bleiben hier
 unverändert (keine Abkürzung des Home-Verzeichnisses), und Text ohne erkannte
 Zugangsdaten wird Byte für Byte geschrieben. Vor 1.3.0 geschriebene Memories werden
 nicht umgeschrieben.
+
+## Deutsch: Schwärzung ausschalten
+
+Seit 1.3.0 lässt sich die Schwärzung für die eigenen Inhalte ausschalten:
+`bastra config set redaction.enabled false` oder in der Weboberfläche unter
+Einstellungen › Schreiben & Doku › „Zugangsdaten schwärzen“. Standard ist an. Aus
+bleiben Entwürfe, Vorschlags-Relay, Notizen (`save_memory`, `edit_memory`),
+Dokumente (`save_document`), Aufgaben und Berichte (`task_report_save`) Byte für
+Byte so, wie sie geschrieben wurden; auch die Abkürzung des Home-Verzeichnisses in
+Entwürfen, Aufgaben und Berichten entfällt dann. Die Einstellung gilt ohne Neustart
+(aus der Weboberfläche sofort, aus dem Terminal nach spätestens einer Sekunde).
+`bastra doctor` nennt den ausgeschalteten Zustand. Unabhängig vom Schalter bleiben
+geschwärzt: die Inhaltsfelder im anhängenden Audit-Protokoll des Vaults,
+Trainingsdaten, die gelernten Suchsignale aus der Telemetrie und die Suchanfragen
+im Vault-Bericht.
 
 ## Deutsch: Vorschlags-Relay
 

@@ -3,6 +3,7 @@ import { bastraDataDir } from "./platform-paths.js";
 import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
 import { peekAppRecord, readAppRecord, writeAppRecord } from "./app-record-store.js";
+import { forgetRedactionSetting } from "./user-text-redaction.js";
 import {
   SETTINGS_REGISTRY,
   parseStoredSettings,
@@ -171,6 +172,7 @@ function parseSettingsText(raw: string, path: string): { settings: CliSettings; 
 /** A committed DB record; imported originals remain at <path>.pre-db. */
 async function writeSettings(next: CliSettings, path: string): Promise<void> {
   writeAppRecord("settings", path, JSON.stringify(next, null, 2) + "\n");
+  forgetRedactionSetting();
 }
 
 /**

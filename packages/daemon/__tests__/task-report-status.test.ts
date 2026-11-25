@@ -9,7 +9,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mintTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
-import { asksOwner, reportStatus, type StatusNote, type StatusReport } from "../src/task-report-status.js";
+import {
+  asksOwner,
+  questionCheck,
+  reportStatus,
+  type StatusNote,
+  type StatusReport,
+} from "../src/task-report-status.js";
 
 type R = StatusReport & { notes: StatusNote[] };
 const draft: StatusNote = { state: "open" };
@@ -168,7 +174,7 @@ test("status: questions are recognised by the fixed syntax, never by words", () 
     ["Ship it? [? Yes | Yes]", false],
     ["[? Yes | No]", false],
     ["Ship it? [? Yes | No] and more", false],
-    [`Ship it? [? ${"x".repeat(81)} | No]`, false],
+    [`Ship it? [? ${"x".repeat(121)} | No]`, false],
     ["Ship it? [? A | B | C | D | E | F | G]", false],
     ["Should we ship it? Yes or no?", false],
     ["## Ship it? [? Yes | No]", false],
@@ -178,16 +184,52 @@ test("status: questions are recognised by the fixed syntax, never by words", () 
   for (const [body, want] of rows) assert.equal(asksOwner(body), want, body);
 });
 
-test("#1656: an option longer than the reader's 40 characters asks nothing, as in the reader", () => {
-  // the trace from the issue: report A, then follow-up B whose only marker has a 41-character option
+test("#1656: an option longer than the reader's 120 characters asks nothing, as in the reader", () => {
+  // the trace from the issue: report A, then follow-up B whose only marker has a too long option
   const a = base({ notes: [done], read_at: 3 });
-  const long = followUp({ body: `Frage? [? ${"x".repeat(41)} | Nein]` });
+  const long = followUp({ body: `Frage? [? ${"x".repeat(121)} | Nein]` });
   assert.deepEqual(
     reportStatus(a, [a, long], (r) => r.notes),
     { status: "done" }
   );
-  const fits = followUp({ body: `Frage? [? ${"x".repeat(40)} | Nein]` });
-  assert.equal(reportStatus(a, [a, fits], (r) => r.notes).status, "question", "40 characters still ask");
+  const fits = followUp({ body: `Frage? [? ${"x".repeat(120)} | Nein]` });
+  assert.equal(reportStatus(a, [a, fits], (r) => r.notes).status, "question", "120 characters still ask");
+});
+
+test("Daniel 25.11.2026: questionCheck counts the questions and names every marker read as text", () => {
+  const body = [
+    "# Report",
+    "**Deine Antwort:** [? A – Bei der Messung mitzählen, dann entscheiden | B – Nicht weiter verfolgen]",
+    "- Ship it? [? Yes | No]",
+    "[? Yes | No]",
+    "Ship it? [? Yes | No].",
+    "Ship it? [? a | b | c | d | e | f | g]",
+    "Ship it? [? Yes]",
+    "Ship it? [? A – list [old] | B – new]",
+    "Ship it? [? **Yes** | No]",
+    "## Ship it? [? Yes | No]",
+    "",
+    "| Q | A |",
+    "|---|---|",
+    "| Ship it? | [? Yes | No] |",
+    "",
+    "Literal \\[? Yes | No] and `[? code]` stay quiet",
+    "```",
+    "[? in code | stays quiet]",
+    "```",
+  ].join("\n");
+  const { asks, unread } = questionCheck(body);
+  assert.equal(asks, 2);
+  assert.deepEqual(unread, [
+    "[? Yes | No]",
+    "Ship it? [? Yes | No].",
+    "Ship it? [? a | b | c | d | e | f | g]",
+    "Ship it? [? Yes]",
+    "Ship it? [? A – list [old] | B – new]",
+    "Ship it? [? **Yes** | No]",
+    "## Ship it? [? Yes | No]",
+    "Ship it? | [? Yes | No]",
+  ]);
 });
 
 test("#1656/#1652: code and an escaped marker stay text for the status as in the reader", () => {
@@ -394,4 +436,23 @@ test("follow-up: a chain never loops, and a deleted original only drops the link
   listed = await f.list();
   assert.equal(listed.byId(b.id).follow_up_of, undefined, "the gone report is not named");
   assert.equal(listed.byId(b.id).status, "question");
+});
+
+test("Daniel 25.11.2026: task_report_save hints at unread markers and more than 20 questions, and stores anyway", async () => {
+  const f = await fixture();
+  const clean = await f.save({ body: "- Ship it? [? Yes | No]" });
+  assert.equal(clean.hints, undefined, "a report the reader reads fully carries no hints");
+  const broken = await f.save({ body: "Ship it?\n[? Yes | No]\n- Later? [? Yes | Yes]" });
+  assert.equal(broken.hints.length, 3);
+  assert.match(broken.hints[0], /plain text without answer buttons: "\[\? Yes \| No\]"/);
+  assert.match(broken.hints[1], /"- Later\? \[\? Yes \| Yes\]"/);
+  assert.match(broken.hints[2], /2-6 different options of at most 120 characters/);
+  const many = await f.save({ body: Array.from({ length: 21 }, (_, i) => `- Q${i}? [? Yes | No]`).join("\n") });
+  assert.deepEqual(many.hints, [
+    "21 questions with answer options; keep at most 20 per report and put the rest in a part 2.",
+  ]);
+  const twenty = await f.save({ body: Array.from({ length: 20 }, (_, i) => `- Q${i}? [? Yes | No]`).join("\n") });
+  assert.equal(twenty.hints, undefined);
+  const ids = (await f.list()).reports.map((r: any) => r.id);
+  for (const r of [clean, broken, many, twenty]) assert.ok(ids.includes(r.id), "every report is stored");
 });

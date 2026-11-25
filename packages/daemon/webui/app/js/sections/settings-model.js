@@ -75,7 +75,15 @@ export const GROUPS = [
   { id: "code", keys: ["code.repos", "promptImpact.enabled", "coverageMap.enabled"] },
   {
     id: "writing",
-    keys: ["docs.mode", "docs.language", "size.guide", "size.critical", "size.exemptPaths", "saveNotice"],
+    keys: [
+      "docs.mode",
+      "docs.language",
+      "size.guide",
+      "size.critical",
+      "size.exemptPaths",
+      "saveNotice",
+      "redaction.enabled",
+    ],
   },
   { id: "archive", keys: ["archive.enabled", "archive.retain", "archive.cap", "archive.max-item"] },
   {

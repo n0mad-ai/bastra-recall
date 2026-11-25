@@ -194,26 +194,35 @@ export function noteRows(answer) {
 // ── Questions with answer options (Daniel 18.11.2026): an agent ends a list item or a paragraph with
 // "[? Option A | Option B]", e.g. "- Ship it now? [? Yes | No]". The marker is fixed syntax, never
 // recognised by words, so it works in every language and still reads as plain text without the UI.
-// 2 to 6 distinct options of at most 40 characters, separated by "|"; anything else stays text.
+// 2 to 6 distinct options, separated by "|"; anything else stays text.
 // An option is a button label, a short name such as "A – Build the command" (Daniel 18.11.2026: "not
-// the long answers, only a short summary"); the explanation belongs in the question's own text. 40
-// characters hold a letter, a dash and a name of four or five words and still fit one button line
-// on a phone. A longer option is never cut: the whole line stays plain text, as with any other
-// broken marker, so no part of what the agent wrote disappears. A backslash before the marker
-// ("\[? Yes | No]") makes it text too (#1652); the reader then shows it without the backslash.
-// The daemon's question status (task-report-status.ts) keeps the same contract (#1656).
+// the long answers, only a short summary"); the explanation belongs in the question's own text. A
+// longer name still becomes a button whose label wraps: a 40-character limit left real questions
+// without buttons (Daniel 25.11.2026: "must not happen again"). OPTION_MAX only keeps a whole
+// paragraph out of a button. An option is never cut: past the limit the whole line stays plain
+// text, and task_report_save names such lines to the agent (task-report-status.ts questionCheck).
+// A backslash before the marker ("\[? Yes | No]") makes it text too (#1652); the reader then shows
+// it without the backslash. The daemon's question status reads the same options (#1656).
 const ASK = /\[\?([^[\]]*)\]\s*$/;
 const ASK_MAX = 6;
-const OPTION_MAX = 40;
+export const OPTION_MAX = 120;
+
+/** The inside of a marker ("A – Keep | B – Remove") → its options, or null when they do not fit. */
+export function optionsOf(inner) {
+  const options = String(inner)
+    .split("|")
+    .map((o) => o.trim());
+  const fits = options.length >= 2 && options.length <= ASK_MAX && options.every((o) => o && o.length <= OPTION_MAX);
+  return fits && new Set(options).size === options.length ? options : null;
+}
 
 /** Block text → { question, options, at } (at: where the marker starts), or null. */
 export function askOf(text) {
   const m = ASK.exec(String(text ?? ""));
   if (!m || text[m.index - 1] === "\\") return null;
-  const options = m[1].split("|").map((o) => o.trim());
+  const options = optionsOf(m[1]);
   const question = text.slice(0, m.index).trim();
-  const fits = options.length >= 2 && options.length <= ASK_MAX && options.every((o) => o && o.length <= OPTION_MAX);
-  return fits && question && new Set(options).size === options.length ? { question, options, at: m.index } : null;
+  return options && question ? { question, options, at: m.index } : null;
 }
 
 /** Text ending in an escaped marker "\[? … ]" → the same text without that backslash. */

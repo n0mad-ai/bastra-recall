@@ -6,9 +6,12 @@
  * named in the receipt, so nothing is replaced silently.
  *
  * No home-directory abbreviation here: a memory keeps its paths verbatim,
- * only credential values are replaced.
+ * only credential values are replaced. The owner can switch this off
+ * (`redaction.enabled`, user-text-redaction.ts); the audit snapshots stay
+ * redacted either way.
  */
 import { redactSecrets } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 import type { SaveMemoryInput } from "@bastra-recall/core";
 
 const PLACEHOLDER = "[REDACTED]";
@@ -24,15 +27,17 @@ export interface RedactionReceipt {
 
 const placeholders = (text: string): number => text.split(PLACEHOLDER).length - 1;
 
-/** Collects redactions field by field. */
+/** Collects redactions field by field. `always`: a log that stays redacted when the owner's switch is off. */
 export class WriteRedaction {
   private readonly hits: SecretsRedacted = {};
+
+  constructor(private readonly always = false) {}
 
   text(field: string, value: string): string;
   text(field: string, value: string | undefined): string | undefined;
   text(field: string, value: string | undefined): string | undefined {
     if (value === undefined || value === "") return value;
-    const out = redactSecrets(value).text;
+    const out = (this.always ? redactSecrets(value) : redactUserText(value)).text;
     if (out === value) return value;
     const added = Math.max(1, placeholders(out) - placeholders(value));
     this.hits[field] = (this.hits[field] ?? 0) + added;

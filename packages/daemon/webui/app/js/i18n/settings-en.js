@@ -321,6 +321,9 @@ export default {
   "st.k.scope.filterLanes": "Scope filter",
   "st.k.scope.filterLanes.d":
     "Whether hints outside your current project (scope) get noticed. Observe (default): Recall only measures how often that happens. Enforce: such hints are really hidden.",
+  "st.k.redaction.enabled": "Redact credentials",
+  "st.k.redaction.enabled.d":
+    "Replaces text that looks like a password or access key with [REDACTED] before Recall stores it: in notes, documents, drafts, tasks and reports. Off = your text is stored exactly as written. Logs stay redacted either way. Default: on.",
   "st.k.saveNotice": "Save notice",
   "st.k.saveNotice.d":
     "Shows a short note in the session as soon as Recall has saved a memory, so you always know what was remembered. Default: on.",

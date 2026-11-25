@@ -275,6 +275,11 @@ export async function installVaultPresenceStep(
   return null;
 }
 
+/** Script output (--json) stays English; the terminal follows language.primary. */
+function scriptOutputLanguage(language: string, scriptOutput: boolean): string {
+  return scriptOutput ? "en" : language;
+}
+
 function terminalAdapterLanguage(language: string, scriptOutput = false): string | undefined {
   return adapterDisplayLanguage(language, scriptOutput || !process.stdout.isTTY);
 }
@@ -582,10 +587,11 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
     await printConflictCopiesNote(rulebookVault.path, language);
   }
   // #1472: does the tool list reach each client, and what does it cost.
+  const deliveryLanguage = scriptOutputLanguage(language, args.json);
   await printDeliveryNote(
     clientFeatures.map((c) => ({ surface: c.surface, mcpSurface: c.features.mcpSurface })),
-    fetchToolsFromDaemon(undefined, language),
-    language
+    fetchToolsFromDaemon(undefined, deliveryLanguage),
+    deliveryLanguage
   );
   await printSessionStartNote(sessionStartClients, language, args.json);
   // What is switched off, as opposed to broken — never flips the exit code,

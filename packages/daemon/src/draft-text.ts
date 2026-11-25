@@ -1,6 +1,6 @@
 /** The existing Phase-A text bounds, shared by storage and literal extraction. */
 import { homedir } from "node:os";
-import { redactSecrets } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 
 export function clipDraftText(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -18,7 +18,7 @@ export function clipDraftText(text: string, max: number): string {
 }
 
 export function cleanDraftText(text: string, max = 200): string {
-  return clipDraftText(redactSecrets(clipDraftText(text, max), homedir()).text, max);
+  return clipDraftText(redactUserText(clipDraftText(text, max), homedir()).text, max);
 }
 
 const UNPRINTED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
@@ -32,5 +32,5 @@ export function cleanDraftField(text: string, max = 200): string {
 
 /** Client-supplied paths and names: single-line, bounded and secret-redacted. */
 export function cleanDraftLine(text: string, max = 200): string {
-  return redactSecrets(text.replace(UNPRINTED, ""), homedir()).text.slice(0, max);
+  return redactUserText(text.replace(UNPRINTED, ""), homedir()).text.slice(0, max);
 }

@@ -48,6 +48,8 @@ const en = {
     `on (${model} keeps rewriting memory triggers in the background; BASTRA_TRIGGER_EXPAND=0 stops it)`,
   reflex: "reflex memories",
   unsetReflex: "unset BASTRA_REFLEX",
+  redaction: "credential redaction",
+  redactionOff: "off — notes, documents, drafts, tasks and reports keep credentials as written",
   optionalHeading: "  optional, off by default on purpose:",
   proactive: "proactive task cards",
   proactiveOn:
@@ -118,6 +120,9 @@ const de: FeaturesWords = {
     `an (${model} formuliert im Hintergrund laufend die Auslöser der Memories neu; BASTRA_TRIGGER_EXPAND=0 stoppt es)`,
   reflex: "Reflex-Memories",
   unsetReflex: "BASTRA_REFLEX entfernen",
+  redaction: "Zugangsdaten schwärzen",
+  redactionOff:
+    "aus — Notizen, Dokumente, Entwürfe, Aufgaben und Berichte behalten Zugangsdaten so, wie sie geschrieben wurden",
   optionalHeading: "  optional, mit Absicht standardmäßig aus:",
   proactive: "proaktive Aufgabenkarten",
   proactiveOn:

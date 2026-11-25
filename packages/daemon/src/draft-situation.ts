@@ -1,7 +1,7 @@
 /** Local Claude capture context, extracted from tool calls rather than prose. */
 import { basename } from "node:path";
 import { homedir } from "node:os";
-import { redactSecrets } from "@bastra-recall/core/scrub";
+import { redactUserText } from "./user-text-redaction.js";
 import { cleanDraftText } from "./draft-text.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
 import type { Draft } from "./draft-store.js";
@@ -27,7 +27,7 @@ export function situationForTurn(
   )
     return empty;
   // Preserve full-command redaction; only derive cues after the store's bounds.
-  const clean = (text: string): string => cleanDraftText(redactSecrets(text, homedir()).text);
+  const clean = (text: string): string => cleanDraftText(redactUserText(text, homedir()).text);
   const before = prior
     .filter((t) => t.role === "assistant")
     .flatMap((t) => t.commands ?? [])

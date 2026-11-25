@@ -39,6 +39,7 @@ function allOff(): FeatureState {
     semanticRecall: { state: "off", detail: "keyword search only" },
     paraphrasing: { state: "n/a" },
     reflex: { enabled: false, offBy: "reflex.enabled = false" },
+    redaction: false,
     codeAwareness: { repos: 0, offByEnv: false },
     promptImpact: false,
     coverageMap: false,
@@ -61,6 +62,7 @@ function allOn(): FeatureState {
     semanticRecall: { state: "on", detail: "ollama" },
     paraphrasing: { state: "on", model: "gemma3:4b", modelPulled: true },
     reflex: { enabled: true },
+    redaction: true,
     codeAwareness: { repos: 2, offByEnv: false },
     promptImpact: true,
     coverageMap: true,
@@ -103,6 +105,10 @@ test("every core feature that is off carries the command that turns it on", () =
     ["onboarding", /never done .*bastra onboard/],
     ["semantic recall", /bastra embeddings on/],
     ["reflex memories", /bastra config set reflex\.enabled true/],
+    [
+      "credential redaction",
+      /off — notes, documents, drafts, tasks and reports keep credentials.*bastra config set redaction\.enabled true/,
+    ],
   ];
   for (const [name, hint] of expected) {
     const line = lineFor(lines, name);
@@ -258,6 +264,7 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   assert.equal(empty.onboardingDone, false);
   assert.equal(empty.semanticRecall.state, "off");
   assert.deepEqual(empty.reflex, { enabled: true });
+  assert.equal(empty.redaction, true, "credential redaction is on by default");
   assert.equal(empty.promptImpact, false);
   assert.equal(empty.coverageMap, false);
   assert.equal(empty.docsMode, "off");
@@ -269,6 +276,7 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
       language: { primary: "de" },
       embedding: { provider: "ollama" },
       reflex: { enabled: false },
+      redaction: { enabled: false },
       docs: { mode: "suggest" },
       commons: { enabled: true },
     })
@@ -282,6 +290,7 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   const quiet = await collectFeatureState([], vault, { BASTRA_TRIGGER_EXPAND: "0" });
   assert.equal(quiet.paraphrasing.state, "off");
   assert.deepEqual(set.reflex, { enabled: false, offBy: "reflex.enabled = false" });
+  assert.equal(set.redaction, false);
   assert.equal(set.codeAwareness.offByEnv, true);
   assert.equal(set.docsMode, "suggest");
   assert.equal(set.commons, true);

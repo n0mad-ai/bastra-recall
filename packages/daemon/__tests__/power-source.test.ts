@@ -159,6 +159,7 @@ test("doctor: off names the command, on battery says what is deferred", () => {
     semanticRecall: { state: "on", detail: "ollama" },
     paraphrasing: { state: "n/a" },
     reflex: { enabled: true },
+    redaction: true,
     codeAwareness: { repos: 0, offByEnv: false },
     promptImpact: false,
     coverageMap: false,
