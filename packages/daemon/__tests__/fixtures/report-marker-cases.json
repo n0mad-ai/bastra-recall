@@ -16,5 +16,10 @@
   { "name": "bold then a space", "body": "**Ship it?** [? Yes | No]", "asks": 1, "unread": [] },
   { "name": "marker inside bold", "body": "**Ship it? [? Yes | No]**", "asks": 0, "unread": ["**Ship it? [? Yes | No]**"] },
   { "name": "escaped marker", "body": "Ship it? \\[? Yes | No]", "asks": 0, "unread": [] },
-  { "name": "marker in inline code", "body": "Ship it? `[? Yes | No]`", "asks": 0, "unread": [] }
+  { "name": "marker in inline code", "body": "Ship it? `[? Yes | No]`", "asks": 0, "unread": [] },
+  { "name": "resolvable wiki link, space after it", "body": "Which [[audit-memory]] [? One | Two]", "asks": 1, "unread": [] },
+  { "name": "resolvable wiki link glued", "body": "Which [[audit-memory]][? One | Two]", "asks": 0, "unread": ["Which [[audit-memory]][? One | Two]"] },
+  { "name": "resolvable wiki link, space inside its target", "body": "Which [[audit-memory ]][? One | Two]", "asks": 0, "unread": ["Which [[audit-memory ]][? One | Two]"] },
+  { "name": "unresolvable wiki link, space after it", "body": "Which [[gone-memory]] [? One | Two]", "asks": 1, "unread": [] },
+  { "name": "unresolvable wiki link, space inside its target", "body": "Which [[gone-memory ]][? One | Two]", "asks": 0, "unread": ["Which [[gone-memory ]][? One | Two]"] }
 ]

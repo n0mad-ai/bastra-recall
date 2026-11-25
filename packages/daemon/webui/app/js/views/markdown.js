@@ -17,7 +17,7 @@ function wikiLink(raw, label, onLink) {
     target = vault()?.byId.get(id);
   return h("span.mb-wl", {
     cls: target ? "" : "is-dead",
-    text: label ?? target?.title ?? raw,
+    text: label ?? target?.title ?? id,
     title: id,
     role: target ? "link" : null,
     tabindex: target ? "0" : null,

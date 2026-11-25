@@ -28,7 +28,8 @@ async function readerAsks(body: string): Promise<number> {
       "\n({ render: (md) => reportBlocks(md).flatMap((b) => (b.kind === 'table' ? [table(b)] : markdown(b.text, () => {}))), annotateReport })",
     {
       h,
-      vault: () => null,
+      // one memory the fixtures can link to; any other id is an unresolvable link
+      vault: () => ({ byId: new Map([["audit-memory", { title: "Audit memory" }]]) }),
       growTextarea() {},
       t: (key: string) => key,
       fmtAt: (at: number) => `@${at}`,

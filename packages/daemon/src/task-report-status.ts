@@ -54,13 +54,14 @@ function formattedUntil(text: string): number {
 
 /** `text` as the reader shows it (textContent of its inline rendering): elements give their inner text.
  * The separator before a marker counts where the owner sees it, also inside bold, code or a link (#1729).
- * A [[wiki link]] shows its memory's title in the reader, which is not known here: its raw id stands in. */
+ * A [[wiki link]] shows its memory's title in the reader, which is not known here: its trimmed id stands
+ * in. Space inside a link target never separates (#1738): the reader shows the title, or the trimmed id. */
 function renderedText(text: string): string {
   let out = "",
     last = 0;
   for (const { index, end, groups: g } of inlineMatches(text)) {
     const start = index + (g[9] === undefined ? 0 : (g[8]?.length ?? 0));
-    out += text.slice(last, start) + (g[2] ?? g[1] ?? g[3] ?? g[4] ?? g[5] ?? g[7] ?? g[9] ?? "");
+    out += text.slice(last, start) + (g[2] ?? g[1]?.trim() ?? g[3] ?? g[4] ?? g[5] ?? g[7] ?? g[9] ?? "");
     last = end;
   }
   return out + text.slice(last);
