@@ -28,6 +28,9 @@
 /* as an area (rail) the vault view underneath must not show through */
 .mb.is-nav {
   background: radial-gradient(90% 60% at 50% 0%, var(--accent-06), transparent 60%), rgb(7, 11, 20);
+  clip-path: inset(0px);
+  opacity: 1;
+  transition: none;
 }
 /* corner ticks: top left in the scope accent, the other three muted */
 .mb__ticks {

@@ -50,6 +50,24 @@ async function browserProbe(quick = false) {
     ).values(),
   ];
   const results = [];
+  async function railDuringGrow() {
+    const frame = () => new Promise(requestAnimationFrame);
+    const root = document.querySelector(".mb");
+    const full = () => {
+      const { clipPath, opacity } = getComputedStyle(root);
+      return clipPath === "inset(0px)" && opacity === "1";
+    };
+    openMemoryBrowser(largest, older.id);
+    await frame();
+    if (full()) throw new Error("The vault overlay did not begin its grow");
+    document.querySelector('[data-nav="browser"]').click();
+    for (let i = 0; i < 3; i++) {
+      await frame();
+      if (!root.classList.contains("is-nav") || !full())
+        throw new Error("The rail browser lets the vault show through during the grow");
+    }
+    document.querySelector('[data-nav="vault"]').click();
+  }
   // From outside the vault views the last vault view comes first (entrance,
   // glide to the memory), and only then the browser grows (Daniel 25.11.2026).
   async function viewFirst(label) {
@@ -120,6 +138,8 @@ async function browserProbe(quick = false) {
   await sleep(510);
   if (leaked || document.querySelector(".mb.is-on")) throw new Error("Browser grow Escape leaked to the vault view");
   results.push({ label: "escape-during-grow", pass: true });
+  await railDuringGrow();
+  results.push({ label: "rail-during-grow", pass: true });
   // Direct links reset stale search/type filters and must reach every page.
   for (const [i, m] of (quick ? [older, recent.at(-1)] : targets).entries()) {
     openMemoryBrowser(i % 2 ? largest : "all", m.id);
