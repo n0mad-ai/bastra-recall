@@ -380,7 +380,7 @@ function fuseByQueryRank(subs: BatchSubResult[], k: number): BatchHit[] {
  */
 export function projectRecallResult(
   query: string,
-  payload: Omit<BatchSubResult, "hits"> & { hits?: unknown[]; latency_ms?: number }
+  payload: Omit<BatchSubResult, "hits"> & { hits?: unknown[]; latency_ms?: number; stages?: unknown }
 ): Record<string, unknown> {
   return {
     query,
@@ -398,6 +398,8 @@ export function projectRecallResult(
     ...(payload.unfused === true ? { unfused: true as const } : {}),
     ...(typeof payload.degraded === "string" ? { degraded: payload.degraded } : {}),
     ...(typeof payload.vault_missing === "string" ? { vault_missing: payload.vault_missing } : {}),
+    // #1727: present only for `verbosity: "full"`, as on REST.
+    ...(payload.stages ? { stages: payload.stages } : {}),
     // #421: Der Forwarder warf die Pool-Reflexe hier weg — ein MCP-Client sah
     // die Verdrahtung nie, die die Hook-Pipeline für ihn schon berechnet hatte.
     ...(Array.isArray(payload.reflex_hits) && payload.reflex_hits.length > 0

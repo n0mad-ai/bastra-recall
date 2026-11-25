@@ -7,7 +7,7 @@
 import { taskClientHeaders } from "./task-client-auth.js";
 import { isTaskTool, taskClientAuthorization, taskFailure } from "./task-transport.js";
 import { type RecallStage } from "@bastra-recall/core";
-import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
+import { batchDuplicateNote, dedupeQueries, mergeBatchResults, projectRecallResult } from "./recall-batch.js";
 import { withDraftBudget } from "./draft-search.js";
 import { fitRecallWithReflexToBudget } from "./recall-budget.js";
 import { projectForFilter } from "./scope-filter.js";
@@ -265,45 +265,73 @@ const CLIENT_FILTER_PROJECT = projectForFilter(process.cwd());
 /** Dense-arm deadline for model-triggered recalls (see body.vector_deadline_ms). */
 const MCP_VECTOR_DEADLINE_MS = envInt("BASTRA_MCP_VECTOR_DEADLINE_MS", 1500);
 
+/**
+ * #351 batch mode: several phrasings, ONE tool round trip. Sub-recalls run
+ * in parallel against /hook/recall — each gets its own recall_id/telemetry
+ * (the reach-join keys per query); only the first streams stages (the
+ * statusline shows one recall either way). Results interleave by BEST
+ * original score, so the tool description's score bands stay valid.
+ */
+async function callRecallBatch(
+  a: Record<string, unknown>,
+  submitted: string[],
+  onStage: (s: RecallStage) => void | Promise<void>
+): Promise<unknown> {
+  // #1727: near-duplicates collapse before searching, as on REST.
+  const { kept, collapsed } = dedupeQueries(submitted);
+  const subs = (await Promise.all(
+    kept.map((q, i) =>
+      callRecallStreaming(
+        // #487: Das Budget gilt für die GEMERGTE Antwort, nicht je
+        // Phrasierung — drei Sub-Recalls, jeder für sich im Budget, ergeben
+        // zusammen das Dreifache. Es wird unten auf das Ergebnis angewandt.
+        { ...a, queries: undefined, max_tokens: undefined, query: q, batch_of: submitted.length },
+        i === 0 ? onStage : () => undefined
+      )
+    )
+  )) as Parameters<typeof mergeBatchResults>[1];
+  const merged = mergeBatchResults(kept, subs, typeof a.k === "number" ? a.k : 5);
+  // #421: Die Pool-Reflexe zählen wie auf der Einzelquery ins Budget.
+  const { draft_hits: draftHits, ...notesOnly } = merged;
+  const budget = typeof a.max_tokens === "number" ? a.max_tokens : 0;
+  const duplicates =
+    collapsed.length > 0
+      ? { queries_collapsed: collapsed.length, note: batchDuplicateNote(collapsed.length, submitted.length) }
+      : {};
+  const payload = fitRecallWithReflexToBudget(
+    merged.hits,
+    merged.reflex_hits ?? [],
+    budget,
+    (emitted, emittedReflex, dropped) => ({
+      ...notesOnly,
+      hits: emitted,
+      reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
+      query_count: submitted.length,
+      ...duplicates,
+      ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
+    })
+  ).payload;
+  return withDraftBudget(payload, draftHits ?? [], budget);
+}
+
+/** The tool arguments `/hook/recall` reads unchanged. #487: `max_tokens`, the
+ *  model's context budget, reaches the pipeline; #351: `batch_of` lets the
+ *  hook_recall event count the batch width; #1727: `min_score` and
+ *  `verbosity` act as on REST. */
+function forwardedRecallArgs(a: Record<string, unknown>): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  for (const key of ["k", "max_tokens", "batch_of", "min_score"]) if (typeof a[key] === "number") fields[key] = a[key];
+  for (const key of ["scope", "type", "verbosity"]) if (typeof a[key] === "string") fields[key] = a[key];
+  return fields;
+}
+
 export async function callRecallStreaming(
   args: unknown,
   onStage: (s: RecallStage) => void | Promise<void>
 ): Promise<unknown> {
   const a = (args ?? {}) as Record<string, unknown>;
-  // #351 batch mode: several phrasings, ONE tool round trip. Sub-recalls run
-  // in parallel against /hook/recall — each gets its own recall_id/telemetry
-  // (the reach-join keys per query); only the first streams stages (the
-  // statusline shows one recall either way). Results interleave by BEST
-  // original score, so the tool description's score bands stay valid.
   if (Array.isArray(a.queries) && a.queries.length > 0 && a.queries.every((q) => typeof q === "string")) {
-    const queries = (a.queries as string[]).slice(0, 4);
-    const subs = (await Promise.all(
-      queries.map((q, i) =>
-        callRecallStreaming(
-          // #487: Das Budget gilt für die GEMERGTE Antwort, nicht je
-          // Phrasierung — drei Sub-Recalls, jeder für sich im Budget, ergeben
-          // zusammen das Dreifache. Es wird unten auf das Ergebnis angewandt.
-          { ...a, queries: undefined, max_tokens: undefined, query: q, batch_of: queries.length },
-          i === 0 ? onStage : () => undefined
-        )
-      )
-    )) as Parameters<typeof mergeBatchResults>[1];
-    const merged = mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
-    // #421: Die Pool-Reflexe zählen wie auf der Einzelquery ins Budget.
-    const { draft_hits: draftHits, ...notesOnly } = merged;
-    const budget = typeof a.max_tokens === "number" ? a.max_tokens : 0;
-    const payload = fitRecallWithReflexToBudget(
-      merged.hits,
-      merged.reflex_hits ?? [],
-      budget,
-      (emitted, emittedReflex, dropped) => ({
-        ...notesOnly,
-        hits: emitted,
-        reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
-        ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
-      })
-    ).payload;
-    return withDraftBudget(payload, draftHits ?? [], budget);
+    return callRecallBatch(a, (a.queries as string[]).slice(0, 4), onStage);
   }
   const body: Record<string, unknown> = {
     query: typeof a.query === "string" ? a.query : "",
@@ -320,14 +348,7 @@ export async function callRecallStreaming(
   // bittet er die Pipeline darum und nennt sein Projekt.
   body.apply_scope_filter = true;
   if (CLIENT_FILTER_PROJECT) body.project = CLIENT_FILTER_PROJECT;
-  if (typeof a.k === "number") body.k = a.k;
-  // #487: Das Kontextbudget des Modells reicht bis in die Pipeline durch — der
-  // Forwarder ist der Weg, den ein MCP-Client wirklich geht.
-  if (typeof a.max_tokens === "number") body.max_tokens = a.max_tokens;
-  if (typeof a.scope === "string") body.scope = a.scope;
-  if (typeof a.type === "string") body.type = a.type;
-  // #351: batch width rides along so the hook_recall event can count it.
-  if (typeof a.batch_of === "number") body.batch_of = a.batch_of;
+  Object.assign(body, forwardedRecallArgs(a));
   // MCP-Pfad: genau k Hits, keine 1-Hop-Nachbarn (#50). Der /hook/recall-
   // Default ist 1 (gut für die PreToolUse-Hook-CLI), aber für den vom Modell
   // ausgelösten recall verdoppeln die Nachbarn nur den Context. Das Modell
@@ -416,9 +437,8 @@ export async function callRecallStreaming(
   if (errorMsg) throw new Error(errorMsg);
   if (!payload) throw new Error("daemon /hook/recall ended without done event");
 
-  // No `stages` block in the tool-result (#50): stage events already drove
-  // the live progress channel via onStage; the timing map would just bloat
-  // the context Claude reads. Debug timings live in /api/v1/recall + telemetry.
+  // A `stages` block only for `verbosity: "full"` (#50, #1727), as on REST:
+  // stage events already drove the live progress channel via onStage.
   // Alles Übrige — Score-Raum, Armmenge, Formelversion, weak_result/no_home —
   // reicht `projectRecallResult` durch: der Batch-Merge liest genau daraus
   // seine Vergleichbarkeitssignatur, und ohne sie war jeder Batch „gemischt".

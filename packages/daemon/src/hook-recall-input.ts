@@ -101,6 +101,11 @@ export function readHookRecallInput(body: Record<string, unknown>) {
   // Ohne sie ist ein Sitzungsstart mit drei kalten Armen von drei
   // Sitzungsstarts nicht zu unterscheiden — siehe HookRecallEvent.
   const sessionStartCallId = typeof body.session_start_call_id === "string" ? body.session_start_call_id : null;
+  // #1727: the recall tool's `min_score` and `verbosity`, sent by the MCP
+  // forwarder so both transports serve the same call alike. The hook lanes and
+  // older forwarders send neither: no floor (the lanes apply their own), lean hits.
+  const minScore = typeof body.min_score === "number" && Number.isFinite(body.min_score) ? body.min_score : 0;
+  const full = body.verbosity === "full";
   return {
     k,
     hookSessionId,
@@ -115,5 +120,7 @@ export function readHookRecallInput(body: Record<string, unknown>) {
     budgetMs,
     budgetSource,
     sessionStartCallId,
+    minScore,
+    full,
   } as const;
 }

@@ -247,6 +247,8 @@ export async function runHookRecall(
     budgetMs,
     budgetSource,
     sessionStartCallId,
+    minScore,
+    full,
   } = readHookRecallInput(body);
   // #702: a replayed prompt (`bastra doctor --replay`) leaves the join
   // state alone — no turn, no hint window a real load_memory could close.
@@ -364,6 +366,8 @@ export async function runHookRecall(
   });
   hits = content.hits;
   hits = withoutExpiredForHooks(hits, vault, body.hook_source);
+  // #1727: the caller's floor, at the step where REST applies it (0 = none).
+  hits = hits.filter((h) => h.score >= minScore);
   const contentRecall = content.contentRecall;
   const probe = loopProbe.stop();
   const recallLatencyMs = Date.now() - tRecall0;
@@ -507,6 +511,9 @@ export async function runHookRecall(
     degradedReason: stages.degradedReason(),
     conventionSources,
     dated: body.hook_source === "mcp",
+    minScore,
+    full,
+    stageTimings,
   });
   const { payload, budgetSize, budgetDropped } = await completeHookRecallPayload({
     budgeted,

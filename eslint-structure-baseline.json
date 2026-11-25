@@ -271,7 +271,7 @@
     "[\"packages/daemon/src/learned-recall/reviewed-miss-observation.ts\",\"[\\\"function:validPool\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/src/live-updates.ts\",\"[\\\"function:createLiveUpdates\\\",\\\"variable:unsubscribe\\\",\\\"call:vault.on:#1\\\",\\\"function:argument:0#1\\\"]\",\"complexity\"]": 22,
     "[\"packages/daemon/src/load-memory-handler.ts\",\"[\\\"function:loadMemoryHandler\\\"]\",\"complexity\"]": 43,
-    "[\"packages/daemon/src/mcp-forwarder-calls.ts\",\"[\\\"function:callRecallStreaming\\\"]\",\"complexity\"]": 36,
+    "[\"packages/daemon/src/mcp-forwarder-calls.ts\",\"[\\\"function:callRecallStreaming\\\"]\",\"complexity\"]": 27,
     "[\"packages/daemon/src/mcp-forwarder-calls.ts\",\"[\\\"function:callRecallStreaming\\\"]\",\"max-depth\"]": 5,
     "[\"packages/daemon/src/mcp-forwarder.ts\",\"[\\\"function:main\\\",\\\"call:server.setRequestHandler:#2\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/src/model-session-notice.ts\",\"[\\\"function:appendModelSessionNotice\\\"]\",\"complexity\"]": 19,

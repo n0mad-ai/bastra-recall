@@ -14,6 +14,7 @@ import { collectPoolReflexHits } from "./recall-pipeline.js";
 import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
 import { searchDrafts, withDraftBudget } from "./draft-search.js";
 import { withSupersession } from "./recall-batch.js";
+import type { StageTimings } from "./hook-recall-measure.js";
 
 export interface HookRecallPayloadInput {
   conventionSources?: ReadonlyMap<string, ConventionSource>;
@@ -31,6 +32,18 @@ export interface HookRecallPayloadInput {
   /** #1299: the MCP forwarder's recall gets each hit's `updated` day like the
    *  REST tool. The hook lanes do not: their hints and budget stay unchanged. */
   dated?: boolean;
+  /** #1727: the recall tool's `min_score`; the pool reflexes pass it too. */
+  minScore?: number;
+  /** #1727: `verbosity: "full"` — every hit field and the stage timings, as on REST. */
+  full?: boolean;
+  stageTimings?: StageTimings;
+}
+
+/** #1727: the hit projection and the extra fields a `verbosity` asks for. */
+function verbosityShape(input: HookRecallPayloadInput) {
+  return input.full
+    ? { project: (h: RecallHit): ReturnType<typeof toLeanHit> => h, extra: { stages: input.stageTimings } }
+    : { project: toLeanHit, extra: {} };
 }
 
 /** Builds the budgeted response payload; `.payload` is what goes on the wire. */
@@ -73,17 +86,18 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   // #421: derselbe Schritt, den der MCP-`recallHandler` fährt
   // (`recall-pipeline.ts`). Floor 0: Die Lanes wenden ihren eigenen an.
   const dated = <T extends { id: string }>(hit: T): T => (input.dated ? withUpdated(hit, vault.get(hit.id)) : hit);
-  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault).map((h) =>
-    dated(withSupersession(h, vault, input.conventionSources?.get(h.id)))
+  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault, input.minScore).map(
+    (h) => dated(withSupersession(h, vault, input.conventionSources?.get(h.id)))
   );
   // recall_mode rides along only when the user wired the memory as
   // reflex: the prompt lane's mode-"none" semantic filter keys on it
   // (19.08. incident — see prompt-lane.ts).
+  const shape = verbosityShape(input);
   const leanHits = hits.map((h) =>
     dated(
       withSupersession(
         {
-          ...toLeanHit(h),
+          ...shape.project(h),
           ...(vault.get(h.id)?.fm.validator ? { validator: vault.get(h.id)!.fm.validator } : {}),
           matched_recall_when: h.matched_recall_when ?? false,
           // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
@@ -168,6 +182,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
       // is distinguishable from embeddings being off — from the response
       // alone, without correlating against the telemetry log.
       ...(degradedReason ? { degraded: degradedReason } : {}),
+      ...shape.extra,
       // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat.
       ...(droppedByBudget > 0 ? { truncated_by_budget: true, dropped_by_budget: droppedByBudget } : {}),
     })
