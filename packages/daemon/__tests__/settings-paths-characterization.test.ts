@@ -413,10 +413,15 @@ async function withApi(path: string, run: (api: Api) => Promise<void>): Promise<
 
 test("#1510: the web settings API accepts, refuses and resets every key", async () => {
   await isolated(async (_dir, path) => {
+    // Where the UI is off by default (not macOS) the API answers 404 until it is switched on;
+    // ui.enabled itself is then left out, since resetting it would lock the API out again.
+    if (!UI_DEFAULT) await mutateSettings(path, (s) => ({ ...s, ui: { enabled: true } }));
     await withApi(path, async (api) => {
       const stored = async (key: string) => storedSetting(await readSettings(path), entryOf(key));
       const group = ROWS.filter((r) => r.group);
-      const settable = ROWS.filter((r) => !r.locked && !r.managed && !r.group);
+      const settable = ROWS.filter(
+        (r) => !r.locked && !r.managed && !r.group && (UI_DEFAULT || r.key !== "ui.enabled")
+      );
 
       for (const row of ROWS.filter((r) => r.locked || r.managed)) {
         const res = await api.post({ [row.key]: row.valid ?? "x" });
