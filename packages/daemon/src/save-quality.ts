@@ -32,6 +32,7 @@ import {
 } from "./save-similarity.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { hiddenFromCaller } from "./private-access.js";
+import { redactUserText } from "./user-text-redaction.js";
 
 /** #239: upper bound for the collision scan. The pool decides `k`, but a
  *  pathological scope must not turn an advisory into a full-index sweep on
@@ -206,19 +207,23 @@ function replacedClaimAdvisory(
 }
 
 /** Metadata helps find candidates. Only the authored claim can establish
- *  that a save repeats the correction, including single-character changes. */
+ *  that a save repeats the correction, including single-character changes.
+ *  #1728: save_memory redacts its input before this check (save-redaction.ts)
+ *  while a stored version may still hold a credential written earlier; both
+ *  sides get the same redaction, so only the claim decides. */
 function restatesCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, currentId: string): boolean {
   const old = deps.vault.get(oldId);
   const current = deps.vault.get(currentId);
   if (!old || !current) return false;
-  const summary = current.fm.summary.trim();
-  if (input.summary.trim() !== summary) return false;
-  const body = stripAutoRelatedSection(input.body ?? "").trim();
-  const currentBody = stripAutoRelatedSection(current.body).trim();
-  const changedSummary = old.fm.summary.trim() !== summary;
+  const same = (text: string) => redactUserText(text).text.trim();
+  const summary = same(current.fm.summary);
+  if (same(input.summary) !== summary) return false;
+  const body = same(stripAutoRelatedSection(input.body ?? ""));
+  const currentBody = same(stripAutoRelatedSection(current.body));
+  const changedSummary = same(old.fm.summary) !== summary;
   if (body !== currentBody) return body === "" && changedSummary;
-  const changedBody = stripAutoRelatedSection(old.body).trim() !== currentBody;
-  return changedSummary || changedBody || input.title.trim() === current.fm.title.trim();
+  const changedBody = same(stripAutoRelatedSection(old.body)) !== currentBody;
+  return changedSummary || changedBody || same(input.title) === same(current.fm.title);
 }
 
 /** The public `superseded_by` edges, oldest successor first. A private or missing

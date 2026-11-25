@@ -203,6 +203,37 @@ test("on equal content words only a verbatim copy of the current text counts as 
   assert.ok(issue("Batch size is 5 x."), "a verbatim copy of the old version still warns");
 });
 
+test("#1728: a credential stored unredacted in the current version does not count as a changed claim", () => {
+  const secret = "ghp_" + "a".repeat(36);
+  const base = memo("Ingest worker batch size", NEW, "tuning the ingest worker flush");
+  const stored = (id: string, summary: string, extra: Record<string, unknown> = {}) => ({
+    fm: { ...base, id, summary, sensitivity: "team", ...extra },
+    // written before redaction existed: the credential is still in the file
+    body: `${summary} Measured on the staging cluster with token ${secret}.`,
+  });
+  const rows = new Map([
+    ["old", stored("old", OLD, { superseded_by: "new" })],
+    ["new", stored("new", NEW)],
+  ]);
+  const deps = {
+    vault: { get: (id: string) => rows.get(id), list: () => [...rows.values()] },
+    search: { recall: () => [{ id: "old", title: base.title, summary: OLD }] },
+  } as unknown as ToolDeps;
+  // what save_memory hands the check: its input with the credential already redacted
+  const issue = (summary: string) =>
+    scoreSaveQuality(
+      deps,
+      {
+        ...base,
+        summary,
+        body: `${summary} Measured on the staging cluster with token [REDACTED].`,
+      } as SaveMemoryInput,
+      "probe"
+    ).issues.find((i) => i.startsWith("re-asserts a replaced claim"));
+  assert.equal(issue(NEW), undefined, "the current claim repeated, redaction aside");
+  assert.ok(issue(OLD), "the replaced claim repeated still warns");
+});
+
 test("an unrelated save gets no replaced-claim advisory", async (t) => {
   const deps = await fixture(t);
   await correctedVault(deps);
