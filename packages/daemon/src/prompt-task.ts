@@ -2,7 +2,7 @@
  * Prompt words and recall hits never create tasks, select channels or change stages.
  */
 import type { Vault } from "@bastra-recall/core";
-import { vaultConventionOf, type ConventionSource } from "./convention-source.js";
+import { indexedConventionSource, type ConventionSource } from "./convention-source.js";
 import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
 import { compactContextNotice } from "./context-notice.js";
 import { currentReceipt } from "./receipt-store.js";
@@ -19,8 +19,7 @@ export interface TaskStepInput {
   actorKey?: string;
 }
 export function vaultRevisionOf(vault: Pick<Vault, "get">): (id: string) => Promise<string | null> {
-  const source = vaultConventionOf(vault);
-  return async (id) => (await source(id)).revision;
+  return async (id) => indexedConventionSource(vault.get(id)).revision;
 }
 function view(state: ReadonlySessionState, changed: string[] = []): ActiveConventionsView {
   return {
@@ -59,6 +58,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
     const source = sources.get(c.id)!;
     return (
       source.expired ||
+      source.absent ||
       c.revision !== source.revision ||
       (input.conventionOf !== undefined && JSON.stringify(c.validator) !== JSON.stringify(source.validator))
     );
@@ -67,7 +67,10 @@ async function step(input: TaskStepInput): Promise<string | null> {
   let updated: ActiveConventionsView | null = null;
   const persisted = await mutateSessionState(sessionId, (s) => {
     const changed: string[] = [];
-    s.activeConventions = s.activeConventions?.filter((c) => !sources.get(c.id)?.expired);
+    s.activeConventions = s.activeConventions?.filter((c) => {
+      const source = sources.get(c.id);
+      return !source?.expired && !source?.absent;
+    });
     for (const c of s.activeConventions ?? []) {
       const source = sources.get(c.id);
       if (!source) continue;
