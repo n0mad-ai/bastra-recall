@@ -14,12 +14,16 @@ import { Vault } from "@bastra-recall/core";
 
 import { saveDocument, recategorizeDocument, moveDocument } from "../src/documents-write-handler.js";
 import { resetAuditLogCache } from "../src/audit-trail.js";
+import { writeCallerStore, type WriteCaller } from "../src/caller-session.js";
 
 interface AuditLine {
   memory_id: string;
   operation: string;
   actor: string;
   actor_detail?: string;
+  transport?: string;
+  client?: string | null;
+  caller_session?: string | null;
   reason?: string;
   file_path?: string;
   diff_before: Record<string, unknown> | null;
@@ -84,4 +88,48 @@ test("#452: save_document, recategorize_document und move_document schreiben je 
   assert.equal(move.diff_after?.folder_path, "Archiv");
   assert.equal(move.file_path, moved.sidecar_path);
   assert.match(move.reason ?? "", /move_document: .*Inbox.* → .*Archiv/);
+});
+
+test("#1700: save_document records the writer transport, client and caller session; an absent session stays null", async (t) => {
+  resetAuditLogCache();
+  const dir = await mkdtemp(join(tmpdir(), "bastra-1700-"));
+  t.after(async () => {
+    resetAuditLogCache();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  });
+  const vault = new Vault(join(dir, "vault"));
+  await vault.init();
+  const saveAs = async (title: string, writer: WriteCaller) => {
+    const source = join(dir, `${title}.pdf`);
+    await writeFile(source, `bytes of ${title}`);
+    const saved = await writeCallerStore.run(writer, () =>
+      saveDocument(vault, {
+        original_path: source,
+        folder_path: "Inbox",
+        title,
+        tags: [],
+        category: "vertrag" as const,
+        linked_file: false,
+        overwrite: false,
+      })
+    );
+    const entries = (await auditEntries(join(dir, "vault"))).filter((e) => e.memory_id === saved.id);
+    assert.equal(entries.length, 1);
+    return entries[0];
+  };
+
+  const withSession = await saveAs("Mit Sitzung", {
+    transport: "forwarder",
+    client: "claude-code/2.1.300",
+    session: "cc-session-1700",
+  });
+  assert.equal(withSession.actor_detail, "mcp:save_document");
+  assert.equal(withSession.transport, "forwarder");
+  assert.equal(withSession.client, "claude-code/2.1.300");
+  assert.equal(withSession.caller_session, "cc-session-1700");
+
+  const withoutSession = await saveAs("Ohne Sitzung", { transport: "stdio", client: "codex/0.9", session: null });
+  assert.equal(withoutSession.transport, "stdio");
+  assert.equal(withoutSession.client, "codex/0.9");
+  assert.equal(withoutSession.caller_session, null);
 });
