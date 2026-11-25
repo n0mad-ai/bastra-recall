@@ -25,8 +25,11 @@ function stageStub() {
   const listeners = new Map<string, () => void>();
   return {
     running: 0,
+    // unrelated animations on the stage itself: they never move its edges (#1735)
+    other: [] as object[],
     getAnimations() {
-      return Array.from({ length: this.running });
+      const edges = ["left", "right"].slice(0, this.running).map((transitionProperty) => ({ transitionProperty }));
+      return [...edges, ...this.other];
     },
     addEventListener: (type: string, fn: () => void) => listeners.set(type, fn),
     removeEventListener: (type: string) => listeners.delete(type),
@@ -77,4 +80,36 @@ test("a cancelled stage transition still delivers the final width, and stop() de
   watch.stop();
   assert.equal(stage.listeners.size, 0);
   assert.equal(observed, null);
+});
+
+test("#1735: an unrelated endless animation or transition on the stage does not hold the width back", () => {
+  const el = { clientWidth: 700 },
+    stage = stageStub(),
+    seen: number[] = [];
+  watchSettledWidth(el, stage, (w) => seen.push(w));
+  stage.other = [
+    { animationName: "pulse", playState: "running" }, // CSS animation, iteration-count: infinite
+    { transitionProperty: "opacity" },
+  ];
+  el.clientWidth = 699;
+  observed?.();
+  assert.deepEqual(seen, [699], "699 px shows three days although the stage keeps animating");
+  stage.running = 1; // an edge transition still defers, next to the unrelated ones
+  el.clientWidth = 640;
+  observed?.();
+  assert.deepEqual(seen, [699]);
+  stage.running = 0;
+  el.clientWidth = 700;
+  stage.fire("transitionend");
+  assert.deepEqual(seen, [699, 700]);
+});
+
+test("#1735: with reduced motion the edges do not animate and the width applies at once", () => {
+  const el = { clientWidth: 1031 },
+    stage = stageStub(),
+    seen: number[] = [];
+  watchSettledWidth(el, stage, (w) => seen.push(w));
+  el.clientWidth = 699;
+  observed?.();
+  assert.deepEqual(seen, [699]);
 });
