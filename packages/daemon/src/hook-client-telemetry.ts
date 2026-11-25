@@ -170,13 +170,24 @@ export function sessionIdOf(payload: unknown): string | null {
   return typeof p?.session_id === "string" && p.session_id.length > 0 ? p.session_id : null;
 }
 
+/** Classify an existing Bash delivery failure without putting payload text in the log. */
+async function bashFailureFields(lane: "bash-pre" | "bash-fail", payload: unknown): Promise<Record<string, unknown>> {
+  const { decorateHookPayload, hookClientEvidence } = await import("./hook-surface.js");
+  const tool = (payload as { tool_name?: unknown } | null | undefined)?.tool_name;
+  return {
+    tool_name: tool === "Bash" ? "Bash" : typeof tool === "string" ? "other" : null,
+    dimensions: { client: hookClientEvidence(decorateHookPayload(payload)), hook_source: lane },
+  };
+}
+
 /** Same event kinds and field shapes as the daemon-side lanes — one series. */
 export async function writeClientTelemetry(
   lane: ClientLane,
   fields: Record<string, unknown>,
   startedAt: number,
   sessionId: string | null,
-  hookVersion: string
+  hookVersion: string,
+  payload?: unknown
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
@@ -199,6 +210,7 @@ export async function writeClientTelemetry(
       latency_ms_total: Date.now() - startedAt,
       error: null,
       ...CLIENT_ROW_BASE[lane],
+      ...(lane === "bash-pre" || lane === "bash-fail" ? await bashFailureFields(lane, payload) : {}),
       ...fields,
     };
     await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");

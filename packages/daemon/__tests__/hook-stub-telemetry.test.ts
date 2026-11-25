@@ -102,16 +102,24 @@ test("#305: a client-side Bash failure is written into the Bash lane, not the wr
     );
   }
 
-  // …and arriving in the right lane is what lets that lane's gate go red.
+  // Both lanes block the gate when there is no completion coverage.
   const rows = (row: Record<string, unknown>, mode: string): Array<Record<string, unknown>> =>
     Array.from({ length: 40 }, (_, i) => ({
       ...row,
       session_id: `${mode}-${i}`,
       ts: `2026-09-06T05:${String(i % 60).padStart(2, "0")}:00.000Z`,
     }));
-  const rendered = renderStats(aggregate([...rows(pre, "pre"), ...rows(post, "post")]), 600);
-  assert.match(rendered, /bash-pre\s+500ms budget[^\n]*— FAIL: 40\/40 calls returned nothing/);
-  assert.match(rendered, /bash-post\s+500ms budget[^\n]*— FAIL: 40\/40 calls returned nothing/);
+  const stats = aggregate([...rows(pre, "pre"), ...rows(post, "post")]);
+  assert.deepEqual(
+    stats.lanes.map(({ mode, calls }) => [mode, calls]),
+    [
+      ["bash-pre", 40],
+      ["bash-post", 40],
+    ]
+  );
+  const rendered = renderStats(stats, 600);
+  assert.match(rendered, /bash-pre\s+500ms budget[^\n]*— NOT EVALUABLE \(complete Bash invocation count unavailable/);
+  assert.match(rendered, /bash-post\s+500ms budget[^\n]*— NOT EVALUABLE \(complete Bash invocation count unavailable/);
   assert.match(rendered, /gate: NOT MET/);
 });
 

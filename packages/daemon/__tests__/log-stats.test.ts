@@ -691,9 +691,12 @@ test("#887: a Stop row with `skipped_reason` is a call, not a failure, and stays
     latency_ms_total: 1,
     skipped_reason: "transcript_path not readable on this host: ENOENT",
   });
-  const others = ["hook_call", "todo_hook_call", "session_hook_call", "bash_hook_call", "bash_fail_hook_call"].flatMap(
-    (kind) => lane(kind, 40, { latency_ms: 60 })
-  );
+  const others = [
+    ...["hook_call", "todo_hook_call", "session_hook_call", "bash_hook_call", "bash_fail_hook_call"].flatMap((kind) =>
+      lane(kind, 40, { latency_ms: 60, dimensions: { client: "codex" } })
+    ),
+    ...lane("hook_act", 40, { tool_name: "Bash", dimensions: { client: "codex", hook_source: "bash-fail" } }),
+  ];
   const prompts = lane("prompt_hook_call", 40, { detected_mode: "none", latency_ms_total: 60 });
   const remote = aggregate([...others, ...prompts, ...skipped]);
   const stop = remote.lanes.find((l) => l.mode === "stop")!;

@@ -57,6 +57,7 @@ import {
   SESSION_START_BUDGET_MS,
   STOP_BUDGET_MS,
 } from "../hook-budgets.js";
+import type { BashDelivery } from "./log-stats-bash.js";
 import type { LaneStats } from "./log-stats.js";
 
 /**
@@ -245,14 +246,17 @@ export interface LaneVerdict {
   mode: string;
   verdict: Verdict;
   calls: number;
-  failureRate: number;
+  failureRate: number | null;
   p90: number | null;
   threshold: LaneThreshold | null;
   /** Why it failed, in the order the checks run. Empty on a pass. */
   reasons: string[];
 }
 
-export function laneVerdict(lane: LaneStats): LaneVerdict {
+type BashLaneDelivery = BashDelivery["lanes"]["bash-pre"];
+
+export function laneVerdict(lane: LaneStats, bashDelivery?: BashLaneDelivery): LaneVerdict {
+  if (lane.mode === "bash-pre" || lane.mode === "bash-post") return bashLaneVerdict(lane, bashDelivery);
   const threshold = RELEASE_THRESHOLDS[lane.mode] ?? null;
   const failures = lane.timeouts + lane.errors;
   const failureRate = lane.calls > 0 ? failures / lane.calls : 0;
@@ -272,6 +276,37 @@ export function laneVerdict(lane: LaneStats): LaneVerdict {
   return { ...base, verdict: reasons.length === 0 ? "pass" : "fail", reasons };
 }
 
+function bashLatencyReasons(latency: LaneStats["latency"], threshold: LaneThreshold): string[] {
+  if (!latency || latency.n < MIN_CALLS_FOR_VERDICT) {
+    return [`${latency?.n ?? 0} p90 detail sample(s) of the min-N ${MIN_CALLS_FOR_VERDICT}`];
+  }
+  return threshold.p90TargetMs !== null && latency.p90 > threshold.p90TargetMs
+    ? [`p90 ${latency.p90}ms > ${threshold.p90TargetMs}ms`]
+    : [];
+}
+
+/**
+ * Act records observed Bash completions, not every pre/post invocation. It
+ * supplies a lower bound for a zero-failure sample with attributable coverage.
+ * For nonzero failures these logs cannot establish how many failed calls also
+ * produced a completion. The diagnostic quotient cannot decide the gate.
+ */
+function bashLaneVerdict(lane: LaneStats, delivery?: BashLaneDelivery): LaneVerdict {
+  const threshold = RELEASE_THRESHOLDS[lane.mode];
+  const calls = delivery?.completed ?? 0;
+  const p90 = lane.latency?.p90 ?? null;
+  const base = { mode: lane.mode, calls, p90, threshold, failureRate: null };
+  if (calls === 0 && lane.calls === 0) return { ...base, verdict: "not_evaluable", reasons: [] };
+  const reasons = bashLatencyReasons(lane.latency, threshold);
+  if (!delivery?.covered || delivery.failures > 0) {
+    return { ...base, verdict: "not_evaluable", reasons: ["complete Bash invocation count unavailable", ...reasons] };
+  }
+  if ((lane.latency?.n ?? 0) < MIN_CALLS_FOR_VERDICT || calls < MIN_CALLS_FOR_VERDICT) {
+    return { ...base, failureRate: 0, verdict: "not_evaluable", reasons };
+  }
+  return { ...base, failureRate: 0, verdict: reasons.length ? "fail" : "pass", reasons };
+}
+
 /** An empty lane — a lane the gate covers that the window never saw. */
 function absentLane(mode: string): LaneStats {
   return { mode, calls: 0, withHits: 0, suppressed: 0, gated: 0, timeouts: 0, errors: 0, latency: null };
@@ -285,15 +320,21 @@ function absentLane(mode: string): LaneStats {
  * "nothing here" as "nothing wrong". Five of the seven automatic lanes were in
  * that position permanently, because nothing even counted their events.
  */
-export function releaseVerdicts(lanes: LaneStats[], promptTotal?: LaneStats | null): LaneVerdict[] {
+export function releaseVerdicts(
+  lanes: LaneStats[],
+  promptTotal?: LaneStats | null,
+  bash?: BashDelivery
+): LaneVerdict[] {
   const seen = new Set(lanes.map((l) => l.mode));
-  const absent = REQUIRED_LANES.filter((mode) => !seen.has(mode)).map((mode) => laneVerdict(absentLane(mode)));
+  const withCoverage = (lane: LaneStats) =>
+    laneVerdict(lane, lane.mode === "bash-pre" || lane.mode === "bash-post" ? bash?.lanes[lane.mode] : undefined);
+  const absent = REQUIRED_LANES.filter((mode) => !seen.has(mode)).map((mode) => withCoverage(absentLane(mode)));
   // #545 — the prompt hook's own verdict, always present. It is passed in
   // rather than read out of `lanes` because it is not one of them: it spans
   // every prompt row, so keeping it in the lane table would count the same
   // call twice in the totals line above the gate.
   const prompt = laneVerdict(promptTotal ?? absentLane(PROMPT_TOTAL_LANE));
-  return [...lanes.map(laneVerdict), ...absent, prompt];
+  return [...lanes.map(withCoverage), ...absent, prompt];
 }
 
 /** The gate itself: no lane may fail. Lanes without enough calls do not pass
@@ -319,7 +360,8 @@ export function renderReleaseGate(verdicts: LaneVerdict[]): string[] {
     if (v.verdict === "not_evaluable") {
       // #437's wording: under the min-N a lane is NOT EVALUABLE — never a
       // null result, and never absent from the list.
-      out.push(`${head} — NOT EVALUABLE (${v.calls} call(s) of the min-N ${MIN_CALLS_FOR_VERDICT})`);
+      const coverage = v.reasons.join(" · ") || `${v.calls} call(s) of the min-N ${MIN_CALLS_FOR_VERDICT}`;
+      out.push(`${head} — NOT EVALUABLE (${coverage})`);
       continue;
     }
     out.push(`${head} — ${v.verdict.toUpperCase()}${v.reasons.length > 0 ? `: ${v.reasons.join("; ")}` : ""}`);

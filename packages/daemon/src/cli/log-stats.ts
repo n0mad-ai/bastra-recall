@@ -17,6 +17,7 @@ import { aggregateDrafts, renderDrafts, type DraftStats } from "../draft-stats.j
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
+import { isNonBashDetail, summarizeBashDelivery, renderBashDelivery, type BashDelivery } from "./log-stats-bash.js";
 import { foldClientDuplicates, restartWindows, tsOf } from "./log-stats-phases.js";
 import { GATE_LANE_BY_KIND, PROMPT_TOTAL_LANE, releaseVerdicts, renderReleaseGate } from "./log-stats-thresholds.js";
 import { RECALL_BUDGET_MS } from "../hook-budgets.js";
@@ -77,6 +78,7 @@ export interface LogStats {
   from: string | null;
   to: string | null;
   lanes: LaneStats[];
+  bashDelivery: BashDelivery;
   totals: { calls: number; timeouts: number; errors: number };
   /** #305: the same table for the calls that fell inside a daemon restart.
    *  A hook cannot reach a daemon that is not running; counting those calls
@@ -234,7 +236,7 @@ function agentOf(e: Record<string, unknown>): string {
 }
 
 export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
-  const { events, folded } = foldClientDuplicates(rawEvents);
+  const { events, folded } = foldClientDuplicates(rawEvents.filter((row) => !isNonBashDetail(row)));
   const windows = restartWindows(events);
   const inRestart = (t: number): boolean => windows.some((w) => t >= w.start && t <= w.end);
   const byMode = new Map<string, MutableLane>();
@@ -313,6 +315,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
     from,
     to,
     lanes,
+    bashDelivery: summarizeBashDelivery(rawEvents, inRestart),
     totals: {
       calls: lanes.reduce((n, l) => n + l.calls, 0),
       timeouts: lanes.reduce((n, l) => n + l.timeouts, 0),
@@ -478,6 +481,22 @@ function pct(part: number, whole: number): string {
   return v >= 10 ? `${v.toFixed(0)}%` : `${v.toFixed(1)}%`;
 }
 
+function formatFailureTotals(stats: LogStats): string {
+  const { timeouts, errors, calls } = stats.totals;
+  const total = `  ${timeouts} timeout(s), ${errors} error(s)`;
+  return stats.bashDelivery.byClient.size > 0
+    ? `${total} in logged lane rows`
+    : `${total} = ${pct(timeouts + errors, calls)} of all calls`;
+}
+
+function renderBashOnlyDelivery(stats: LogStats): string[] {
+  if (stats.bashDelivery.byClient.size === 0) return [];
+  return [
+    ...renderBashDelivery(stats.bashDelivery),
+    ...renderReleaseGate(releaseVerdicts(stats.lanes, stats.promptTotal, stats.bashDelivery)),
+  ];
+}
+
 export function renderStats(stats: LogStats, budgetMs: number): string {
   const out: string[] = [];
   if (stats.totals.calls === 0) {
@@ -502,11 +521,12 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     // lane call — an agent that only ever asks `find_code` produces exactly
     // that, and the old early return dropped its whole readout.
     out.push(...renderCodeAwareness(stats.codeAwareness));
+    out.push(...renderBashOnlyDelivery(stats));
     return out.join("\n");
   }
 
   const window = stats.from && stats.to ? `${stats.from.slice(0, 16)} → ${stats.to.slice(0, 16)}` : "—";
-  out.push(`hook lanes — ${stats.totals.calls} call(s), ${window}`);
+  out.push(`hook lanes — ${stats.totals.calls} logged detail call(s), ${window}`);
   out.push("");
   out.push("  lane        calls   with hits   suppressed   gated   timeout   median   p90    max");
   out.push("  " + "─".repeat(78));
@@ -533,8 +553,8 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
   // nothing about whether the thing was shippable. The verdict is per lane now,
   // against the budget that lane actually enforces and the failure ceiling the
   // release gate is written down as.
-  const verdicts = releaseVerdicts(stats.lanes, stats.promptTotal);
-  out.push(...renderReleaseGate(verdicts));
+  const verdicts = releaseVerdicts(stats.lanes, stats.promptTotal, stats.bashDelivery);
+  out.push(...renderBashDelivery(stats.bashDelivery), ...renderReleaseGate(verdicts));
   // Lanes nobody set a threshold for still get their headroom line — a new
   // lane must not slip in unmeasured just because it has no entry yet.
   const unjudged = verdicts.filter((v) => v.verdict === "no-threshold" && v.p90 !== null);
@@ -543,10 +563,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     out.push(`  ${v.mode}: no release threshold set — p90 ${v.p90}ms against ${budgetMs}ms (${headroom}% headroom)`);
   }
   if (stats.totals.timeouts > 0 || stats.totals.errors > 0) {
-    out.push(
-      `  ${stats.totals.timeouts} timeout(s), ${stats.totals.errors} error(s) ` +
-        `= ${pct(stats.totals.timeouts + stats.totals.errors, stats.totals.calls)} of all calls`
-    );
+    out.push(formatFailureTotals(stats));
   }
   // #305: the two lines that keep the number above honest — what was excluded
   // as a restart, and what was folded as one call logged twice. Both are

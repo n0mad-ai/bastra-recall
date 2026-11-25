@@ -68,8 +68,9 @@ function sixHealthyLanes(): Array<Record<string, unknown>> {
     ...lane("hook_call", 40, { latency_ms: 60 }),
     ...lane("todo_hook_call", 40, { hit_count: 1 }),
     ...lane("session_hook_call", 40),
-    ...lane("bash_hook_call", 40),
-    ...lane("bash_fail_hook_call", 40, { hit_count: 1 }),
+    ...lane("bash_hook_call", 40, { dimensions: { client: "codex" } }),
+    ...lane("bash_fail_hook_call", 40, { hit_count: 1, dimensions: { client: "codex" } }),
+    ...lane("hook_act", 40, { tool_name: "Bash", dimensions: { client: "codex", hook_source: "bash-fail" } }),
     ...lane("save_eval_call", 40, { status: undefined, suggested_count: 1, latency_ms_total: 30 }),
   ];
 }

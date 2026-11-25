@@ -238,7 +238,8 @@ async function answerFailure(
       },
       startedAt,
       payload.session_id ?? null,
-      STUB_VERSION
+      STUB_VERSION,
+      payload
     );
   })();
 }

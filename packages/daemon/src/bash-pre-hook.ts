@@ -59,7 +59,8 @@ async function main(): Promise<void> {
       },
       startedAt,
       sessionIdOf(payload),
-      THIN_CLIENT_VERSION
+      THIN_CLIENT_VERSION,
+      payload
     );
   }
 }

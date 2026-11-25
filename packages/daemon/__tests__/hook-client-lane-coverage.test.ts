@@ -110,6 +110,7 @@ async function runClient(argv: string[], lane: ClientLane, sessionId: string): P
         BASTRA_LOG_PATH: logDir,
         BASTRA_DAEMON_URL: `http://127.0.0.1:${port}`,
         BASTRA_TELEMETRY: "on",
+        BASTRA_HOOK_CLIENT: argv[0] === STUB_PATH ? "codex" : "claude-code",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -169,6 +170,10 @@ test("#543: every gate lane writes one client row on both client shapes, with it
       `${shape}/${lane}: a dead daemon must be recorded as a failure, got ${String(row.status)}`
     );
     assert.equal(row.daemon_reachable, false, `${shape}/${lane}: the POST went out and got no answer`);
+    if (lane === "bash-pre" || lane === "bash-fail") {
+      assert.equal(row.tool_name, "Bash");
+      assert.equal((row.dimensions as { client: string }).client, shape === "stub" ? "codex" : "claude-code");
+    }
   }
 });
 
@@ -191,10 +196,11 @@ test("#543: a client-side failure can turn its own lane's gate red", async () =>
         ts: `2026-09-06T05:${String(i % 60).padStart(2, "0")}:00.000Z`,
       }));
       const rendered = renderStats(aggregate(window), 600);
+      const expected = gateLane.startsWith("bash-") ? "NOT EVALUABLE" : "FAIL: 40/40 calls returned nothing";
       assert.match(
         rendered,
-        new RegExp(`${gateLane}\\s+\\d+ms budget[^\\n]*— FAIL: 40/40 calls returned nothing`),
-        `${shape}/${lane}: a client-side failure must be able to fail the ${gateLane} gate`
+        new RegExp(`${gateLane}\\s+\\d+ms budget[^\\n]*— ${expected}`),
+        `${shape}/${lane}: failures cannot pass the ${gateLane} gate`
       );
       assert.match(rendered, /gate: NOT MET/);
     }

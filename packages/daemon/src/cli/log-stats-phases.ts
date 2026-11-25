@@ -59,7 +59,7 @@
 const CLIENT_ROW_VERSION = /-(stub|thin)$/;
 export const DUPLICATE_WINDOW_MS = 500;
 
-function isClientRow(e: Record<string, unknown>): boolean {
+export function isClientRow(e: Record<string, unknown>): boolean {
   return CLIENT_ROW_VERSION.test(String(e.hook_version ?? ""));
 }
 
