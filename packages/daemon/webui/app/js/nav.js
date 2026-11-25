@@ -73,8 +73,9 @@ export function railMarks(view, browser) {
   };
 }
 
-/** Memory browser entry (below Vault): opens the browser as an area. Like the
- *  other entries a second click keeps it; another entry leaves it (stage.js). */
+/** Memory browser entry (below Vault): opens the browser as an area, a plain
+ *  area switch without the grow (Daniel 25.11.2026). Like the other entries a
+ *  second click keeps it; another entry leaves it at once (stage.js). */
 function browserButton(mark) {
   const b = navButton({
     id: "browser",
@@ -99,7 +100,7 @@ function vaultButton(view, on) {
     iconPath: ICON[cur || lastVaultView()],
     on,
     onClick: () => {
-      // from the browser area back to the vault view it stands on
+      // from the browser area back to the vault view it stands on, at once
       if (state.browser === "nav") closeMemoryBrowser();
       else if (!on) setState({ view: lastVaultView(), hover: null, tab: "areas" });
     },

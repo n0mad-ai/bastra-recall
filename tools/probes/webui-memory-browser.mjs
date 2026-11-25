@@ -50,6 +50,13 @@ async function browserProbe(quick = false) {
     ).values(),
   ];
   const results = [];
+  // From outside the vault views the last vault view comes first (entrance,
+  // glide to the memory), and only then the browser grows (Daniel 25.11.2026).
+  async function viewFirst(label) {
+    await sleep(100);
+    if (document.querySelector(".mb.is-on")) throw new Error(`${label}: browser before the vault view stood`);
+    for (let i = 0; i < 80 && !document.querySelector(".mb.is-on"); i++) await sleep(100);
+  }
   async function check(label, m) {
     await sleep(1100); // grow plus smooth scroll
     const root = document.querySelector(".mb.is-on.is-grow");
@@ -195,6 +202,7 @@ async function browserProbe(quick = false) {
     const source = document.querySelector(".agent__srcs button");
     if (!source) throw new Error("Agent source button missing");
     source.click();
+    await viewFirst("agent-source-outside-vault");
     await check("agent-source-outside-vault", older);
     document.querySelector(".mb__esc").click();
     await sleep(510);
@@ -203,6 +211,7 @@ async function browserProbe(quick = false) {
     const wikilink = document.querySelector(".agent__md .mb-wl");
     if (!wikilink) throw new Error("Agent wikilink missing");
     wikilink.click();
+    await viewFirst("agent-wikilink-outside-vault");
     await check("agent-wikilink-outside-vault", older);
   } finally {
     window.fetch = originalFetch;

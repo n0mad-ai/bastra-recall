@@ -59,9 +59,16 @@ export function mountEngineView(id, stage) {
   stage.append(cardHost);
   // memory browser over this view; "show" flies to the memory (old select())
   const unMb = mountMemoryBrowser(stage, {
-    showMemory: (mid) => {
+    showMemory: (mid, done) => {
       const n = engine.get()?.sim.byId.get(mid);
-      if (n) pick(n);
+      if (!n || engine.view() !== ENGINE_VIEW[id]) return false; // not entered (layout unavailable)
+      pick(n);
+      flown = done || null;
+      return true;
+    },
+    ready: (cb) => {
+      standing.push(cb);
+      settled();
     },
   });
 
@@ -74,6 +81,20 @@ export function mountEngineView(id, stage) {
     dead = false,
     waiting = false,
     loader = null;
+  // memory browser: ready() waits for the entrance flight, `flown` for a memory flight
+  let entered = false,
+    flown = null;
+  const standing = [];
+  /** Per frame: the view's entrance and a memory flight have landed. */
+  function settled() {
+    const e = engine.get();
+    if (!entered || !e || e.transition || e.interactions.isFlying()) return;
+    const f = flown;
+    flown = null;
+    f?.();
+    // a ready callback may start a memory flight: its end is a later frame
+    for (const g of standing.splice(0)) g();
+  }
 
   // Until the view is entered the engine would still draw the previous view's
   // layout (Semantic loads its layout for seconds, Clouds settles ~1 s of
@@ -104,13 +125,19 @@ export function mountEngineView(id, stage) {
         detach = attach(stage, ENGINE_VIEW[id], {
           onSelect: pick,
           onHover: hover,
-          onFrame: place,
+          onFrame: () => {
+            place();
+            settled();
+          },
           onReady: () => {
             loading(false);
             note.hidden = true;
             look();
+            entered = true;
           },
           onError: (err) => {
+            entered = true;
+            settled();
             loading(false);
             note.hidden = false;
             note.textContent = t("ev.semUnavailable", { e: err?.message || String(err) });

@@ -3,12 +3,15 @@
 // detail, summary only, no body, failed detail, rule proposal, narrow layout with "back", a followed
 // link, an area switch, a refresh at the same scroll position) and the whole browser frozen as HTML
 // with the calls it made. Moving or reshaping the reader cannot change what it shows unnoticed.
+// The opening paths (Daniel 25.11.2026) run on the same stand-ins: the rail's Browser stands and
+// leaves at once, a memory link from outside the vault views grows only after the view's glide.
 //
 // The browser modules are copied into a temporary folder; the shell modules around them (state,
 // daemon data, agent, cover, vault data, Pro views) are replaced there by small stand-ins.
 // Update the frozen state only for an intended change:
 //   node --import tsx --import ./scripts/test-env.mjs --test --test-update-snapshots \
 //     packages/daemon/__tests__/webui-memory-reader.test.ts
+import assert from "node:assert/strict";
 import { test } from "node:test";
 import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -384,8 +387,10 @@ export function loadGraph() { globalThis.__mb.log.push("loadGraph"); return Prom
   "agent.js": `export function ask(q) { globalThis.__mb.log.push("ask " + q); }`,
   "cover.js": `export function cover(key, on) { globalThis.__mb.log.push("cover " + key + " " + on); }`,
   "views/pro-views.js": `export const viewLocked = () => false;
-export const lastVaultView = () => "ring";`,
+export const lastVaultView = () => globalThis.__mb.lastView ?? "ring";`,
   "views/vault-data.js": `export const vault = () => globalThis.__mb.vault;
+export const timeWindow = () => null;
+export const inWindow = () => true;
 export const areaCol = (key) => "col(" + key + ")";
 export const ago = (ms) => Math.round((Date.now() - ms) / 36e5) + "h";
 export const recentIn = () => [];`,
@@ -416,6 +421,8 @@ type Env = {
   data: Record<string, unknown>;
   dataListeners: Array<() => void>;
   vault: unknown;
+  /** lastVaultView() of the Pro views stand-in (default "ring"). */
+  lastView?: string;
   /** The browser's timers (grow, reveal, close) wait for runTimers(); the test's own waits use setImmediate. */
   timers: Map<number, { fn: () => void; ms: number }>;
   resize: () => void;
@@ -483,7 +490,12 @@ function fakeGlobals(): Env {
 
 type Browser = {
   openMemoryBrowser: (scope: string, sel: string | null, from: unknown) => void;
-  mountMemoryBrowser: (stage: FakeEl, opts: { showMemory: (id: string) => void }) => () => void;
+  openMemoryBrowserArea: (from: unknown) => void;
+  closeMemoryBrowser: (after?: () => void) => boolean;
+  mountMemoryBrowser: (
+    stage: FakeEl,
+    opts: { showMemory: (id: string, done?: () => void) => unknown; ready?: (cb: () => void) => void }
+  ) => () => void;
 };
 
 /** Walks the reader through its paths; one frame per step. */
@@ -518,8 +530,9 @@ async function walk(mb: Browser, env: Env): Promise<string[]> {
   const row = (id: string) => click(`.mb-row[data-id="${id}"]`, stage);
   const acts = () => reader().querySelector(".mb-rd__acts")!.children;
 
-  mb.openMemoryBrowser("all", null, null);
+  // the vault view stands, then its card opens the browser
   const unmount = mb.mountMemoryBrowser(stage, { showMemory: (id: string) => env.log.push(`showMemory ${id}`) });
+  mb.openMemoryBrowser("all", null, null);
   const root = stage.children[0];
   root.clientWidth = 1200;
   await settle();
@@ -573,7 +586,8 @@ async function walk(mb: Browser, env: Env): Promise<string[]> {
   return frames;
 }
 
-test("the memory browser's reader renders a fixed corpus unchanged", async (t) => {
+/** A fresh copy of the browser modules (module-wide state) on the stand-ins. */
+async function withBrowser(run: (mb: Browser, env: Env) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), "webui-mb-reader-"));
   const g = globalThis as Record<string, unknown>;
   const saved = Object.fromEntries(GLOBALS.map((k) => [k, g[k]]));
@@ -582,11 +596,111 @@ test("the memory browser's reader renders a fixed corpus unchanged", async (t) =
     await writeFile(join(dir, "package.json"), '{"type":"module"}');
     for (const [file, src] of Object.entries(STUBS)) await writeFile(join(dir, file), src);
     const env = fakeGlobals();
-    const mb = (await import(pathToFileURL(join(dir, "views/memory-browser.js")).href)) as Browser;
-    t.assert.snapshot((await walk(mb, env)).join("\n\n"));
+    await run((await import(pathToFileURL(join(dir, "views/memory-browser.js")).href)) as Browser, env);
   } finally {
+    unmounts.splice(0).forEach((un) => un());
+    await settle(); // late reads (vault care flags) land before the stand-ins go
     for (const [k, v] of Object.entries(saved)) g[k] = v;
     delete g.__mb;
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+test("the memory browser's reader renders a fixed corpus unchanged", async (t) => {
+  await withBrowser(async (mb, env) => t.assert.snapshot((await walk(mb, env)).join("\n\n")));
+});
+
+const RECT = { left: 10, top: 20, right: 30, bottom: 40 };
+const unmounts: Array<() => void> = [];
+const mounted = (mb: Browser, opts: Parameters<Browser["mountMemoryBrowser"]>[1]) => {
+  const stage = new FakeEl("div");
+  stage.connected = true;
+  unmounts.push(mb.mountMemoryBrowser(stage, opts));
+  return stage.children[0];
+};
+const growTimers = (env: Env) => [...env.timers.values()].map((x) => x.ms).filter((ms) => ms === 480 || ms === 520);
+
+test("the rail's Browser stands at once and leaves at once, from any area", async () => {
+  await withBrowser(async (mb, env) => {
+    env.lastView = "clouds";
+    env.state.view = "tasks";
+    mb.openMemoryBrowserArea(RECT);
+    assert.deepStrictEqual(env.state, { view: "clouds", browser: "nav" });
+    // the stage mounts the last vault view; the browser stands with it, no grow from the button
+    const root = mounted(mb, { showMemory: () => false });
+    assert.ok(
+      ["is-on", "is-grow", "is-nav"].every((c) => root.classes.has(c)),
+      root.className
+    );
+    assert.strictEqual(root.vars.get("--ct"), undefined);
+    assert.deepStrictEqual(growTimers(env), []);
+    // another area: closed before the stage swaps, without the shrink
+    const order: string[] = [];
+    assert.strictEqual(
+      mb.closeMemoryBrowser(() => order.push("after")),
+      true
+    );
+    assert.deepStrictEqual(order, ["after"]);
+    assert.ok(!root.classes.has("is-on"));
+    assert.strictEqual(env.state.browser, null);
+  });
+  await withBrowser(async (mb, env) => {
+    // already in a vault view: the same plain switch
+    const root = mounted(mb, { showMemory: () => false });
+    mb.openMemoryBrowserArea(RECT);
+    assert.ok(root.classes.has("is-on") && root.classes.has("is-grow"));
+    assert.strictEqual(env.state.browser, "nav");
+  });
+});
+
+test("a memory link from outside shows the last vault view, glides, then grows", async () => {
+  await withBrowser(async (mb, env) => {
+    env.lastView = "clouds";
+    env.state.view = "tasks";
+    mb.openMemoryBrowser("all", "full", RECT);
+    assert.deepStrictEqual(env.state, { view: "clouds", browser: null });
+    const calls: string[] = [];
+    let stands = () => {},
+      landed = () => {};
+    const root = mounted(mb, {
+      showMemory: (id, done) => {
+        calls.push(`show ${id}`);
+        landed = done!;
+        return true;
+      },
+      ready: (cb) => {
+        calls.push("ready");
+        stands = cb;
+      },
+    });
+    await settle();
+    assert.deepStrictEqual(calls, ["ready"]);
+    assert.ok(!root.classes.has("is-on"), "no window while the view still enters");
+    stands();
+    assert.deepStrictEqual(calls, ["ready", "show full"]);
+    assert.ok(!root.classes.has("is-on"), "no window while the view glides");
+    assert.strictEqual(env.state.browser, null);
+    landed();
+    assert.strictEqual(env.state.browser, "vault");
+    assert.ok(root.classes.has("is-on"));
+    assert.strictEqual(root.vars.get("--op"), "1", "grows out of the clicked spot");
+    assert.ok(!root.classes.has("is-grow"), "the grow runs (next frame), it does not stand at once");
+  });
+  await withBrowser(async (mb, env) => {
+    // a memory the view cannot show: no glide, the window grows once the view stands
+    env.state.view = "tasks";
+    mb.openMemoryBrowser("all", "unknown-id", RECT);
+    let stands = () => {};
+    const calls: string[] = [];
+    const root = mounted(mb, {
+      showMemory: (id) => (calls.push(id), true),
+      ready: (cb) => (stands = cb),
+    });
+    await settle();
+    assert.ok(!root.classes.has("is-on"));
+    stands();
+    assert.deepStrictEqual(calls, []);
+    assert.ok(root.classes.has("is-on"));
+    assert.strictEqual(env.state.browser, "vault");
+  });
 });

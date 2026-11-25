@@ -41,8 +41,9 @@ export function render(ctx) {
     queueMicrotask(() => setState({ view: lastVaultView(), toast }));
     return;
   }
-  // Leaving the vault views with the memory browser open: the browser shrinks
-  // away first, then the area changes (every route: rail, header, links). It
+  // Leaving the vault views with the memory browser open: as a layer it
+  // shrinks away first, then the area changes (every route: rail, header,
+  // links); as an area (rail) it closes at once, a plain area switch. It
   // stays open between vault views (memory-browser.js).
   if (VAULT_VIEWS.includes(current) && !VAULT_VIEWS.includes(state.view)) {
     // cover(false) can synchronously reenter render through the state store.

@@ -349,13 +349,18 @@ until a new design replaces it; this name is independent of the product version.
   notes, `bastra codex`, `bastra feedback` and the error prefixes of
   recall/save/archive/trash/rules proposals follow `language.primary`;
   English output is unchanged, `--json` stays English (#1602).
-- Web UI: switching to or from an area with the Jarvis panel, the panel
-  fades in or out first and the content area slides only after that; it no
-  longer shows through the half-faded panel. With reduced motion the content
-  area moves without sliding.
 - Web UI: the right panel folds away below 1528 px window width (was
   1400 px). The Tasks calendar now keeps its whole week down to 1136 px;
   before, it showed three days at 1400–1527 px and the week again below.
+- Web UI: the rail's Browser entry is a plain area switch. The memory browser
+  stands at once and leaves at once; before, the vault view flashed up and
+  the browser grew out of the rail button, and shrank back into it on the
+  way out. The grow stays for "Open in browser" on a vault card and for a
+  memory opened from the agent window, Tasks or Reports. From outside the
+  vault views such a memory now opens the last chosen vault view (before:
+  always the ring), which glides to the memory first; the browser grows once
+  the glide has ended, or once the view stands when it cannot show that
+  memory.
 
 ### Removed
 

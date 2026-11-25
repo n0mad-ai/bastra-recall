@@ -27,6 +27,7 @@ export function mountLens(canvas, opts) {
     pts = [],
     regs = [],
     dead = false;
+  const standing = [];
   let z = 1,
     tx = 0,
     ty = 0,
@@ -134,6 +135,10 @@ export function mountLens(canvas, opts) {
   function req() {
     if (!raf && !dead) raf = requestAnimationFrame(frame);
   }
+  // ready(): the data is drawn, the entrance has played, the picture stands still
+  function stood(moving) {
+    if (P && prog >= 1 && !moving) for (const f of standing.splice(0)) f();
+  }
   function frame(ts) {
     raf = 0;
     if (dead) return;
@@ -221,6 +226,7 @@ export function mountLens(canvas, opts) {
       o.onZoom(lastZ);
     }
     o.onFrame && o.onFrame();
+    stood(moving);
     if (loopContinues(pausedAt != null, prog < 1 || moving || fx.length)) req();
   }
   const toW = (x, y) => [(x - tx) / z, (y - ty) / z];
@@ -405,8 +411,13 @@ export function mountLens(canvas, opts) {
       sel = null;
       aim(1, 0, 0);
     },
-    /** Open a memory as a click on it would (mark, glide, onOpen); false when it is not drawn. */
-    open(id) {
+    /** Run cb once the data is drawn and the entrance has played. */
+    ready(cb) {
+      standing.push(cb);
+      req();
+    },
+    /** Open a memory as a click on it would (mark, glide, onOpen, then `done`); false when it is not drawn. */
+    open(id, done) {
       const p = findPt(id);
       if (!p) return false;
       const [x, y, r] = p,
@@ -417,7 +428,9 @@ export function mountLens(canvas, opts) {
       req();
       clearTimeout(openT);
       openT = setTimeout(() => {
-        if (!dead) o.onOpen && o.onOpen(id);
+        if (dead) return;
+        o.onOpen && o.onOpen(id);
+        done?.();
       }, 430);
       return true;
     },

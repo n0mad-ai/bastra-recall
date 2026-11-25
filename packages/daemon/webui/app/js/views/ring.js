@@ -76,9 +76,13 @@ export function mountRing(stage) {
   const links = mountLinks();
   stage.append(cardHost, tip, links.legend);
   const unMb = mountMemoryBrowser(stage, {
-    showMemory: (id) => {
+    showMemory: (id, done) => {
       const p = ring?.dotOf.get(id);
-      if (p) openDot(p);
+      return !!p && openDot(p, done);
+    },
+    ready: (cb) => {
+      standing.push(cb);
+      stand();
     },
   });
 
@@ -99,6 +103,13 @@ export function mountRing(stage) {
     dead = false,
     labScale = 0,
     relayT = 0;
+  // memory browser ready(): the wheel is laid out (fonts, graph) and measured
+  const standing = [];
+  let laid = false,
+    measured = false;
+  function stand() {
+    if (laid && measured && vault()) for (const f of standing.splice(0)) f();
+  }
   let hovDot = null,
     glideDot = null,
     openT = 0,
@@ -644,9 +655,10 @@ export function mountRing(stage) {
   }
   // Click: selection mark + pulse, glide the dot to the centre, then open the
   // memory card with its arm (as in the lenses: 430 ms after the click).
-  function openDot(p) {
+  // `done` runs with the card; false when the dot has no memory.
+  function openDot(p, done) {
     const m = memOf(p.id);
-    if (!m) return;
+    if (!m) return false;
     hoverDot(null);
     glideDot = p;
     const { pulse } = refs;
@@ -673,7 +685,9 @@ export function mountRing(stage) {
       selMem = m;
       paint();
       place();
+      done?.();
     }, 430);
+    return true;
   }
   function placeMarks(kk) {
     if (!refs) return;
@@ -786,6 +800,8 @@ export function mountRing(stage) {
     H = Math.max(1, b.height);
     [rpx, rpy] = clampP(rz, rpx, rpy);
     place();
+    measured = true;
+    stand();
     // labels no longer fit (or the wheel is far larger than needed): re-lay out
     clearTimeout(relayT);
     if (ring && builtFor) {
@@ -819,6 +835,7 @@ export function mountRing(stage) {
     if (!v || v === builtFor) return;
     const had = !!builtFor;
     build();
+    stand();
     if (!had || !card) return;
     if (selMem) {
       const m = memOf(selMem.id);
@@ -839,7 +856,10 @@ export function mountRing(stage) {
       ]).catch(() => {})
     : Promise.resolve();
   ready.then(() => {
-    if (!dead) build();
+    if (dead) return;
+    build();
+    laid = true;
+    stand();
   });
 
   return () => {

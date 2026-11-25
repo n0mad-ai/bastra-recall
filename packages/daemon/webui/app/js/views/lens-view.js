@@ -16,7 +16,10 @@ export function mountLensView(kind, stage) {
   const ov = overlay(stage);
   const cardHost = h("div");
   stage.append(cardHost);
-  const unMb = mountMemoryBrowser(stage, { showMemory: (id) => lens.open(id) });
+  const unMb = mountMemoryBrowser(stage, {
+    showMemory: (id, done) => lens.open(id, done),
+    ready: (cb) => lens.ready(cb),
+  });
 
   let shown = null,
     shownFor = "",

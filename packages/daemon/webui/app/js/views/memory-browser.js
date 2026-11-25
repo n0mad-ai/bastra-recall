@@ -8,6 +8,12 @@
 // never over other areas. Its state is module-wide, so an open browser stays
 // open while switching between vault views.
 //
+// Daniel (25.11.2026): only a vault view card or a memory link grows the
+// window. The rail's Browser is a plain area switch: it stands at once and
+// leaves at once, the vault view under it is never seen. A memory link from
+// outside the vault views first shows the last vault view, which glides to
+// the memory; the window grows once that glide has ended.
+//
 // Real data:
 //   list, chips, pulse, stats, links — vault() from GET /ui/graph
 //   last recalled, tags, scope        — the same graph nodes (reach.last_at …)
@@ -26,9 +32,9 @@ import { state, setState } from "../state.js";
 import { data, onData } from "../data.js";
 import { ask } from "../agent.js";
 import { cover } from "../cover.js";
-import { vault, areaCol, ago } from "./vault-data.js";
+import { vault, areaCol, ago, inWindow, timeWindow } from "./vault-data.js";
 import { TC, INK, ACC, MUT, dateStr, lastPress } from "./chrome.js";
-import { viewLocked, lastVaultView } from "./pro-views.js";
+import { lastVaultView } from "./pro-views.js";
 import { detailCache } from "./membrowser-detail.js";
 import { memoryReader } from "./membrowser-reader.js";
 import { extras, heat, daysAgo, NO_DAYS } from "./membrowser-heat.js";
@@ -60,17 +66,22 @@ const M = {
   nav: false, // opened from the rail as its own area: no close, Esc does not close (state.browser)
 };
 let inst = null;
+// A memory link from outside the vault views: { id } until its view has glided
+// there and the window grows (mountMemoryBrowser › arrive).
+let pending = null;
 
 /** Focus a memory in the mounted vault view (its glide / fly + info card).
  *  false when no vault view is mounted or it has no such hook. */
 export function showInView(id) {
   if (!inst?.showMemory) return false;
+  pending = null; // a new focus replaces a link still waiting for its glide
   inst.showMemory(id);
   return true;
 }
 
-/** Close an open browser with its shrink, then run `after` (stage.js: leaving
- *  the vault views closes it before the area changes). false when none is open. */
+/** Close an open browser with its shrink (as an area at once), then run
+ *  `after` (stage.js: leaving the vault views closes it before the area
+ *  changes). false when none is open. */
 export function closeMemoryBrowser(after) {
   if (!M.open || !inst) return false;
   inst.hide(after);
@@ -85,12 +96,15 @@ export function closeMemoryBrowser(after) {
  *  followed while the browser stands as an area keeps it one. */
 export function openMemoryBrowser(scope, sel, from, nav = false) {
   const asArea = nav || state.browser === "nav";
-  const browser = asArea ? "nav" : "vault";
   // Already standing (not shrinking away): it switches in place, no new grow.
+  // An area never grows; a link from outside the vault views waits (pending),
+  // and a second one while it waits takes its place.
   const standing = M.open && !!state.browser;
+  const grow = !standing && !asArea;
+  pending = grow && (!inst || pending) ? { id: sel || null } : null;
   Object.assign(M, {
     nav: asArea,
-    open: true,
+    open: !pending,
     scope: scope || "all",
     sel: sel || null,
     q: "",
@@ -101,20 +115,25 @@ export function openMemoryBrowser(scope, sel, from, nav = false) {
     sem: [],
     semQ: "",
     from: standing ? M.from : box(from) || pressBox(),
-    grow: !standing,
+    grow,
     focus: !!sel,
   });
-  // The browser lives in the vault views (ring, lenses, map engines), which
-  // mount it; from anywhere else the ring takes over and plays the same grow
-  // (the last free view while the Pro views are locked, pro-views.js). As an
-  // area it opens over the last vault view, which the rail's Vault then shows.
-  // state.browser is set at once, so the rail is right before the grow ends.
-  if (inst) {
+  place(asArea ? "nav" : "vault", grow);
+}
+
+/** Where an opened browser goes. It lives in the vault views (ring, lenses,
+ *  map engines), which mount it; from anywhere else the last vault view takes
+ *  over (pro-views.js). As an area it stands over that view at once, which the
+ *  rail's Vault then shows; state.browser is set at once, so the rail is right
+ *  before a grow ends. A link from outside sets it when the window grows. */
+function place(browser, grow) {
+  if (inst && pending) inst.arrive();
+  else if (inst) {
     // A departure may still be shrinking this mounted browser. Reopening is
     // a new navigation intent: restore its host before cancelling that timer.
     setState({ view: inst.view, browser });
-    inst.show(!standing);
-  } else setState({ view: asArea || viewLocked("ring") ? lastVaultView() : "ring", browser });
+    inst.show(grow);
+  } else setState({ view: lastVaultView(), browser: pending ? null : browser });
 }
 
 /** The rail's Browser entry: opens the browser as an area; one already open
@@ -161,8 +180,11 @@ const byRecent = (a, b) => (Number.isFinite(b.at) ? b.at : -Infinity) - (Number.
 export { markdown };
 
 // ── mount ──────────────────────────────────────────────────────────────────
-/** Mount into a vault view's stage. `showMemory(id)` focuses a memory in that view (glide / fly + card). */
-export function mountMemoryBrowser(stage, { showMemory } = {}) {
+/** Mount into a vault view's stage. `showMemory(id, done)` focuses a memory in
+ *  that view (glide / fly + card): true when it can, then `done()` once the
+ *  glide has ended. `ready(cb)` runs cb once the view stands (laid out, its
+ *  entrance played); without it the view stands at once. */
+export function mountMemoryBrowser(stage, { showMemory, ready = (cb) => cb() } = {}) {
   const hostView = state.view;
   const input = h("input.mb__input", {
     type: "text",
@@ -223,7 +245,8 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     view = null,
     growing = false,
     glideId = null,
-    glideT = 0;
+    glideT = 0,
+    arriving = null;
 
   // ── open / close (prototype openMB / closeMB) ──
   /** As an area (rail) the browser has no close: the rail leaves it. */
@@ -242,7 +265,11 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
       });
     if (!anim) {
       growing = false;
+      // stands at once, also over a shrink still running
+      root.style.transition = "none";
       root.classList.add("is-on", "is-grow");
+      void root.offsetWidth;
+      root.style.transition = "";
       render();
       scheduleReveal();
       cover("mb", true);
@@ -281,6 +308,8 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     }, 520);
   }
   function hide(after) {
+    // An area (rail) leaves like any other area: at once, without the shrink.
+    const instant = M.nav;
     if (state.browser) setState({ browser: null }); // the rail follows at once, not after the shrink
     M.menu = false;
     renderHead();
@@ -291,11 +320,34 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     growing = false;
     glideId = null;
     cover("mb", false); // the view moves again while the window shrinks away
-    closeT = setTimeout(() => {
+    const close = () => {
       M.open = false;
       root.classList.remove("is-on");
       after?.();
-    }, 480);
+    };
+    if (instant) close();
+    else closeT = setTimeout(close, 480);
+  }
+
+  /** A memory link from outside the vault views (pending): once the graph is
+   *  there and the view stands, it glides to the memory; the window grows when
+   *  the glide has ended, or at once when the view cannot show that memory. */
+  function arrive() {
+    const p = pending;
+    if (dead || !p || arriving === p || (!vault() && !data.graphError)) return;
+    arriving = p;
+    const grow = () => {
+      if (dead || pending !== p) return;
+      pending = null;
+      M.open = true;
+      setState({ browser: "vault" });
+      show(true);
+    };
+    ready(() => {
+      if (dead || pending !== p) return;
+      const m = p.id && vault()?.byId.get(p.id);
+      if (!(m && inWindow(m, timeWindow()) && showMemory?.(p.id, grow))) grow();
+    });
   }
 
   // ── model ──
@@ -691,10 +743,13 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
       details.invalidate();
     }
     if (M.open) render();
+    else arrive();
   });
 
-  inst = { show, showMemory, hide, mode, view: hostView };
+  inst = { show, showMemory, hide, mode, arrive, view: hostView };
   if (M.open) show(M.grow);
+  // after the view's own mount, so its ready hook sees the whole view
+  else if (pending) queueMicrotask(arrive);
 
   return () => {
     dead = true;
@@ -712,5 +767,6 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     unData();
     root.remove();
     if (inst?.show === show) inst = null;
+    pending = null; // a link still waiting for this view is dropped with it
   };
 }
