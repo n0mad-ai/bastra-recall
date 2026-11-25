@@ -468,7 +468,10 @@ test("#1510: the stored value is what the named reader and the effective value r
         ...Object.fromEntries([
           [
             entryOf(row.key).path[0],
-            { ...(current as never)[entryOf(row.key).path[0]], [entryOf(row.key).path[1]]: row.stored },
+            {
+              ...(current as Record<string, Record<string, unknown>>)[entryOf(row.key).path[0]],
+              [entryOf(row.key).path[1]]: row.stored,
+            },
           ],
         ]),
       }));
