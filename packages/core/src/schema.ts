@@ -1,7 +1,7 @@
 import { z } from "zod";
 import matter from "gray-matter";
 import { truncateSummaryTo, SUMMARY_MAX } from "./summary.js";
-import { rescueFrontmatter, repairRequired } from "./frontmatter-rescue.js";
+import { rescueFrontmatter, repairRequired, repairUpdated } from "./frontmatter-rescue.js";
 
 /** Fields `repairRequired` guarantees (#222). A validation error on one of
  *  these after the repair means something the loader cannot reason about, so
@@ -465,6 +465,7 @@ export function parseMemoryWith(
   if (!("type" in data) || !MEMORY_TYPES.has(String(data.type))) {
     throw new NotAMemoryFile(filePath);
   }
+  repairUpdated(data, raw, mtime, damaged);
   repairRequired(data, filePath, mtime, content, damaged, isPathSafeComponent);
   const parsed = FrontmatterSchema.safeParse(data);
   if (!parsed.success) {

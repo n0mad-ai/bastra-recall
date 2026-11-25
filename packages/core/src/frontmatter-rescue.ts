@@ -232,3 +232,30 @@ export function repairRequired(
     note("updated", "missing updated — taken from the file mtime");
   }
 }
+
+/** False when the unquoted frontmatter line `field: YYYY-MM-DD…` names a day the calendar lacks. */
+function writtenDayExists(raw: string, field: string): boolean {
+  const block = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(raw)?.[1] ?? "";
+  const m = new RegExp(`^${field}:[ \\t]*(\\d{4})-(\\d{2})-(\\d{2})`, "m").exec(block);
+  if (!m) return true;
+  const [y, mo, d] = m.slice(1).map(Number),
+    date = new Date(Date.UTC(y, mo - 1, d));
+  return date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
+}
+
+/** #1720: an `updated` that is no date — `false`, a list, or a bare impossible day that js-yaml
+ *  silently rolls over (`2026-02-31` becomes March 3) — is taken from the file mtime like a
+ *  missing one, so the note stays loaded and Recall shows the file's day, as it does for an
+ *  invalid date string. A string is left to the schema and the Recall formatter. */
+export function repairUpdated(
+  data: Record<string, unknown>,
+  raw: string,
+  mtime: number,
+  damaged: DamagedField[]
+): void {
+  const v = data.updated;
+  if (v == null || v === "" || typeof v === "string") return;
+  if (v instanceof Date && Number.isFinite(v.getTime()) && writtenDayExists(raw, "updated")) return;
+  data.updated = new Date(mtime).toISOString().slice(0, 10);
+  damaged.push({ field: "updated", reason: "updated was not a valid date — taken from the file mtime" });
+}

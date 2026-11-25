@@ -239,3 +239,29 @@ test("a key that starts with a dash is still a key, and no list ever leaks in as
   assert.deepEqual(rescued!.data.tags, ["a: b", "c"]);
   assert.ok(!("0" in rescued!.data), `positional keys must never reach the data map: ${JSON.stringify(rescued!.data)}`);
 });
+
+test("#1720: an `updated` that is no date is taken from the file mtime; the note stays loaded", () => {
+  const note = (updated: string) =>
+    `---\nid: note\ntitle: T\ntype: lesson\nsummary: s\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: ${updated}\n---\nbody`;
+  // mtime of `parse`: 2026-05-17; js-yaml would roll 2026-02-31 into 2026-03-03
+  for (const bad of ["false", "[invalid]", "2026-02-31", "2026-02-31T10:00:00Z", "2026-13-01", "20260501"]) {
+    const m = parse(note(bad));
+    assert.equal(m.fm.updated, "2026-05-17", bad);
+    assert.ok(
+      m.damaged?.some((d) => d.field === "updated"),
+      `${bad} is flagged`
+    );
+    assert.equal(m.fm.summary, "s", "the other fields stay as written");
+  }
+  for (const [good, day] of [
+    ["2026-05-02", "2026-05-02"],
+    ["2024-02-29", "2024-02-29"],
+    ["2026-05-01T23:30:00-02:00", "2026-05-02"],
+    ['"2026-02-31"', "2026-02-31"],
+  ]) {
+    const m = parse(note(good));
+    assert.equal(m.fm.updated, day, `${good} keeps its value; a quoted string is left to the Recall formatter`);
+    assert.equal(m.damaged, undefined, good);
+  }
+  assert.throws(() => parse(note("2026-05-01").replace("created: 2026-05-01", "created: false")), /created/);
+});
