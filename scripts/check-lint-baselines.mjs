@@ -17,7 +17,12 @@ try {
   process.exit(1);
 }
 
-const files = ["eslint-structure-baseline.json", ".lint-cycle-baseline.json", "clone-baseline.json"];
+const files = [
+  "eslint-structure-baseline.json",
+  "eslint-any-baseline.json",
+  ".lint-cycle-baseline.json",
+  "clone-baseline.json",
+];
 
 // #1572 is a single mechanical tree rename, not transferable function debt.
 const oldUi = "packages/daemon/webui/v22/";
@@ -127,7 +132,7 @@ function counts(value) {
       )
     );
   }
-  return value.functions ?? value.fingerprints ?? value;
+  return value.functions ?? value.files ?? value.fingerprints ?? value;
 }
 
 async function isVerifiedMigration(file, previous, candidate) {

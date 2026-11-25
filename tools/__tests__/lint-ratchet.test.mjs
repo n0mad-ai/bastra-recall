@@ -68,6 +68,7 @@ async function fixture(t) {
   await put(root, ".gitignore", "node_modules/\n");
   assert.equal(execute(root, "git", ["init", "-q"]).status, 0);
   await put(root, "eslint-structure-baseline.json", { schema: 2, functions: {} });
+  await put(root, "eslint-any-baseline.json", { schema: 1, files: {} });
   await put(root, ".lint-cycle-baseline.json", []);
   await put(root, "clone-baseline.json", {
     version: 1,
@@ -476,6 +477,65 @@ test("the Git guard refuses new or increased function, cycle and clone exception
   assert.equal(unknown.status, 1, unknown.output);
   assert.match(unknown.output, /baseline|basis|base|revision/i);
   assert.doesNotMatch(unknown.output, /\n\s+at /);
+});
+
+test("explicit any is frozen per file: new ones fail, the count only shrinks (#1533)", async (t) => {
+  const root = await fixture(t);
+  const twoAny = "export const a: any = 1;\nexport const b: any = 2;\n";
+  await put(root, "src/legacy.ts", twoAny);
+  const unfrozen = tool(root, "lint-structure.mjs");
+  assert.equal(unfrozen.status, 1, unfrozen.output);
+  assert.match(unfrozen.output, /src\/legacy\.ts @typescript-eslint\/no-explicit-any: 2 explicit any/);
+  await put(root, "eslint-any-baseline.json", { schema: 1, files: { "src/legacy.ts": 2 } });
+  const frozen = tool(root, "lint-structure.mjs");
+  assert.equal(frozen.status, 0, frozen.output);
+  assert.doesNotMatch(frozen.output, /no-explicit-any/);
+  await put(root, "src/legacy.ts", `${twoAny}export const c: any = 3;\n`);
+  const grown = tool(root, "lint-structure.mjs");
+  assert.equal(grown.status, 1, grown.output);
+  assert.match(grown.output, /frozen at 2 explicit any, now 3/);
+  await put(
+    root,
+    "src/legacy.ts",
+    `${twoAny}// eslint-disable-next-line @typescript-eslint/no-explicit-any\nexport const c: any = 3;\n`
+  );
+  assert.equal(tool(root, "lint-structure.mjs").status, 1, "inline suppressions must not hide a new any");
+  await put(root, "src/legacy.ts", twoAny);
+  await put(root, "src/fresh.ts", "export const d: any = 1;\n");
+  const added = tool(root, "lint-structure.mjs");
+  assert.equal(added.status, 1, added.output);
+  assert.match(added.output, /src\/fresh\.ts @typescript-eslint\/no-explicit-any: 1 explicit any in a file with none/);
+  await put(root, "src/fresh.ts", "export const d: unknown = 1;\n");
+  await put(root, "src/legacy.ts", "export const a: any = 1;\nexport const b = 2;\n");
+  const reduced = tool(root, "lint-structure.mjs");
+  assert.equal(reduced.status, 1, reduced.output);
+  assert.match(reduced.output, /outdated function maxima or any counts/);
+  assert.equal(tool(root, "lint-structure.mjs", "--prune").status, 0);
+  assert.deepEqual(JSON.parse(await readFile(join(root, "eslint-any-baseline.json"), "utf8")), {
+    schema: 1,
+    files: { "src/legacy.ts": 1 },
+  });
+  assert.equal(tool(root, "lint-structure.mjs").status, 0);
+});
+
+test("the Git guard refuses a new or increased any count (#1533)", async (t) => {
+  const root = await fixture(t);
+  const frozen = { schema: 1, files: { "src/legacy.ts": 2 } };
+  await put(root, "eslint-any-baseline.json", frozen);
+  assert.equal(execute(root, "git", ["add", "eslint-any-baseline.json"]).status, 0);
+  await commitBaselines(root);
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 0);
+  for (const enlarged of [
+    { schema: 1, files: { "src/legacy.ts": 3 } },
+    { schema: 1, files: { "src/legacy.ts": 2, "src/fresh.ts": 1 } },
+  ]) {
+    await put(root, "eslint-any-baseline.json", enlarged);
+    const result = tool(root, "check-lint-baselines.mjs");
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /eslint-any-baseline\.json: 1 new\/increased exceptions/);
+  }
+  await put(root, "eslint-any-baseline.json", { schema: 1, files: { "src/legacy.ts": 1 } });
+  assert.equal(tool(root, "check-lint-baselines.mjs").status, 0);
 });
 
 test("cycle exceptions shrink and workspace package names resolve to source", async (t) => {
