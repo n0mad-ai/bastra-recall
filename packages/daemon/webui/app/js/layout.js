@@ -5,36 +5,38 @@ import { isPinned } from "./areas.js";
 import { setVars } from "./dom.js";
 
 const FOOTERS = new Set(["console", "mirror", "anchored", "drawer", "island"]);
+const STAGE_MIN = 240;
 // Below this width the right panel folds away. Tasks shows its week from a 700px stage: beside the pinned
 // agent (100 + 360 + 12) and the open panel (24 + 320 + 12) that is 1528px, so the week never drops to
 // three days and comes back while the window narrows.
 export const COMPACT_BELOW = 1528;
 
 export function computeLayout(s) {
-  const pinAgent = isPinned(s.view);
+  const wantsPin = isPinned(s.view);
   const ft = FOOTERS.has(s.footer) ? s.footer : "console";
   const tl = s.timeline === "pulse" ? "pulse" : "bars";
   const isl = ft === "island" || ft === "mirror";
-  const jOpen = !isl && pinAgent ? true : s.jOpen;
   const wide = s.vw >= 1280;
   const G = 12,
     jL = 24 + 64 + G,
-    panelT = 54 + G,
-    stT = panelT;
+    panelT = 54 + G;
   const lensW = wide ? 320 : 288;
-  const narrowSet = pinAgent && s.vw < 1200;
   const compact = s.vw < COMPACT_BELOW;
-  const lensOpen = compact ? !!s.lensPeek : s.lensOpen && (s.vw >= 1200 || !jOpen || s.view === "settings");
-  const jW = narrowSet ? 300 : 360;
-  const cL = jOpen && !isl ? jL + jW + 12 : jL;
+  const jW = wantsPin && s.vw < 1200 ? 300 : 360;
+  // A viewport too narrow for both panels keeps the stage and opens the agent as an overlay.
+  const dockAgent = s.vw >= jL + jW + G + 24 + STAGE_MIN;
+  const pinAgent = wantsPin && dockAgent;
+  const jOpen = (!isl && pinAgent) || s.jOpen;
+  const lensOpen = compact ? !!s.lensPeek : s.lensOpen;
+  const cL = jOpen && !isl && dockAgent ? jL + jW + G : jL;
   const cR = lensOpen && !compact ? 24 + lensW + 12 : 24;
   const podW = jOpen ? jW : 250;
   const ftM = ft === "mirror",
-    ftDw = ft === "drawer" && !pinAgent,
+    ftDw = ft === "drawer" && !wantsPin,
     ftIs = ft === "island";
-  const fB = ftM ? 88 : pinAgent || ftIs ? 24 : ftDw ? 76 : 92;
-  const W = Math.max(240, s.vw - cL - cR),
-    H = Math.max(200, s.vh - stT - fB);
+  const fB = ftM ? 88 : wantsPin || ftIs ? 24 : ftDw ? 76 : 92;
+  const W = Math.max(STAGE_MIN, s.vw - cL - cR),
+    H = Math.max(200, s.vh - panelT - fB);
   const panelH = s.vh - panelT - 92;
   const L = {
     pinAgent,
@@ -44,7 +46,7 @@ export function computeLayout(s) {
     wide,
     jL,
     panelT,
-    stT,
+    stT: panelT,
     lensW,
     compact,
     lensOpen,
@@ -56,13 +58,14 @@ export function computeLayout(s) {
     W,
     H,
     panelH,
-    showTimeline: !pinAgent,
+    showTimeline: !wantsPin,
     ftDw,
   };
 
   // Agent window (prototype apL/apT/apW/ftPanelB) and footer left edge (ftCL).
-  L.ag = { l: jL, t: panelT, w: jW, b: ft === "anchored" ? 24 : ftDw ? 76 : 92, below: false };
-  L.ftCL = ft === "anchored" ? (jOpen ? cL : jL) : jL + podW + 12;
+  const agentWidth = Math.max(0, Math.min(jW, s.vw - jL - 24));
+  L.ag = { l: jL, t: panelT, w: agentWidth, b: ft === "anchored" ? 24 : ftDw ? 76 : 92, below: false };
+  L.ftCL = ft === "anchored" ? cL : jL + podW + 12;
   L.pod = ft === "console" || (ft === "drawer" && !ftDw);
   if (ftM) {
     const tight = s.vw < 1100,

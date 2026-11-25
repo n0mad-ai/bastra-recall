@@ -412,7 +412,7 @@
     "[\"packages/daemon/webui/app/js/data.js\",\"[\\\"function:fetchGraph\\\"]\",\"complexity\"]": 25,
     "[\"packages/daemon/webui/app/js/footer.js\",\"[\\\"function:render\\\"]\",\"complexity\"]": 24,
     "[\"packages/daemon/webui/app/js/header.js\",\"[\\\"function:renderStatus\\\"]\",\"complexity\"]": 16,
-    "[\"packages/daemon/webui/app/js/layout.js\",\"[\\\"function:computeLayout\\\"]\",\"complexity\"]": 40,
+    "[\"packages/daemon/webui/app/js/layout.js\",\"[\\\"function:computeLayout\\\"]\",\"complexity\"]": 38,
     "[\"packages/daemon/webui/app/js/sections/dashboard-widgets.js\",\"[\\\"function:cond\\\"]\",\"complexity\"]": 21,
     "[\"packages/daemon/webui/app/js/sections/dashboard-widgets.js\",\"[\\\"function:memoryStats\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/webui/app/js/sections/dashboard-widgets.js\",\"[\\\"function:parseWeather\\\"]\",\"complexity\"]": 22,

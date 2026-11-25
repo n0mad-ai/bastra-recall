@@ -7,7 +7,13 @@ import assert from "node:assert/strict";
 
 Object.assign(globalThis, { window: globalThis, document: { dispatchEvent() {} } });
 const { computeLayout, COMPACT_BELOW } = (await import(new URL("../webui/app/js/layout.js", import.meta.url).href)) as {
-  computeLayout: (s: Record<string, unknown>) => { W: number; compact: boolean };
+  computeLayout: (s: Record<string, unknown>) => {
+    W: number;
+    cL: number;
+    cR: number;
+    compact: boolean;
+    jOpen: boolean;
+  };
   COMPACT_BELOW: number;
 };
 
@@ -25,4 +31,15 @@ test("decision B: the panel folds just below the width where the week fits besid
   assert.equal(tasks(COMPACT_BELOW).compact, false);
   assert.equal(tasks(COMPACT_BELOW).W, 700);
   assert.equal(tasks(COMPACT_BELOW - 1).compact, true);
+});
+
+test("a 390 px Tasks shell leaves room for the report reader and can open the agent over it", () => {
+  const state = { view: "tasks", vw: 390, vh: 844, jOpen: false, lensOpen: true };
+  const closed = computeLayout(state);
+  assert.equal(closed.jOpen, false, "the agent does not auto-open without room to dock");
+  assert.equal(state.vw - closed.cL - closed.cR, closed.W, "the real stage has the width the layout promises");
+  assert.ok(closed.W >= 240);
+  const opened = computeLayout({ ...state, jOpen: true });
+  assert.equal(opened.jOpen, true);
+  assert.equal(opened.cL, closed.cL, "opening the agent does not squeeze the reader");
 });
