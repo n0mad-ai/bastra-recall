@@ -11,6 +11,12 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
+- `bastra doctor` reports an existing Graphify setup when it finds a
+  registered Graphify guard command, a Graphify section in Claude's
+  instructions or the Graphify skill. The note explains the overlap with
+  Recall's code awareness. The check is read-only, including with `--fix`
+  (#573).
+
 - The credential-redaction toggle can be switched off: `bastra config set
   redaction.enabled false`, or Settings › Writing & docs › "Redact
   credentials" in the web UI. It stays on by default. Off, recognizable
@@ -211,6 +217,11 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Changed
 
+- The credential-redaction guide explains when already stored drafts,
+  queued suggestions and tasks may be cleaned after redaction is turned
+  back on, and which vault files and saved reports require a direct edit
+  (#1719).
+
 - `recall` hits carry `updated`, the day the memory was last written, so an
   agent can tell the newest of several similar hits apart; `bastra recall`
   shows it next to type and area. Ranking is unchanged; hook hints do not
@@ -402,6 +413,26 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- A space inside a wiki-link target does not separate a report question
+  from its answer marker. The daemon and report reader agree on when to
+  show buttons, and unresolved links display their trimmed target (#1738).
+- `/hook/recall` honors `min_score` and `verbosity` only when the caller
+  selects the MCP tool lane with `hook_source: "mcp"`. Automatic hooks
+  retain their projection and budget (#1736).
+- The vault loader keeps the year in quoted early ISO dates and detects
+  impossible dates in multiline, tagged, escaped and aliased YAML
+  timestamps. Impossible `valid_until` dates are reported with their
+  existing expiry behavior preserved (#1720, #1731, #1737).
+- A draft write can recover a strict lock from a proven dead owner. The
+  non-waiting path records the boot identity and preserves live leases
+  (#1691).
+- A deleted or archived rule leaves **Conventions in force** once the
+  matching vault index confirms its absence. A move in progress, an
+  incomplete scan or a different vault cannot retire the rule (#1696).
+- The reviewed-miss harvester records an evidence gap when an earlier,
+  unlinked recall could have served the loaded memory. That load does not
+  produce an out-of-pool proposal (#1126).
+
 - **Report questions no longer lose their answer buttons over a long
   option.** An answer option may now hold up to 120 characters (was 40) and
   wraps inside its button; questions whose options were longer than 40
@@ -415,9 +446,11 @@ until a new design replaces it; this name is independent of the product version.
 - Tasks: due time reminders can use a dedicated portion of the reserve above
   the normal limit. If it fills, due slots wait for space. Disarming a task
   whose audit history is full commits independently of the reminders (#1599).
-- Saving the current version of a corrected claim again no longer warns that
-  it re-asserts a replaced claim. The warning still appears if the submitted
-  text combines a corrected summary with the replaced claim in its body (#643).
+- Save quality suppresses the replaced-claim warning when a rewording
+  supports the current version alone. An old value can still trigger the
+  hint when the save mixes it with current details. With credential
+  redaction enabled, a change confined to a redacted credential does not
+  trigger the hint (#643, #1728, #1734).
 - Task reports and report notes preserve joiners inside compound emoji when
   cleaning text (#1563).
 - Draft-store writes respect a live writer's lock. A competing write can be
@@ -754,6 +787,16 @@ until a new design replaces it; this name is independent of the product version.
   skill's collision radius at once, keeping its place (#1730).
 
 ### Internal
+
+- Import receipts use per-field redaction counts from the audit snapshot's
+  existing pass. The audit entry format stays the same (#1725).
+- Characterization tests pin all 50 settings registry entries and current
+  access paths (#1510).
+- The Knip workflow check requires plain job keys and matches the reviewed
+  before/after digests for contract changes (#1687).
+- The explicit-`any` lint ratchet freezes the measured inventory per file.
+  CI verifies the initial inventory and rejects new or increased exception
+  counts (#1533).
 
 - Split gold-set selection from stratification without changing seeded
   results; remove its complexity baseline exception (#1643).
