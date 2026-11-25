@@ -24,8 +24,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { bandHits } from "../src/band-wording.js";
+import { assembleHookRecallPayload } from "../src/hook-recall-payload.js";
 import { toLeanHit } from "../src/recall-handler.js";
-import type { RecallHit } from "@bastra-recall/core";
+import { Vault, type RecallHit } from "@bastra-recall/core";
 
 const CUT = 100;
 
@@ -84,41 +85,44 @@ test("auf dem unfusionierten Pfad bandet weiterhin nichts — auch kein Hop", ()
   assert.equal(banded.unbanded.length, 2);
 });
 
-// ── 2. Die Hop-Herkunft verlässt den Server nicht ───────────────
+// ── 2. Die schlanke Projektion trägt keine Hop-Herkunft ────────
+
+const neighbor: RecallHit = {
+  id: "m1",
+  title: "T",
+  type: "reference",
+  scope: "s",
+  summary: "S",
+  score: 120,
+  hop: "1-hop",
+  mode: "hybrid",
+  matched_terms: ["x"],
+  topic_path: ["a"],
+};
 
 test("die schlanke Projektion trägt keinen Hop", () => {
-  const full = {
-    id: "m1",
-    title: "T",
-    type: "reference",
-    scope: "s",
-    summary: "S",
-    score: 120,
-    hop: "1-hop",
-    mode: "hybrid",
-    matched_terms: ["x"],
-    topic_path: ["a"],
-  } as unknown as RecallHit;
-  const lean = toLeanHit(full);
+  const lean = toLeanHit(neighbor);
   assert.deepEqual(Object.keys(lean).sort(), ["id", "scope", "score", "summary", "title", "type"]);
   assert.ok(!("hop" in lean), "§13.1: die Herkunft gehört in Telemetrie und Debug, nicht in die Antwort");
 });
 
-test("auch die Hook-Antwort projiziert den Hop nicht", () => {
-  // Der Hook-Pfad baut seine Antwort aus `toLeanHit` plus drei benannten
-  // Zusatzfeldern. Kippt das, hinge der öffentliche Vertrag an einer
-  // Spread-Zeile, die niemand mehr liest.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const src = readFileSync(join(here, "..", "src", "hook-recall-payload.ts"), "utf8");
-  // #487: Die Projektion steht seit dem Budget in `leanHits` — sie muss VOR
-  // dem Payload stehen, weil das Budget die fertigen Treffer beschneidet.
-  const start = src.indexOf("const leanHits = hits.map(");
-  assert.ok(start > 0, "die Antwortprojektion des Hook-Pfades ist unauffindbar");
-  // Bis zum ersten `vault_size` NACH dem Payload-Anfang: derselbe Ausdruck
-  // steht weiter oben schon einmal in einer anderen Antwort.
-  const payload = src.slice(start, src.indexOf("vault_size: vault.size()", start));
-  assert.ok(payload.includes("...toLeanHit(h)"), "die Projektion läuft über toLeanHit");
-  assert.ok(!/\bhop\b\s*:/.test(payload), "kein hop-Feld in der Hook-Antwort");
+test("die automatische Hook-Antwort enthält den Treffer ohne Hop-Herkunft", () => {
+  const { payload } = assembleHookRecallPayload({
+    hits: [neighbor],
+    candidatePool: [],
+    vault: new Vault(dirname(fileURLToPath(import.meta.url))),
+    maxTokens: 0,
+    totalLatencyMs: 0,
+    recallId: "hop-provenance-fixture",
+    weakResult: false,
+    noHome: false,
+    hookProject: null,
+    hybridActiveAtRecall: true,
+    degradedReason: undefined,
+  });
+  assert.equal(payload.hits.length, 1);
+  assert.equal(payload.hits[0]!.id, neighbor.id);
+  assert.ok(!("hop" in payload.hits[0]!), "kein hop-Feld in der automatischen Hook-Antwort");
 });
 
 // ── 3. Was im SessionStart-Budget nie läuft ─────────────────────
