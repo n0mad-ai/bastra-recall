@@ -322,6 +322,61 @@ test("only the reviewed contract bytes can cross the mkfifo configuration change
   assert.throws(() => verifyKnipContract(read(raised), read(currentFiles), hashes), /new\/increased/);
 });
 
+test("#1687: with an unchanged configuration only the exact reviewed contract digests pass", () => {
+  const reviewed = readFileSync(join(repository, "knip.json"), "utf8");
+  const file = "scripts/lint-knip-contract.mjs";
+  const previousFiles = {
+    "knip.json": reviewed,
+    "knip-baseline.json": JSON.stringify({ ...baseline({}), configDigest: digest(JSON.parse(reviewed)) }),
+    "package.json": JSON.stringify(metadata),
+    "package-lock.json": JSON.stringify(lock),
+    ".github/workflows/ci.yml": workflow,
+    [file]: "previous contract\n",
+  };
+  const currentFiles = { ...previousFiles, [file]: "reviewed contract\n" };
+  const read = (files) => (name) => files[name] ?? null;
+  const hashes = { before: digest(previousFiles[file]), after: digest(currentFiles[file]) };
+  const verify = (candidate, trusted = previousFiles, pair = hashes) =>
+    verifyKnipContract(read(candidate), read(trusted), pair);
+  assert.doesNotThrow(() => verify(previousFiles));
+  assert.doesNotThrow(() => verify(currentFiles));
+  const after = currentFiles[file];
+  for (const changed of [after + " ", after.slice(1), after.replace("r", "R"), " " + after, after + "\n"]) {
+    assert.throws(() => verify({ ...currentFiles, [file]: changed }), /bootstrap\/contract changes/);
+  }
+  for (let index = 0; index < after.length; index++) {
+    const flipped = after.slice(0, index) + String.fromCharCode(after.charCodeAt(index) ^ 1) + after.slice(index + 1);
+    assert.throws(() => verify({ ...currentFiles, [file]: flipped }), /bootstrap\/contract changes/);
+  }
+  assert.throws(
+    () => verify(currentFiles, { ...previousFiles, [file]: "other base\n" }),
+    /bootstrap\/contract changes/
+  );
+  for (const pair of [{ ...hashes, after: hashes.before }, { ...hashes, before: hashes.after }, null, {}]) {
+    assert.throws(() => verify(currentFiles, previousFiles, pair), /bootstrap\/contract changes/);
+  }
+  const wider = JSON.stringify({ ...JSON.parse(reviewed), ignoreBinaries: ["mkfifo", "another-tool"] });
+  assert.throws(
+    () =>
+      verify({
+        ...currentFiles,
+        "knip.json": wider,
+        "knip-baseline.json": JSON.stringify({ ...baseline({}), configDigest: digest(JSON.parse(wider)) }),
+      }),
+    /configuration change/
+  );
+});
+
+test("#1687: the shipped reviewed pair accepts exactly the current contract file", () => {
+  const guardSource = readFileSync(join(repository, "scripts/check-lint-baselines.mjs"), "utf8");
+  const pair = guardSource.match(/verifyKnipContract\([^{]*\{\s*before: "([0-9a-f]{64})",\s*after: "([0-9a-f]{64})"/);
+  assert.ok(pair, "reviewed contract pair not found");
+  const contract = readFileSync(join(repository, "scripts/lint-knip-contract.mjs"), "utf8");
+  assert.equal(pair[2], digest(contract));
+  assert.notEqual(pair[1], pair[2]);
+  assert.notEqual(pair[1], "895182dc1570685706ba35f640c04407be459bfdca0b9d9e607e5a91b3446c0c");
+});
+
 test("workflow contract rejects skips, optional execution, different commands and order", () => {
   assert.doesNotThrow(() => assertKnipWorkflow(workflow));
   for (const changed of [
@@ -346,6 +401,29 @@ test("#1658: mandatory Knip job fields cannot bypass the guard after the step li
   ]) {
     assert.throws(() => assertKnipWorkflow(job + fields), /Conditional\/optional mandatory job/);
   }
+});
+
+test("#1687: quoted, escaped, tagged, anchored, explicit or merged job keys fail closed", () => {
+  const job = workflow + "      - name: Smoke test\n        if: always()\n        continue-on-error: true\n";
+  assert.doesNotThrow(() => assertKnipWorkflow(job + "    # if: false\n    timeout-minutes: 30\n"));
+  for (const fields of [
+    '    "if": false\n',
+    "    'continue-on-error' : true\n",
+    '    "continue-on-error": true\n',
+    '    "\\x69f": false\n',
+    "    !!str if: false\n",
+    "    &key if: false\n",
+    "    ? if\n    : false\n",
+    "    <<: *skip\n",
+    "    {if: false}\n",
+    "   if: false\n",
+    "if: false\n",
+    "    \tif: false\n",
+  ]) {
+    assert.throws(() => assertKnipWorkflow(job + fields), /Conditional\/optional mandatory job/, fields);
+  }
+  const shifted = workflow.replace(/^ {4}(?=\S)/gm, "   ").replace(/^ {6}/gm, "     ");
+  assert.throws(() => assertKnipWorkflow(shifted + "   if: false\n"), /mandatory job/);
 });
 
 test("package and lock contracts reject script/version/integrity weakening", () => {

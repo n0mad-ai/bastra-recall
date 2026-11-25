@@ -182,10 +182,10 @@ for (const file of [
 
 try {
   const { verifyKnipContract } = await import("./lint-knip-contract.mjs");
-  // #1658 and #1661: match only the contract reviewed for this Knip configuration transition.
+  // #1687: match only the reviewed contract edit; any later edit needs a new pair here.
   verifyKnipContract((file) => readFileSync(file, "utf8"), readBase, {
-    before: "895182dc1570685706ba35f640c04407be459bfdca0b9d9e607e5a91b3446c0c",
-    after: "68b1e09eeedf9234dbf5377151c0e75861c17a58f22dc040ed7125f9653b72da",
+    before: "68b1e09eeedf9234dbf5377151c0e75861c17a58f22dc040ed7125f9653b72da",
+    after: "1aa5eebd35f54467443e4416845e00480cf4d3b9d0de5d213714e22f4999bbd0",
   });
 } catch (error) {
   console.error(`Knip contract failed against ${base}: ${error.message}`);

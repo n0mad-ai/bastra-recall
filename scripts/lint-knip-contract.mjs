@@ -19,12 +19,22 @@ export function knipPackageAllowed(before, after) {
   return candidate.devDependencies?.knip === KNIP_VERSION && candidate.scripts?.["lint:knip"] === KNIP_SCRIPT;
 }
 
+// #1687: YAML can spell a job key quoted, escaped, tagged, anchored, explicit (`?`) or merged (`<<`).
+// Fail closed: every job-level line is a comment or a plain key other than if/continue-on-error.
+function assertPlainJobKeys(job) {
+  const lines = job.split("\n").filter((line) => line.trim() && !/^\s*#/.test(line));
+  for (const [index, line] of lines.entries()) {
+    // The first line fixes the job indentation at four spaces; deeper lines belong to a job value.
+    if (index > 0 && /^ {5}/.test(line)) continue;
+    const key = /^ {4}([A-Za-z][\w-]*)[ \t]*:(?:[ \t]|$)/.exec(line)?.[1];
+    if (!key || key === "if" || key === "continue-on-error") throw new Error("Conditional/optional mandatory job");
+  }
+}
+
 export function assertKnipWorkflow(source) {
   const job = source.match(/^  build-and-test:\n([\s\S]*?)(?=^  [a-zA-Z][\w-]*:|$(?![\s\S]))/m)?.[1];
   if (!job) throw new Error("Missing mandatory build-and-test job");
-  if (/^    (?:if|continue-on-error)[ \t]*:/m.test(job)) {
-    throw new Error("Conditional/optional mandatory job");
-  }
+  assertPlainJobKeys(job);
   const steps = job.split(/^      - /m).slice(1);
   const build = steps.findIndex((step) => /\n        run: npm run build\s*$/.test(step.trimEnd()));
   const gates = steps.filter((step) => /npm run lint:knip/.test(step));
@@ -85,16 +95,11 @@ function currentPackage(read, packageBefore, required) {
   }
 }
 
-function assertReviewedKnipContract(before, after, previousConfig, config, reviewedContract) {
+// #1687: a contract edit passes only with the exact before/after digests reviewed in the same diff.
+// Configuration changes stay guarded separately by assertKnipBudget.
+function assertReviewedKnipContract(before, after, reviewedContract) {
   if (before && before === after) return;
-  if (
-    before &&
-    approvedMkfifoConfig(previousConfig, config) &&
-    digest(before) === reviewedContract?.before &&
-    digest(after) === reviewedContract?.after
-  ) {
-    return;
-  }
+  if (before && digest(before) === reviewedContract?.before && digest(after) === reviewedContract?.after) return;
   throw new Error("Knip bootstrap/contract changes need explicit review");
 }
 
@@ -121,8 +126,6 @@ export function verifyKnipContract(read, readBase, reviewedContract) {
   assertReviewedKnipContract(
     readBase("scripts/lint-knip-contract.mjs"),
     read("scripts/lint-knip-contract.mjs"),
-    previousConfig,
-    config,
     reviewedContract
   );
 }
