@@ -26,7 +26,9 @@ until a new design replaces it; this name is independent of the product version.
   tool names plus server instructions for clients that load descriptions when
   needed (Claude Code, current Codex; about 1,100 tokens today), and the full
   list as the figure for clients that load every description at once (about
-  26,000 tokens). With `--json` the line stays English (#1472).
+  26,000 tokens). The line labels both figures as an estimate from the
+  catalog and says that Doctor did not check which mode the client really
+  uses. With `--json` the line stays English (#1472, #1716).
 - **Web UI: ghost actions are back** — the card of an unwritten note (a ghost
   in the Ring or in Mindspace/Clouds/Semantic) offers **Request note**, which
   puts a `write` flag on the vault care list (`vault-care.md`) so the next
@@ -685,6 +687,42 @@ until a new design replaces it; this name is independent of the product version.
   once and ends with an error saying it is unclear whether it was saved, to
   check before calling it again. Before, it could arrive up to four times
   (#1677).
+- **Report answer options need a space before them.** A marker joined to the
+  word before it (`Matrix[?a|b]`) stays text and creates no buttons or jump
+  list entry; `Question? [? Yes | No]` and a marker on its own line still ask.
+  `task_report_save` names such lines in `hints` (#1717).
+- `task_report_save` now also names an earlier malformed marker on a line whose
+  last marker shows answer buttons, e.g. `First [? Yes] and second [? Yes | No]`;
+  the buttons stay and the report is stored (#1718).
+- A note with a malformed `updated` value (`false`, a list, or an impossible
+  bare day such as `2026-02-31`, which YAML rolled into March) stays loaded and
+  findable; Recall takes the file's day, as for a missing value, and the vault
+  report names the field (#1720).
+- `save_memory` no longer warns that a save re-asserts a replaced claim when it
+  repeats the current version and only redaction made the texts differ: the
+  stored versions are compared with the same redaction as the input (#1728).
+- Settings: saving in an older tab after Settings was opened in a second tab
+  no longer fails with HTTP 403. The settings API now answers a mismatched CSRF
+  token with `"code": "csrf_mismatch"`; the web UI then opens a new session
+  once and repeats the request, keeping unsaved changes. Origin and Host
+  refusals are still not repeated, and expired sessions renew as before
+  (#1699).
+- Web UI, Tasks: the calendar follows its settled width. One pixel below
+  700 px shows three days, 700 px the week, and the stage's edge animation
+  while the window narrows no longer flips it to three days and back
+  (#1701, #1702).
+- Web UI: **Is a skill** on an unwritten note redraws the node as a skill in
+  the open Mindspace, Clouds or Semantic view, without leaving it (#1715).
+- Web UI: a memory link from Tasks or the agent no longer leaves the memory
+  browser waiting forever when the first graph request failed; the vault
+  view shows its error, and the link works again once the graph is back
+  (#1721).
+- The `recall` tool over the stdio forwarder now honours `min_score`,
+  `verbosity` and near-duplicate `queries`, as over REST: a score floor and
+  `verbosity: "full"` were dropped before, and a batch of remixed phrasings
+  fanned out unchanged. Automatic hook hints send none of these and are
+  unchanged. Conflict flags and Commons hits still exist only over REST
+  (#1727).
 
 ### Internal
 
@@ -871,6 +909,13 @@ until a new design replaces it; this name is independent of the product version.
 - Eval: the code-roi test runner starts the suites of other repositories
   without the caller's repository-steering git variables; registered
   measurements are unaffected (#1670).
+- Small cleanups and test coverage: the MCP forwarder no longer exports its
+  single-caller error-text helper (#1703); `save_document` writer attribution
+  is covered by an automated test (#1700); the memory browser probe waits up
+  to five seconds for the selected memory's detail and reports which request
+  failed (#1714); the ghost-card actions and the care-list save reuse the
+  shared JSON request helper (#1724); the vault report's low-signal section
+  reuses the save-quality one-word trigger check (#642).
 
 ## [1.2.1] — 2026-11-16
 
