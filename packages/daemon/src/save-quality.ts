@@ -216,7 +216,10 @@ function replacedClaimAdvisory(
  *  that a save repeats the correction, including single-character changes.
  *  #1728: save_memory redacts its input before this check (save-redaction.ts)
  *  while a stored version may still hold a credential written earlier; both
- *  sides get the same redaction, so only the claim decides. */
+ *  sides get the same redaction, so only the claim decides.
+ *  #1734 (intended): plaintext credential values are never compared. Versions
+ *  that differ only in a redacted value read the same, so repeating the old
+ *  value gets no advisory. */
 function restatesCurrent(deps: ToolDeps, input: SaveMemoryInput, oldId: string, currentId: string): boolean {
   const old = deps.vault.get(oldId);
   const current = deps.vault.get(currentId);

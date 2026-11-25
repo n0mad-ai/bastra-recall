@@ -234,6 +234,46 @@ test("#1728: a credential stored unredacted in the current version does not coun
   assert.ok(issue(OLD), "the replaced claim repeated still warns");
 });
 
+/** Two versions with the same title and text except for one value in the body;
+ *  `issue` scores a save of the given body against them. */
+function valueOnlyChange(oldValue: string, newValue: string) {
+  const summary = "The ingest worker authenticates with a personal access token.";
+  const base = memo("Ingest worker token", summary, "rotating the ingest worker token");
+  const body = (value: string) => `${summary} The token is ${value}.`;
+  const stored = (id: string, value: string, extra: Record<string, unknown> = {}) => ({
+    fm: { ...base, id, sensitivity: "team", ...extra },
+    body: body(value),
+  });
+  const rows = new Map([
+    ["old", stored("old", oldValue, { superseded_by: "new" })],
+    ["new", stored("new", newValue)],
+  ]);
+  const deps = {
+    vault: { get: (id: string) => rows.get(id), list: () => [...rows.values()] },
+    search: { recall: () => [{ id: "old", title: base.title, summary }] },
+  } as unknown as ToolDeps;
+  return (value: string) =>
+    scoreSaveQuality(deps, { ...base, body: body(value) } as SaveMemoryInput, "probe").issues.find((i) =>
+      i.startsWith("re-asserts a replaced claim")
+    );
+}
+
+test("#1734: versions that differ only in a redacted credential value get no replaced-claim advisory", () => {
+  // Obviously synthetic values in a pattern the redaction recognises; never a real key.
+  const oldSecret = "ghp_" + "a".repeat(36);
+  const issue = valueOnlyChange(oldSecret, "ghp_" + "b".repeat(36));
+  // Plaintext credential values are never compared: after redaction both
+  // versions read the same, so repeating the old value is not a replaced claim.
+  assert.equal(issue(oldSecret), undefined, "the old credential value, unredacted input");
+  assert.equal(issue("[REDACTED]"), undefined, "the old credential value, as save_memory hands it over");
+});
+
+test("#1734: the same value-only change without a credential still warns", () => {
+  const issue = valueOnlyChange("alpha-readonly", "beta-readwrite");
+  assert.ok(issue("alpha-readonly"), "the replaced non-secret value repeated");
+  assert.equal(issue("beta-readwrite"), undefined, "the current value repeated");
+});
+
 test("an unrelated save gets no replaced-claim advisory", async (t) => {
   const deps = await fixture(t);
   await correctedVault(deps);
