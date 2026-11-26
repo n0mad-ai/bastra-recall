@@ -32,7 +32,7 @@ test("migration v3 adds telemetry_days after a backup of v2, leaves tasks/chat r
   v2.sqlite.prepare("INSERT INTO chat_messages(conversation_id,role,text,created_at) VALUES('c1','user','hi',1)").run();
   v2.close();
 
-  const db = openAppDatabase({ path });
+  const db = openAppDatabase({ path, migrations: APP_MIGRATIONS.slice(0, 3) });
   assert.equal(db.sqlite.prepare("PRAGMA user_version").get()?.user_version, 3);
   const cols = db.sqlite
     .prepare("PRAGMA table_info(telemetry_days)")
@@ -65,7 +65,7 @@ test("migration v3 adds telemetry_days after a backup of v2, leaves tasks/chat r
   snap.close();
 
   const all = readdirSync(`${path}.backups`);
-  openAppDatabase({ path }).close();
+  openAppDatabase({ path, migrations: APP_MIGRATIONS.slice(0, 3) }).close();
   assert.deepEqual(readdirSync(`${path}.backups`), all, "reopening migrates nothing and backs up nothing");
 });
 

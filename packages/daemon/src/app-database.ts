@@ -101,7 +101,51 @@ export const APP_MIGRATIONS: readonly AppMigration[] = [
     ) STRICT;`);
     },
   },
+  {
+    version: 4,
+    name: "ui-login",
+    // #1198: the one web UI account (Argon2id check value, ui-password.ts;
+    // ui-account-store.ts), UI sessions (only the SHA-256 of the session token
+    // is stored; `id` is the handle for revoking a device) and failed sign-in
+    // counters per bucket (source, account). exportJson leaves account and
+    // session rows out.
+    up(db) {
+      db.exec(`CREATE TABLE ui_account (
+      id INTEGER PRIMARY KEY CHECK(id=1),
+      username TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      credential_version INTEGER NOT NULL CHECK(credential_version>=1),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE ui_sessions (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
+      kind TEXT NOT NULL CHECK(kind IN ('browser','device')),
+      origin TEXT NOT NULL CHECK(origin IN ('local','public')),
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      credential_version INTEGER NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      user_agent TEXT NOT NULL DEFAULT ''
+    ) STRICT;
+    CREATE INDEX ui_sessions_expires ON ui_sessions(expires_at);
+    CREATE TABLE ui_login_failures (
+      bucket TEXT PRIMARY KEY,
+      failures INTEGER NOT NULL DEFAULT 0,
+      window_started_at INTEGER NOT NULL,
+      locked_until INTEGER NOT NULL DEFAULT 0,
+      lockout_level INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    ) STRICT;`);
+    },
+  },
 ];
+
+// #1198: password check values and session token hashes never leave the
+// database through a diagnostic export.
+const EXPORT_OMITTED_TABLES = new Set(["ui_account", "ui_sessions"]);
 
 export interface AppDatabaseOptions {
   /** Explicit local path for isolated fixtures or an installation's state root. */
@@ -311,6 +355,7 @@ export class AppDatabase {
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         .all()) {
         const name = String(row.name);
+        if (EXPORT_OMITTED_TABLES.has(name)) continue;
         tables[name] = this.sqlite.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`).all();
       }
       return { format: "bastra-app-database-v1", schemaVersion: schemaVersion(this.sqlite), schema, tables };
