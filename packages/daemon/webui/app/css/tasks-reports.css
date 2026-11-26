@@ -246,15 +246,12 @@
 .tk-rv .st-outdated {
   --tc: var(--muted);
 }
-/* one marking per row: the state's stripe on the left, the open report's accent line on the right, the
+/* one marking per row: a stripe on the left (the state's, or the accent for the open report), the
  * tint of the state or of the selection; no coloured lines above or below (Daniel 26.11.2026) */
 .tk-rv .mb-row,
 .tk-rv .mb-row.is-sel {
   --stripe: 0 0 transparent;
-  --mark: 0 0 transparent;
-  box-shadow:
-    inset 2px var(--stripe),
-    inset -2px var(--mark);
+  box-shadow: inset 2px var(--stripe);
 }
 .tk-rv .mb-row.st-question,
 .tk-rv .mb-row.st-in_progress,
@@ -273,10 +270,11 @@
 .tk-rv .mb-row.st-handed:hover {
   background: var(--line-08);
 }
-/* the open report: the selection's own accent tint and its line at the row's right edge, next to the
- * report it shows; the state keeps its dot and stripe */
+/* the open report: the selection's own accent tint and the accent stripe on the left, where the other
+ * rows show theirs; it replaces the state's stripe (after the state rules, same specificity), the state
+ * keeps its dot */
 .tk-rv .mb-row.is-sel {
-  --mark: 0 0 var(--accent);
+  --stripe: 0 0 var(--accent);
   background: rgba(56, 217, 245, 0.09);
 }
 .tk-rv .mb-row.is-work .mb-row__t {

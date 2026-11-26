@@ -31,7 +31,7 @@
 // Above the list the status filter (Daniel 26.11.2026, tasks-reports-filter.js): by default only the
 // reports that need the owner; read, done and outdated ones on demand, as groups of their own. Every
 // state has its colour on the row's dot and, while it waits on someone, on the stripe at the row's left
-// edge; the open report is marked by the accent at the row's right edge instead (css/tasks-reports.css).
+// edge; the open report shows the accent stripe there instead (css/tasks-reports.css).
 // The reader's head stands above the scrolling text, not inside it, so its line and shadow span the
 // reader's full width whether or not a scrollbar is shown (Daniel 26.11.2026).
 import { h } from "../dom.js";

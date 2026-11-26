@@ -181,12 +181,18 @@ test("one marking per row: a stripe on the left for open states, none for new an
   // new and done: no tint either (the green dot is enough for done, Daniel 26.11.2026)
   for (const s of ["new", "done"]) assert.equal(merged(`.tk-rv .mb-row.st-${s}`).background, undefined, s);
   assert.ok(merged(".tk-rv .mb-row.st-question").background, "a question is tinted");
-  // the row's shadow is the left stripe and the right selection line only: no inset line at the top or bottom
+  // the row's shadow is the left stripe only: no line on the right, none at the top or bottom
   const shadow = merged(".tk-rv .mb-row")["box-shadow"];
-  assert.equal(shadow.replace(/\s+/g, " "), "inset 2px var(--stripe), inset -2px var(--mark)");
+  assert.equal(shadow.replace(/\s+/g, " "), "inset 2px var(--stripe)");
   assert.equal(merged(".tk-rv .mb-row.is-sel")["box-shadow"], shadow, "the selection overrides membrowser's lines");
-  // the open report: accent line on the right edge, so it never looks like a state on the left
-  assert.equal(merged(".tk-rv .mb-row.is-sel")["--mark"], "0 0 var(--accent)");
+  assert.ok(!/--mark/.test(css), "no selection line on the right edge any more");
+  // the open report: the accent stripe on the left, in the state stripe's place, winning over it by order
+  assert.equal(merged(".tk-rv .mb-row.is-sel")["--stripe"], "0 0 var(--accent)");
+  const last = (pred: (sel: string, d: Record<string, string>) => boolean) =>
+    rules.map(([s, d], i) => (pred(s as string, d as Record<string, string>) ? i : -1)).reduce((a, b) => Math.max(a, b));
+  const sel = last((s, d) => selectorsOf(s).includes(".tk-rv .mb-row.is-sel") && d["--stripe"] === "0 0 var(--accent)");
+  for (const s of ["question", "in_progress", "handed"])
+    assert.ok(sel > last((x, d) => selectorsOf(x).includes(`.tk-rv .mb-row.st-${s}`) && "--stripe" in d), `selection after the ${s} stripe`);
   assert.ok(!/inset 0 (1px|-1px)/.test(css), "no coloured line above or below a row any more");
 });
 
