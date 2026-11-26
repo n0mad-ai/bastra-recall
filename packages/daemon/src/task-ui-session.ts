@@ -3,6 +3,7 @@ import { tasksEnabled } from "./tasks-enabled.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { getUiEnabled } from "./settings.js";
+import { uiRequestState } from "./ui-auth-gate.js";
 import { isLoopback, isLoopbackHost, gateLocalPost } from "./http-auth.js";
 import { taskClientToken } from "./task-client-auth.js";
 import { authenticateTask } from "./task-auth.js";
@@ -10,7 +11,16 @@ import { callTaskCrud, type TaskServiceContext } from "./task-service.js";
 import { defaultTaskContext, isTaskTool, taskFailure } from "./task-transport.js";
 import { readJsonBody, sendJson, MAX_BODY_BYTES } from "./http-util.js";
 // Deliberately process-local: a daemon restart invalidates every browser grant.
-const sessions = new Map<string, { authorization: string; csrf: string; path: string; lastUsed: number }>();
+// #1198: `uiSession` is the web UI session (ui-session.ts) the grant was made under; a
+// grant counts only while the request carries that same UI session, so it ends with it.
+interface Grant {
+  authorization: string;
+  csrf: string;
+  path: string;
+  lastUsed: number;
+  uiSession: string | null;
+}
+const sessions = new Map<string, Grant>();
 // Reclaim only under capacity pressure. Existing cookies have no automatic TTL.
 // When all slots are taken, the least recently used session gives way to a new
 // browser if it has been idle for reclaimIdleMs. An open board polls far more
@@ -19,9 +29,21 @@ const sessions = new Map<string, { authorization: string; csrf: string; path: st
 const capacity = 100;
 const reclaimIdleMs = 10 * 60 * 1000;
 const cookie = "bastra_task_session";
-const cookieHeader = (value: string) => `${cookie}=${value}; HttpOnly; SameSite=Strict; Path=/ui/tasks/`;
+const cookieHeader = (value: string, secure: boolean) =>
+  `${cookie}=${value}; ${secure ? "Secure; " : ""}HttpOnly; SameSite=Strict; Path=/ui/tasks/`;
 function reject(code: string): never {
   throw Object.assign(new Error("Task UI access denied"), { code });
+}
+/** #1198: through the tunnel only with a web UI session; on the Mac only a direct loopback request. */
+function uiAccess(req: IncomingMessage): { allowed: boolean; uiSession: string | null; publicUi: boolean } {
+  const ui = uiRequestState(req);
+  const uiSession = ui?.session?.id ?? null;
+  if (ui?.access === "public") return { allowed: uiSession !== null, uiSession, publicUi: true };
+  return { allowed: isLoopback(req) && isLoopbackHost(req.headers.host, []), uiSession, publicUi: false };
+}
+/** A grant counts for this store, this agent token and this web UI session only. */
+function grantMatches(grant: Grant | "" | undefined, path: string, uiSession: string | null): grant is Grant {
+  return !!grant && grant.path === path && grant.uiSession === uiSession;
 }
 export function dispatchTaskUi(
   req: IncomingMessage,
@@ -41,7 +63,10 @@ export function dispatchTaskUi(
   void (async () => {
     try {
       res.setHeader("Cache-Control", "no-store");
-      if (!isLoopback(req) || !isLoopbackHost(req.headers.host, []) || !(await getUiEnabled())) reject("forbidden");
+      // #1198: bound to the web UI session the gate (ui-auth-gate.ts) found. Through
+      // the tunnel only with one; on the Mac as before, and with one once an account exists.
+      const { allowed, uiSession, publicUi } = uiAccess(req);
+      if (!allowed || !(await getUiEnabled())) reject("forbidden");
       if (method !== "POST") reject("forbidden");
       const gate = gateLocalPost({
         origin: req.headers.origin,
@@ -63,7 +88,7 @@ export function dispatchTaskUi(
           principal = await authenticateTask(authorization, ctx.authPath);
         if (principal.role !== "agent") reject("forbidden");
         const existing = id && sessions.get(id);
-        if (existing && existing.path === ctx.path && existing.authorization === authorization) {
+        if (grantMatches(existing, ctx.path, uiSession) && existing.authorization === authorization) {
           existing.lastUsed = Date.now();
           sendJson(res, 200, { role: "agent", csrf: existing.csrf, expires_in: null });
           return;
@@ -81,13 +106,13 @@ export function dispatchTaskUi(
         if (sessions.size >= capacity) reject("capacity");
         const sessionId = randomBytes(32).toString("base64url"),
           csrf = randomBytes(32).toString("base64url");
-        sessions.set(sessionId, { authorization, csrf, path: ctx.path, lastUsed: Date.now() });
-        res.setHeader("Set-Cookie", cookieHeader(sessionId));
+        sessions.set(sessionId, { authorization, csrf, path: ctx.path, lastUsed: Date.now(), uiSession });
+        res.setHeader("Set-Cookie", cookieHeader(sessionId, publicUi));
         sendJson(res, 200, { role: "agent", csrf, expires_in: null });
         return;
       }
       const session = id && sessions.get(id);
-      if (!session || session.path !== ctx.path) reject("unauthorized");
+      if (!grantMatches(session, ctx.path, uiSession)) reject("unauthorized");
       const csrf = req.headers["x-bastra-task-csrf"];
       if (
         typeof csrf !== "string" ||

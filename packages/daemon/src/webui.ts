@@ -396,6 +396,66 @@ function uiFile(rel: string, webUiDir: string, engineDir: string): string | null
   return target === root || target.startsWith(root + sep) ? target : null;
 }
 
+/** An HTML page of the UI with the per-request <html> attributes, or null when it is not a file. */
+async function readUiPage(target: string, settingsPath?: string): Promise<string | null> {
+  // Bind validation and reading to one descriptor (#1238, CodeQL).
+  const file = await open(target, "r");
+  try {
+    if (!(await file.stat()).isFile()) return null;
+    // Resolve before first paint; disabled clients never wire the Tasks view.
+    const enabled = tasksEnabled();
+    // UI language follows language.primary: "de" → German, anything else → English.
+    const lang = (await getPrimaryLanguage(settingsPath)) === "de" ? "de" : "en";
+    return (await file.readFile("utf8")).replace("<html", `<html data-tasks-enabled="${enabled}" data-lang="${lang}"`);
+  } finally {
+    await file.close();
+  }
+}
+
+/** #1198 GET /ui/login — the sign-in page (webui/app/login.html), reachable without a session. */
+export async function serveLoginPage(
+  res: ServerResponse,
+  webUiDir: string = resolveWebUiDir(),
+  settingsPath?: string
+): Promise<void> {
+  let html: string | null;
+  try {
+    html = await readUiPage(join(webUiDir, "login.html"), settingsPath);
+  } catch {
+    html = null;
+  }
+  if (html === null) {
+    sendPlain(res, 404, "not found");
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": CONTENT_TYPES[".html"]!,
+    "Content-Length": Buffer.byteLength(html),
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": CSP,
+  });
+  res.end(html);
+}
+
+/**
+ * #1198: a /ui request without a valid session. A page navigation (GET that
+ * accepts text/html) goes to the sign-in page with the path it wanted as
+ * `next` — always a relative /ui/ path, it is this request's own target; a
+ * data route answers 401 JSON.
+ */
+export function sendUiAuthRequired(req: IncomingMessage, res: ServerResponse, method: string): void {
+  const url = req.url ?? "";
+  const page = (method === "GET" || method === "HEAD") && /\btext\/html\b/i.test(String(req.headers.accept ?? ""));
+  if (page && url.startsWith("/ui") && !url.startsWith("//")) {
+    const next = url === "/ui" || url.startsWith("/ui?") ? `/ui/${url.slice(3)}` : url;
+    res.writeHead(302, { Location: `/ui/login?next=${encodeURIComponent(next)}`, "Cache-Control": "no-store" });
+    res.end();
+    return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  sendJsonPlain(res, 401, { error: "auth-required" });
+}
+
 /** Handles GET /ui and GET /ui/* — call only after the host gate passed.
  *  `webUiDir`/`settingsPath`/`engineDir` are injectable for tests only. */
 export async function handleWebUi(
@@ -437,25 +497,12 @@ export async function handleWebUi(
     let html: string | undefined;
     let contentLength: number;
     if (rel === "index.html") {
-      // Bind validation and reading to one descriptor (#1238, CodeQL).
-      const file = await open(target, "r");
-      try {
-        if (!(await file.stat()).isFile()) {
-          sendPlain(res, 404, "not found");
-          return;
-        }
-        // Resolve before first paint; disabled clients never wire the Tasks view.
-        const enabled = tasksEnabled();
-        // UI language follows language.primary: "de" → German, anything else → English.
-        const lang = (await getPrimaryLanguage(settingsPath)) === "de" ? "de" : "en";
-        html = (await file.readFile("utf8")).replace(
-          "<html",
-          `<html data-tasks-enabled="${enabled}" data-lang="${lang}"`
-        );
-        contentLength = Buffer.byteLength(html);
-      } finally {
-        await file.close();
+      html = (await readUiPage(target, settingsPath)) ?? undefined;
+      if (html === undefined) {
+        sendPlain(res, 404, "not found");
+        return;
       }
+      contentLength = Buffer.byteLength(html);
     } else {
       const st = await stat(target);
       if (!st.isFile()) {

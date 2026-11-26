@@ -101,14 +101,9 @@ import { type ChatFn } from "./webui-chat.js";
 import { type CuratorRunDeps } from "./curator-run.js";
 import type { EmbeddingStatus } from "./embedding-status.js";
 import { sendCors, sendJson } from "./http-util.js";
-import {
-  canonicalRequestTarget,
-  forwardedWithoutToken,
-  isLoopbackHost,
-  resolveCorsOrigin,
-  gateLocalPost,
-} from "./http-auth.js";
+import { canonicalRequestTarget, resolveCorsOrigin, gateLocalPost } from "./http-auth.js";
 import { dispatchUiRoutes } from "./http-ui-routes.js";
+import { gateUiRequest, uiForwardedWithoutToken, uiHostAllowed, uiRequestAccess } from "./ui-auth-gate.js";
 import { dispatchLocalRoutes } from "./http-local-routes.js";
 import { codeGraphRefresher } from "./code-graph/service.js";
 import { dispatchApiSurface } from "./http-api-surface.js";
@@ -260,7 +255,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // DNS-Rebinding-Gate für alles außer /api/v1/* (dort schützt das Token):
     // die offenen Endpoints sind loopback-only by design — ein nicht-loopback
     // Host-Header heißt, ein Browser wurde auf 127.0.0.1 umgebogen.
-    if (!url.startsWith("/api/v1/") && !isLoopbackHost(req.headers.host, ctx.allowedHosts)) {
+    // #1198: only "public-ui" (the web UI through the tunnel, ui-auth-gate.ts)
+    // skips this gate and the token rule below; its session gate follows.
+    const ui = await uiRequestAccess(req, res);
+    if (!uiHostAllowed(req, ui, url, ctx.allowedHosts)) {
       sendJson(res, 403, { error: "host not allowed" });
       return;
     }
@@ -268,7 +266,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // #1264: a proxy may rewrite Host to localhost. Every local route must then
     // authenticate too, before any handler can read data or apply a write.
     const pathname = url.split("?", 1)[0]!;
-    if (forwardedWithoutToken(req, pathname, ctx.apiToken)) {
+    if (uiForwardedWithoutToken(req, ui, pathname, ctx.apiToken)) {
       sendJson(res, 401, { error: "unauthorized" });
       return;
     }
@@ -312,6 +310,8 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         return;
       }
     }
+
+    if (await gateUiRequest(req, res, ui, method, pathname)) return;
 
     if (dispatchSettingsUi(req, res, method, pathname, opts.settingsUi)) return;
 

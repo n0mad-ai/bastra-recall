@@ -100,6 +100,40 @@ export function normalizeCorsOrigin(v: unknown): string | null {
     return null;
   }
 }
+/**
+ * #1198 `ui.public_origin`: exactly an `https://` origin (no path, query,
+ * fragment or user info) whose host is not a loopback name; returned in the
+ * normalized `https://host[:port]` form. Anything else is refused.
+ */
+export function normalizePublicUiOrigin(v: unknown): string | null {
+  if (typeof v !== "string" || v !== v.trim()) return null;
+  try {
+    const u = new URL(v);
+    if (
+      u.protocol !== "https:" ||
+      (u.pathname !== "/" && u.pathname !== "") ||
+      u.search ||
+      u.hash ||
+      v.includes("?") ||
+      v.includes("#") ||
+      u.username ||
+      u.password ||
+      /^(?:localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname)
+    )
+      return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+function publicUiOrigin(value: string, ctx: z.RefinementCtx): string {
+  const origin = normalizePublicUiOrigin(value);
+  if (origin === null) {
+    ctx.addIssue({ code: "custom", message: "Invalid public web UI origin" });
+    return z.NEVER;
+  }
+  return origin;
+}
 const corsOrigins = z
   .array(z.unknown())
   .transform((rows) => [...new Set(rows.map(normalizeCorsOrigin).filter((v): v is string => v !== null))])
@@ -285,6 +319,12 @@ export const SETTINGS_REGISTRY = {
       default: 80,
     }),
     backdropBlur: setting(bool, { area: "general", label: "Hintergrundbild weichzeichnen", default: false }),
+    // #1198: the tunnel's https origin for the web UI sign-in; unset = no access through the tunnel.
+    public_origin: setting(z.string().transform(publicUiOrigin), {
+      area: "access",
+      label: "Öffentliche Adresse der Web-Oberfläche",
+      default: null,
+    }),
   },
   assistant: {
     // Address name (ASCII DNS label). Optional: a display name that derives no address may stand alone.

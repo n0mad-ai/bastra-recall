@@ -194,6 +194,15 @@ const ROWS: Row[] = [
   { key: "ui.backdrop", def: "none", valid: "aurora", stored: "aurora", invalid: "nope" },
   { key: "ui.backdropDim", def: 80, valid: 65, stored: 65, invalid: 52 },
   { key: "ui.backdropBlur", def: false, valid: true, stored: true, invalid: "x" },
+  {
+    key: "ui.public_origin",
+    def: null,
+    valid: "https://Recall.Example.Test/",
+    stored: "https://recall.example.test",
+    invalid: "http://recall.example.test",
+    getter: getters.getUiPublicOrigin,
+    unset: "",
+  },
   // The address name starts the address setup; the web API refuses it (see below).
   { key: "assistant.name", def: null, valid: " Jarvis ", stored: "jarvis", invalid: "", managed: true },
   { key: "assistant.displayName", def: null, locked: true },
@@ -327,9 +336,9 @@ async function isolated<T>(fn: (dir: string, path: string) => Promise<T>): Promi
 
 const entryOf = (key: string): SettingEntry => settingEntries().find((e) => e.key === key)!;
 
-test("#1510: the table names exactly the 50 registry keys", () => {
+test("#1510: the table names exactly the 51 registry keys", () => {
   const keys = settingEntries().map((e) => e.key);
-  assert.equal(ROWS.length, 50);
+  assert.equal(ROWS.length, 51);
   assert.deepEqual(
     ROWS.map((r) => r.key),
     keys

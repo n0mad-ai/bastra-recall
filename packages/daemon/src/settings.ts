@@ -297,6 +297,11 @@ export async function getUiEnabled(path?: string): Promise<boolean> {
   return storedOrDefault("ui", "enabled", path);
 }
 
+/** #1198: the tunnel's https origin of the web UI (`ui.public_origin`), "" when unset. Read per request. */
+export async function getUiPublicOrigin(path?: string): Promise<string> {
+  return (await stored("ui", "public_origin", path)) ?? "";
+}
+
 export async function setUiEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
   // Keep the other ui.* keys (background image) when the switch flips.
   await store("ui", "enabled", on, path);
