@@ -15,7 +15,6 @@ import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
 import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
-import { GENERIC_TRIGGER_WORDS } from "./save-quality.js";
 import { resolveDerivedClaims, type DerivedClaimResult } from "./derived-claims.js";
 
 export const LoadMemoryArgs = z.object({
@@ -304,7 +303,6 @@ export function distinctiveTokensForActedOn(text: string): string[] {
       words(clean)
         .filter((token) => token.length >= 4)
         .filter((token) => !FUNCTION_WORDS.has(token))
-        .filter((token) => !GENERIC_TRIGGER_WORDS.has(token))
     )
   ).slice(0, 200);
 }

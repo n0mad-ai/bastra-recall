@@ -74,58 +74,29 @@ export interface SaveQualityResult {
   }>;
 }
 
-export const GENERIC_TRIGGER_WORDS = new Set([
-  "api",
-  "app",
-  "auth",
-  "bug",
-  "code",
-  "css",
-  "data",
-  "db",
-  "debug",
-  "design",
-  "docs",
-  "error",
-  "fix",
-  "frontend",
-  "ios",
-  "js",
-  "macos",
-  "memory",
-  "node",
-  "python",
-  "react",
-  "refactor",
-  "server",
-  "swift",
-  "test",
-  "typescript",
-  "ui",
-  "ux",
-]);
-
-/** #642: the language-neutral half of the specificity check, shared with the
- *  curator's low-signal report so both ask the same question. */
+/** #642: the specificity check, shared with the curator's low-signal report so
+ *  both ask the same question. Language-neutral, no word list (owner decision
+ *  2026-11-26, which also removed the technology-word hints).
+ *
+ *  A hyphen separates words here: `Discord-Relay` names two things. `tokens()`
+ *  keeps `a-b` as one token for matching, so the parts are counted after it;
+ *  a hyphen at either edge or a doubled one adds no empty word. Unicode hyphens
+ *  and dashes already end a token, and `_` still joins (`api_key` is one name). */
 export function isOneWordTrigger(trigger: string): boolean {
-  return words(trigger).length <= 1;
+  let count = 0;
+  for (const token of words(trigger)) {
+    for (const part of token.split("-")) if (part !== "" && ++count > 1) return false;
+  }
+  return true;
 }
 
 function triggerSpecificityIssue(trigger: string): string | undefined {
-  if (isOneWordTrigger(trigger)) return `recall_when '${trigger}' is too short/generic`;
-  const tokens = words(trigger);
-  if (tokens.length <= 2 && tokens.every((t) => GENERIC_TRIGGER_WORDS.has(t))) {
-    return `recall_when '${trigger}' is only generic technology words`;
-  }
-  return undefined;
+  return isOneWordTrigger(trigger) ? `recall_when '${trigger}' is too short/generic` : undefined;
 }
 
 function buildSpecificTriggerSuggestion(input: SaveMemoryInput): string {
   const path = input.topic_path.join("/") || input.scope;
-  const summaryTokens = words(input.summary)
-    .filter((t) => !GENERIC_TRIGGER_WORDS.has(t))
-    .slice(0, 5)
-    .join(" ");
+  const summaryTokens = words(input.summary).slice(0, 5).join(" ");
   const anchor = summaryTokens || input.title.toLowerCase();
   return `tighten recall_when around an action + anchor, e.g. 'about to ${input.type} in ${path}: ${anchor}'`;
 }
@@ -328,16 +299,6 @@ export function scoreSaveQuality(
     issues.push(...triggerIssues);
     suggestions.push(buildSpecificTriggerSuggestion(input));
     score -= Math.min(55, triggerIssues.length * 25);
-  }
-
-  const genericTags = input.tags.filter((tag) => {
-    const tokens = words(tag);
-    return tokens.length === 1 && GENERIC_TRIGGER_WORDS.has(tokens[0]);
-  });
-  if (genericTags.length > 0) {
-    issues.push(`generic tags: ${genericTags.join(", ")}`);
-    suggestions.push("add at least one project/component/outcome tag so future matches are narrower");
-    score -= Math.min(24, genericTags.length * 12);
   }
 
   // #159: 'X is broken / doesn't work' without a fix becomes a standing

@@ -217,6 +217,15 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Changed
 
+- Save-quality hints no longer use a fixed list of English technology words
+  (`api`, `css`, `react`, …). The hints "only generic technology words" for
+  `recall_when` and "generic tags" are gone, the example trigger keeps the
+  summary's own words, and the acted-on measurement no longer drops those
+  words either. The one-word check stays and now counts a hyphenated term as
+  several words in any language: `Discord-Relay` or `Key-Rotation` is no
+  longer flagged, `css` still is. The curator's low-signal report follows the
+  same rule (#1647).
+
 - The credential-redaction guide explains when already stored drafts,
   queued suggestions and tasks may be cleaned after redaction is turned
   back on, and which vault files and saved reports require a direct edit

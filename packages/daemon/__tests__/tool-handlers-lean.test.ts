@@ -356,7 +356,7 @@ test("save_memory: injection markers in captured content surface as advisory, sa
   }
 });
 
-test("save_memory returns advisory save_quality with low score for generic triggers", async () => {
+test("save_memory returns advisory save_quality with low score for one-word triggers", async () => {
   const { deps, close } = await makeDeps();
   try {
     const res = await saveMemoryHandler(deps, {
@@ -367,7 +367,9 @@ test("save_memory returns advisory save_quality with low score for generic trigg
       topic_path: ["checkout", "styles"],
       tags: ["css"],
       scope: "lean-test",
-      recall_when: ["css", "swift"],
+      // Three one-word triggers: the penalty caps at 55. The generic-tag hint
+      // that used to add to it is gone with the technology word list.
+      recall_when: ["css", "swift", "ui"],
     });
     assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     assert.equal(res.save_quality.band, "low");
