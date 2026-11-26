@@ -10,14 +10,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
+import { once } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
+import { dispatchLaneRoutes } from "../src/http-lane-routes.js";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runSessionLane } from "../src/session-lane.js";
+import { runSessionLane, type SessionPayload } from "../src/session-lane.js";
 import { readAppRecord } from "../src/app-record-store.js";
 import { writePendingSuggestion, type PendingSuggestion } from "../src/pending-suggestions.js";
 import { recordDraftReviewCandidates, takeDraftReview } from "../src/draft-review.js";
-import { draftFingerprint, draftId, listDrafts, upsertDraft, type Draft } from "../src/draft-store.js";
+import { draftFingerprint, draftId, listDrafts, transactDrafts, upsertDraft, type Draft } from "../src/draft-store.js";
+import { withPathLock } from "../src/path-lock.js";
 import type { DraftPromotionEvent } from "../src/draft-promote.js";
 
 const VAULT = "vault-1743";
@@ -124,7 +128,15 @@ async function events(dir: string): Promise<Array<Record<string, unknown>>> {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-async function fixture(work: (ctx: { dir: string; url: string; setBig: (big: boolean) => void }) => Promise<void>) {
+interface Fixture {
+  dir: string;
+  url: string;
+  setBig: (big: boolean) => void;
+  closeDuringReview: (abort: () => void) => void;
+  beforeAnswer: (callback: () => Promise<void>) => void;
+}
+
+async function fixture(work: (ctx: Fixture) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), "session-cap-1743-"));
   const env: Record<string, string> = {
     BASTRA_DRAFTS_PATH: join(dir, "drafts.json"),
@@ -139,8 +151,31 @@ async function fixture(work: (ctx: { dir: string; url: string; setBig: (big: boo
   const prev = new Map(Object.keys(env).map((k) => [k, process.env[k]]));
   Object.assign(process.env, env);
   let big = true;
+  let abortDuringReview: (() => void) | undefined;
+  let beforeAnswer: (() => Promise<void>) | undefined;
   const server: Server = createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
+    const handled = dispatchLaneRoutes(
+      req,
+      res,
+      req.method!,
+      path,
+      undefined,
+      async (out) => {
+        await beforeAnswer?.();
+        return out;
+      },
+      async () => {
+        const review = await takeDraftReview(VAULT, "en", now);
+        if (abortDuringReview) {
+          const closed = once(res, "close");
+          abortDuringReview();
+          await closed;
+        }
+        return review;
+      }
+    );
+    if (handled) return;
     req.resume();
     req.on("end", () => {
       res.writeHead(200, { "content-type": "application/json" });
@@ -150,7 +185,13 @@ async function fixture(work: (ctx: { dir: string; url: string; setBig: (big: boo
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as { port: number }).port;
   try {
-    await work({ dir, url: `http://127.0.0.1:${port}`, setBig: (b) => (big = b) });
+    await work({
+      dir,
+      url: `http://127.0.0.1:${port}`,
+      setBig: (b) => (big = b),
+      closeDuringReview: (abort) => (abortDuringReview = abort),
+      beforeAnswer: (callback) => (beforeAnswer = callback),
+    });
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
     for (const [k, v] of prev)
@@ -173,6 +214,7 @@ async function start(url: string, sessionId: string): Promise<string> {
 }
 
 const RECENCY = "<save-eval>" + "remember the amber database fixture rule ".repeat(20) + "</save-eval>";
+const HARVEST = '<session-harvest from="fixture">\n- [fact] "a different amber fixture quote"\n</session-harvest>';
 const TREND = "<taxonomy-drift>" + "seven memories share the tag amber ".repeat(20) + "</taxonomy-drift>";
 
 function assertCut(text: string, name: string) {
@@ -255,4 +297,184 @@ test("#1743: a start with room delivers and books all three exactly as before", 
     assert.equal(log.filter((e) => e.kind === "draft_review_shown").length, 1);
     assert.equal(log.find((e) => e.kind === "draft_review_shown")!.count, draftIds.length);
     assert.equal(log.find((e) => e.kind === "session_hook_call")!.deferred_sections, undefined);
+  }));
+
+async function responseContext(response: Response): Promise<string> {
+  const body = (await response.json()) as { hookSpecificOutput: { additionalContext: string } };
+  return body.hookSpecificOutput.additionalContext;
+}
+
+function startHttp(url: string, sessionId: string, signal?: AbortSignal, overrides: Partial<SessionPayload> = {}) {
+  return fetch(url + "/hook/session", {
+    method: "POST",
+    signal,
+    body: JSON.stringify({
+      payload: { hook_event_name: "SessionStart", source: "startup", session_id: sessionId, cwd: "/tmp", ...overrides },
+    }),
+  });
+}
+
+async function eventually(check: () => void | Promise<void>) {
+  const deadline = Date.now() + 1000;
+  for (;;) {
+    try {
+      await check();
+      return;
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await delay(10);
+    }
+  }
+}
+
+test("#1743 HTTP: a capped response returns all three relay sections for the next start", () =>
+  fixture(async ({ dir, url, setBig }) => {
+    await writePendingSuggestion(RECENCY);
+    await writePendingSuggestion(TREND, { lane: "trends", key: "drift" });
+    await seedDrafts();
+    const cut = await responseContext(await startHttp(url, "s1743-http-cut"));
+    for (const name of ["pending-save-suggestions", "pending-trends", "draft-review"]) assertCut(cut, name);
+    await eventually(async () => {
+      assert.equal(pendingRows().find((r) => r.blocks === RECENCY)?.blocks, RECENCY);
+      assert.equal(pendingRows().find((r) => r.key === "drift")?.sessions, 0);
+      for (const d of await listDrafts(now)) assert.equal(d.review_shown_vaults, undefined);
+    });
+    const [cutRow] = await hookRows(dir);
+    assert.deepEqual(
+      new Set(cutRow.deferred_sections as string[]),
+      new Set(["pending-save-suggestions", "pending-trends", "draft-review"])
+    );
+    assert.equal(cutRow.pending_harvest, undefined);
+    assert.ok(!(await events(dir)).some((e) => e.kind === "draft_review_shown"));
+
+    setBig(false);
+    const text = await responseContext(await startHttp(url, "s1743-http-fit"));
+    assert.ok(text.includes(RECENCY) && text.includes(TREND));
+    assert.match(text, /<draft-review>/);
+    await eventually(async () => {
+      assert.equal((await events(dir)).filter((e) => e.kind === "draft_review_shown").length, 1);
+      assert.equal(pendingRows().find((r) => r.key === "drift")?.sessions, 1);
+    });
+  }));
+
+test("#1743 HTTP: a connection closed before rendering does not count as delivery", () =>
+  fixture(async ({ dir, url, setBig, closeDuringReview }) => {
+    setBig(false);
+    await writePendingSuggestion(RECENCY);
+    await writePendingSuggestion(HARVEST);
+    await writePendingSuggestion(TREND, { lane: "trends", key: "drift" });
+    await seedDrafts();
+    const controller = new AbortController();
+    closeDuringReview(() => controller.abort());
+    await assert.rejects(startHttp(url, "s1743-http-abort", controller.signal), { name: "AbortError" });
+    await eventually(async () => {
+      const [row] = await hookRows(dir);
+      assert.ok(row, "the server completed the lane");
+      assert.equal(row.pending_harvest, undefined);
+      assert.equal(pendingRows().find((r) => r.blocks === RECENCY)?.blocks, RECENCY);
+      assert.equal(pendingRows().find((r) => r.key === "drift")?.sessions, 0);
+      for (const d of await listDrafts(now)) assert.equal(d.review_shown_vaults, undefined);
+    });
+    assert.ok(!(await events(dir)).some((e) => e.kind === "draft_review_shown"));
+  }));
+
+test("#1743 overlapping starts: only the start that delivers the trend advances its counter", () =>
+  fixture(async ({ url, setBig }) => {
+    await writePendingSuggestion(TREND, { lane: "trends", key: "drift" });
+    let reportClaim!: () => void;
+    let resumeFirst!: () => void;
+    const claimed = new Promise<void>((resolve) => (reportClaim = resolve));
+    const otherFinished = new Promise<void>((resolve) => (resumeFirst = resolve));
+    const capped = runSessionLane(
+      { hook_event_name: "SessionStart", source: "startup", session_id: "s1743-first", cwd: "/tmp" },
+      url,
+      undefined,
+      async () => null,
+      async () => {
+        reportClaim();
+        await otherFinished;
+        return { block: "", fingerprints: [] };
+      }
+    );
+    await claimed;
+    try {
+      setBig(false);
+      assert.ok((await start(url, "s1743-second")).includes(TREND));
+    } finally {
+      resumeFirst();
+    }
+    assertCut(JSON.parse(await capped).hookSpecificOutput.additionalContext, "pending-trends");
+    const trend = pendingRows().find((r) => r.key === "drift");
+    assert.equal(trend?.sessions, 1);
+    assert.equal(trend?.last_session, "s1743-second");
+  }));
+
+test("#1743 HTTP: brief store contention after a capped response does not drop the relay", () =>
+  fixture(async ({ url, beforeAnswer }) => {
+    await writePendingSuggestion(RECENCY);
+    await seedDrafts();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const holders: Promise<unknown>[] = [];
+    beforeAnswer(() =>
+      Promise.all([
+        new Promise<void>((ready) => {
+          holders.push(
+            withPathLock(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!, async () => {
+              ready();
+              await held;
+            })
+          );
+        }),
+        new Promise<void>((ready) => {
+          holders.push(
+            transactDrafts(async () => {
+              ready();
+              await held;
+            }, now)
+          );
+        }),
+      ]).then(() => {})
+    );
+    try {
+      const cut = await responseContext(await startHttp(url, "s1743-http-busy", AbortSignal.timeout(2000)));
+      assertCut(cut, "pending-save-suggestions");
+      assertCut(cut, "draft-review");
+      // The HTTP response has arrived while both stores are still busy.
+      await delay(50);
+    } finally {
+      release();
+      await Promise.all(holders);
+    }
+    await eventually(async () => {
+      assert.equal(pendingRows().find((r) => r.blocks === RECENCY)?.blocks, RECENCY);
+      for (const d of await listDrafts(now)) assert.equal(d.review_shown_vaults, undefined);
+    });
+  }));
+
+test("#1743 HTTP: a subagent leaves the relay alone and Codex compaction does not advance a trend", () =>
+  fixture(async ({ url, setBig }) => {
+    setBig(false);
+    await writePendingSuggestion(RECENCY);
+    await writePendingSuggestion(TREND, { lane: "trends", key: "drift" });
+    await seedDrafts();
+    const subagent = await startHttp(url, "s1743-subagent", undefined, { hook_event_name: "SubagentStart" });
+    assert.doesNotMatch(await subagent.text(), /pending-save-suggestions|pending-trends|draft-review/);
+    assert.equal(pendingRows().find((r) => r.blocks === RECENCY)?.blocks, RECENCY);
+    for (const d of await listDrafts(now)) assert.equal(d.review_shown_vaults, undefined);
+
+    const compact = await responseContext(
+      await startHttp(url, "s1743-compact", undefined, {
+        source: "compact",
+        bastra_client: "codex",
+      })
+    );
+    assert.ok(compact.includes(RECENCY) && compact.includes(TREND));
+    assert.match(compact, /<draft-review>/);
+    assert.equal(pendingRows().find((r) => r.key === "drift")?.sessions, 0);
+
+    const startup = await responseContext(await startHttp(url, "s1743-codex", undefined, { bastra_client: "codex" }));
+    assert.ok(startup.includes(TREND));
+    assert.doesNotMatch(startup, /pending-save-suggestions|draft-review/);
+    await eventually(() => assert.equal(pendingRows().find((r) => r.key === "drift")?.sessions, 1));
   }));

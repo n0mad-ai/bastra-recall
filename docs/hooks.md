@@ -1783,7 +1783,10 @@ Recalls and pending suggestions are sent on every start. Telemetry:
 `hint_tokens_by_part` counts only what was actually sent. When the
 session-context cap cuts whole sections, `deferred_sections` names them; a cut
 pending suggestion, trend or draft review is not booked as delivered and comes
-at a later start with room (#1743).
+at a later start with room (#1743). For the HTTP session hook, an aborted
+response also leaves the suggestions and draft review pending and does not
+count the trends. The transport receipt means the server finished writing the
+response.
 
 #### Rule kernel (session hook and gate, #1305)
 
@@ -3808,6 +3811,9 @@ Event `session_hook_call` nennt die weggelassenen Teile, und
 Obergrenze des Sitzungskontexts ganze Abschnitte ab, nennt `deferred_sections`
 sie; ein abgeschnittener offener Vorschlag, Trend oder Entwurfsprüfungs-Block
 gilt nicht als ausgeliefert und kommt bei einem späteren Start mit Platz (#1743).
+Bricht die HTTP-Antwort des Sitzungs-Hooks ab, bleiben Vorschläge und
+Entwurfsprüfung ebenfalls offen und Trends werden nicht weitergezählt. Die
+Transportquittung belegt, dass der Server die Antwort fertig geschrieben hat.
 
 #### Regelkern (Session-Hook und Gate, #1305)
 

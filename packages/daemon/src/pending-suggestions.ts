@@ -537,30 +537,6 @@ function renderLane(entries: PendingSuggestion[], lane: PendingLane, budget: num
 export interface PendingRelay {
   recency: PendingSuggestion[];
   trends: PendingSuggestion[];
-  /** #1743: trends whose session counter this read advanced, with the values
-   *  before it — what {@link returnPendingRelay} restores when the start did
-   *  not deliver them after all. */
-  advanced?: TrendAdvance[];
-}
-
-export interface TrendAdvance {
-  ts: number;
-  blocks: string;
-  sessions: number;
-  last_session?: string;
-}
-
-/** #1743: the counter step this read made on a live trend, as values to restore. */
-function advanceOf(before: PendingSuggestion, after: PendingSuggestion): TrendAdvance[] {
-  if (isTombstone(before) || after.last_session === before.last_session) return [];
-  return [
-    {
-      ts: before.ts,
-      blocks: before.blocks,
-      sessions: after.sessions! - 1,
-      ...(before.last_session !== undefined ? { last_session: before.last_session } : {}),
-    },
-  ];
 }
 
 /**
@@ -570,7 +546,8 @@ function advanceOf(before: PendingSuggestion, after: PendingSuggestion): TrendAd
  * - trends: every live entry is returned and KEPT. On a countable start
  *   (see {@link isCountableSessionStart}) each entry's session counter advances
  *   once per session id; an entry past {@link pendingTrendsSessions} is
- *   retired instead of shown. It leaves a tombstone, which counts the same
+ *   retired instead of shown. With deferTrendCount, live counts wait for
+ *   settlement after transport. A retired trend leaves a tombstone, which counts the same
  *   way and is dropped once N starts passed without the trend being written.
  *
  * #532: read and write-back run under the SAME per-path lock as the writers, so
@@ -578,7 +555,7 @@ function advanceOf(before: PendingSuggestion, after: PendingSuggestion): TrendAd
  * own read and its write-back.
  */
 export async function takePendingRelay(
-  opts: { now?: number; sessionId?: string | null; countable?: boolean } = {}
+  opts: { now?: number; sessionId?: string | null; countable?: boolean; deferTrendCount?: boolean } = {}
 ): Promise<PendingRelay> {
   if (!pendingRelayEnabled()) return { recency: [], trends: [] };
   const now = opts.now ?? Date.now();
@@ -590,9 +567,8 @@ export async function takePendingRelay(
       (await tryWithPathLock(
         path,
         async () => {
-          const parsed = JSON.parse(
-            readAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 })
-          ) as unknown;
+          const raw = readAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 });
+          const parsed: unknown = JSON.parse(raw);
           lossDiagnostics = 0;
           const valid = Array.isArray(parsed)
             ? (parsed as PendingSuggestion[]).filter((e) => typeof e?.blocks === "string" && typeof e?.ts === "number")
@@ -601,7 +577,7 @@ export async function takePendingRelay(
           const recency = valid.filter((e) => laneOf(e) === "recency" && now - e.ts <= PENDING_MAX_AGE_MS);
           const trends: PendingSuggestion[] = [];
           const tombstones: PendingSuggestion[] = [];
-          const advanced: TrendAdvance[] = [];
+          const storedTrends: PendingSuggestion[] = [];
           for (const e of valid) {
             if (laneOf(e) !== "trends") continue;
             let sessions = typeof e.sessions === "number" && e.sessions >= 0 ? e.sessions : 0;
@@ -613,8 +589,11 @@ export async function takePendingRelay(
             const row: PendingSuggestion = { ...e, sessions };
             if (last !== undefined) row.last_session = last;
             if (sessions <= maxSessions) {
-              (isTombstone(e) ? tombstones : trends).push(row);
-              advanced.push(...advanceOf(e, row));
+              if (isTombstone(e)) tombstones.push(row);
+              else {
+                trends.push(row);
+                storedTrends.push(opts.deferTrendCount ? e : row);
+              }
             } else if (!isTombstone(e)) {
               // Aged out — this start no longer shows it. Keep a tombstone so the
               // Stop hook re-writing the same standing trend does not revive it.
@@ -624,12 +603,8 @@ export async function takePendingRelay(
               tombstones.push({ ...row, sessions: 0, retired: true });
             }
           }
-          if (trends.length + tombstones.length > 0) {
-            await writePendingRows(path, [...tombstones, ...trends], 0);
-          } else {
-            deleteAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 });
-          }
-          return { recency, trends, advanced };
+          await storeRemainingTrends(path, [...tombstones, ...storedTrends], raw, opts.deferTrendCount);
+          return { recency, trends };
         },
         { crossProcess: true, noQueue: true, takeOverDead: true }
       )) ?? { recency: [], trends: [] }
@@ -639,72 +614,104 @@ export async function takePendingRelay(
   }
 }
 
-/**
- * #1743: undo a session-start read for what that start did not deliver — the
- * context cap cut the section after {@link takePendingRelay} had consumed it.
- * Recency rows go back with their original timestamp, so the 7-day age limit
- * and the per-lane {@link MAX_ENTRIES} cap still bound the store; trend
- * counters it advanced go back to their previous values, unless a writer has
- * replaced the row meanwhile. Same lock as the read. Never throws: a failed
- * return leaves the read as it was.
- */
-export async function returnPendingRelay(
-  back: { recency: PendingSuggestion[]; trends: TrendAdvance[]; sessionId: string | null },
-  now: number = Date.now()
+async function storeRemainingTrends(path: string, rows: PendingSuggestion[], original: string, deferCount?: boolean) {
+  if (!rows.length) deleteAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 });
+  else if (!deferCount || JSON.stringify(rows) !== original) await writePendingRows(path, rows, 0);
+}
+
+/** Restore cut recency and count only delivered live trends. This runs off the
+ * HTTP response path and can wait for a writer instead of losing the booking. */
+export async function settlePendingRelay(
+  recency: readonly PendingSuggestion[],
+  shownTrends: readonly PendingSuggestion[],
+  sessionId: string | undefined
 ): Promise<void> {
-  if (!pendingRelayEnabled() || back.recency.length + back.trends.length === 0) return;
+  if (!pendingRelayEnabled() || recency.length + shownTrends.length === 0) return;
   const path = pendingSuggestionsPath();
   try {
-    await tryWithPathLock(
-      path,
-      async () => {
-        let rows: PendingSuggestion[] = [];
-        try {
-          const parsed = JSON.parse(
-            readAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 })
-          ) as unknown;
-          if (!Array.isArray(parsed)) return;
-          rows = parsed as PendingSuggestion[];
-        } catch (error) {
-          if (sqliteBusy(error) || (error as NodeJS.ErrnoException).code !== "ENOENT") return;
-        }
-        const same = (a: { ts: number; blocks: string }, b: { ts: number; blocks: string }) =>
-          a.ts === b.ts && a.blocks === b.blocks;
-        const recency = back.recency.filter(
-          (r) => now - r.ts <= PENDING_MAX_AGE_MS && !rows.some((e) => laneOf(e) === "recency" && same(e, r))
-        );
-        for (const undo of back.trends) {
-          const row = rows.find(
-            (e) =>
-              laneOf(e) === "trends" &&
-              !isTombstone(e) &&
-              same(e, undo) &&
-              e.last_session === (back.sessionId ?? undefined) &&
-              e.sessions === undo.sessions + 1
-          );
-          if (!row) continue;
-          row.sessions = undo.sessions;
-          if (undo.last_session === undefined) delete row.last_session;
-          else row.last_session = undo.last_session;
-        }
-        // Returned rows are older than anything written since the read: they
-        // go first, and the usual cap drops the oldest ordinary rows.
-        const entries = [...recency, ...rows];
-        const ordinary = entries.filter((e) => laneOf(e) === "recency" && !e.provisional);
-        const allowed = new Set(ordinary.slice(-MAX_ENTRIES));
-        if (ordinary.length > MAX_ENTRIES)
-          reportLoss(`${ordinary.length - MAX_ENTRIES} oldest entries dropped at the ${MAX_ENTRIES}-entry cap`);
-        await writePendingRows(
-          path,
-          entries.filter((e) => laneOf(e) !== "recency" || e.provisional || allowed.has(e)),
-          0
-        );
-      },
-      { crossProcess: true, noQueue: true, takeOverDead: true }
+    await retryRelaySettlement(() =>
+      tryWithPathLock(
+        path,
+        async () => {
+          if (pendingRelayEnabled()) await persistRelaySettlement(path, recency, shownTrends, sessionId);
+          return true as const;
+        },
+        { crossProcess: true, noQueue: true, takeOverDead: true }
+      )
     );
   } catch {
-    /* best-effort, like the read it undoes */
+    reportLoss("could not settle session-start relay");
   }
+}
+
+/** Retry transient contention after the response without blocking the event loop. */
+export async function retryRelaySettlement(attempt: () => Promise<true | undefined>): Promise<void> {
+  const deadline = Date.now() + 5000;
+  do {
+    try {
+      if (await attempt()) return;
+    } catch (error) {
+      if (!sqliteBusy(error)) throw error;
+    }
+    await delay(25);
+  } while (Date.now() < deadline);
+  throw new Error("session relay settlement remained busy");
+}
+
+async function persistRelaySettlement(
+  path: string,
+  recency: readonly PendingSuggestion[],
+  shownTrends: readonly PendingSuggestion[],
+  sessionId: string | undefined
+): Promise<void> {
+  const rows = readPendingRowsForSettlement(path);
+  if (!rows) return;
+  const now = Date.now();
+  const returned = recency.filter(
+    (r) => now - r.ts <= PENDING_MAX_AGE_MS && !rows.some((e) => laneOf(e) === "recency" && e.blocks === r.blocks)
+  );
+  const counted = countDeliveredTrends(rows, shownTrends, sessionId);
+  if (returned.length || counted) await writePendingRows(path, capReturnedRecency([...returned, ...rows]), 0);
+}
+
+function readPendingRowsForSettlement(path: string): PendingSuggestion[] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(
+      readAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 })
+    );
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function countDeliveredTrends(
+  rows: PendingSuggestion[],
+  shown: readonly PendingSuggestion[],
+  sessionId: string | undefined
+): boolean {
+  if (!sessionId || !shown.length) return false;
+  const max = pendingTrendsSessions();
+  let changed = false;
+  for (const row of rows) {
+    if (laneOf(row) !== "trends" || isTombstone(row) || row.last_session === sessionId) continue;
+    if (!shown.some((r) => r.ts === row.ts && r.key === row.key && r.blocks === row.blocks)) continue;
+    const sessions = typeof row.sessions === "number" && row.sessions >= 0 ? row.sessions : 0;
+    if (sessions >= max) continue;
+    row.sessions = sessions + 1;
+    row.last_session = sessionId;
+    changed = true;
+  }
+  return changed;
+}
+
+function capReturnedRecency(rows: PendingSuggestion[]): PendingSuggestion[] {
+  const ordinary = rows.filter((e) => laneOf(e) === "recency" && !e.provisional);
+  if (ordinary.length <= MAX_ENTRIES) return rows;
+  const dropped = new Set(ordinary.slice(0, -MAX_ENTRIES));
+  reportLoss(`${dropped.size} oldest entries dropped at the ${MAX_ENTRIES}-entry cap`);
+  return rows.filter((row) => !dropped.has(row));
 }
 
 /**

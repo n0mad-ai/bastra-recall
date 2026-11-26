@@ -21,7 +21,7 @@ import {
   PENDING_BLOCK_CHAR_BUDGET,
   formatPendingRelay,
   isCountableSessionStart,
-  returnPendingRelay,
+  settlePendingRelay,
   takePendingRelay,
   type PendingSuggestion,
 } from "./pending-suggestions.js";
@@ -231,9 +231,11 @@ export async function pendingRelayBlocks(
   try {
     // #513: Recency wird konsumiert, Trends bleiben liegen; nur ein echter
     // Start zählt die Lebensdauer der Trends weiter.
+    const countable = isCountableSessionStart(sessionId, source);
     const relay = await takePendingRelay({
       sessionId: sessionId ?? null,
-      countable: isCountableSessionStart(sessionId, source),
+      countable,
+      deferTrendCount: true,
     });
     for (const row of relay.recency)
       row.blocks = await filterPendingSaveSuggestions(cwd ? projectForFilter(cwd) : null, row.blocks);
@@ -261,18 +263,16 @@ export async function pendingRelayBlocks(
     result.trendsText = rendered.trendsText;
     result.settle = async (injected) => {
       const reviewReached = reached(injected, review?.block ?? "");
-      if (review?.block) await review.settle?.(reviewReached);
-      const recencyCut = rendered.recencyText !== "" && !reached(injected, rendered.recencyText);
-      const trendsCut = rendered.trendsText !== "" && !reached(injected, rendered.trendsText);
-      await returnPendingRelay({
-        recency: recencyCut
-          ? taken
-              .map(({ row, unreviewed }) => ({ ...row, blocks: reviewReached ? row.blocks : unreviewed }))
-              .filter((row) => row.blocks.trim())
-          : [],
-        trends: trendsCut ? (relay.advanced ?? []) : [],
-        sessionId: sessionId ?? null,
-      });
+      const recencyReached = reached(injected, rendered.recencyText);
+      const trendsReached = reached(injected, rendered.trendsText);
+      const back = taken
+        .filter(({ row }) => !recencyReached || (!reviewReached && !row.blocks.trim()))
+        .map(({ row, unreviewed }) => ({ ...row, blocks: reviewReached ? row.blocks : unreviewed }))
+        .filter((row) => row.blocks.trim());
+      await Promise.all([
+        review?.settle?.(reviewReached),
+        settlePendingRelay(back, countable && trendsReached ? relay.trends : [], sessionId),
+      ]);
     };
     result.pendingLanes = {
       recency: relay.recency.length,

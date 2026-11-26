@@ -5,7 +5,7 @@ import { HINT_FRAME_NOTE, redactSecrets, stripFenceMarkers } from "@bastra-recal
 import { scanForInjection } from "@bastra-recall/core";
 import { transactDrafts, withDraftPublication, draftFingerprint, type Draft } from "./draft-store.js";
 import { singleLine, projectLabel, draftHintsEnabled } from "./draft-search.js";
-import { pendingRelayEnabled, PENDING_BLOCK_CHAR_BUDGET } from "./pending-suggestions.js";
+import { pendingRelayEnabled, PENDING_BLOCK_CHAR_BUDGET, retryRelaySettlement } from "./pending-suggestions.js";
 import { sessionHarvestEnabled } from "./session-harvest.js";
 import { writeDraftEvent } from "./draft-events.js";
 import type { DraftPromotionEvent } from "./draft-promote.js";
@@ -138,7 +138,7 @@ export async function takeDraftReview(
         await writeDraftEvent({ kind: "draft_review_shown", count: delivery.ids.length, draft_ids: delivery.ids });
         return;
       }
-      await releaseDraftReview(vaultId, delivery.ids, now).catch(() => {});
+      await releaseDraftReview(vaultId, delivery.ids, now);
     };
     return { block: delivery.block, fingerprints: delivery.fingerprints, settle };
   } catch {
@@ -147,18 +147,21 @@ export async function takeDraftReview(
 }
 /** #1743: a claimed review that never reached the context is not shown. */
 async function releaseDraftReview(vaultId: string, ids: readonly string[], now: number): Promise<void> {
-  await transactDrafts(
-    async (rows) => {
-      for (const row of rows) {
-        if (!ids.includes(row.id)) continue;
-        const rest = shown(row).filter((v) => v !== vaultId);
-        if (rest.length) row.review_shown_vaults = rest;
-        else delete row.review_shown_vaults;
-      }
-    },
-    now,
-    true,
-    true
+  await retryRelaySettlement(() =>
+    transactDrafts(
+      async (rows) => {
+        for (const row of rows) {
+          if (!ids.includes(row.id)) continue;
+          const rest = shown(row).filter((v) => v !== vaultId);
+          if (rest.length) row.review_shown_vaults = rest;
+          else delete row.review_shown_vaults;
+        }
+        return true as const;
+      },
+      now,
+      true,
+      true
+    )
   );
 }
 /** Remove only matching quote lines from the old block in this same start. */

@@ -205,7 +205,7 @@ export async function runSessionLane(
   draftReview?: () => Promise<DraftReviewDelivery>,
   /** #1743: runs the relay booking once the HTTP answer is out. Absent
    *  (in-process callers, tests): booked before the lane returns. */
-  afterAnswer?: (booking: () => Promise<void>) => void
+  afterAnswer?: (booking: (delivered: boolean) => Promise<void>) => Promise<void>
 ): Promise<string> {
   const startedAt = Date.now();
   // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
@@ -233,6 +233,9 @@ export async function runSessionLane(
   });
   const ranked = rankSessionHits(fetched.responses, fetched.sideData, project);
   const standing = await collectStandingBlocks(payload, fetched, project, projectConfidence, draftReview);
+  // Register before further async work, with an empty context until rendering succeeds.
+  let relayContext = "";
+  if (afterAnswer) await afterAnswer((delivered) => standing.settleRelay(delivered ? relayContext : ""));
   const kernel = renderKernel(
     fetched.sideData,
     payload.source,
@@ -258,9 +261,8 @@ export async function runSessionLane(
   // #1743: only now is it known what reached the context; what the cap cut
   // stays pending. The route books it after the answer went out — awaited
   // here, its two small writes made a cut start measurably slower.
-  const settle = () => standing.settleRelay(injected).catch(() => {});
-  if (afterAnswer) afterAnswer(settle);
-  else await settle();
+  relayContext = injected;
+  if (!afterAnswer) await standing.settleRelay(injected).catch(() => {});
   await rememberSessionStartKernel(payload, kernel.text, injected).catch(() => {});
   const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
   const deliveredTop = retained(assembled.recallBlock) ? ranked.top : [];
@@ -270,19 +272,25 @@ export async function runSessionLane(
   recordBudgetShadow(payload.session_id ?? null, "session_hook_call", Math.ceil(injected.length / 4), {
     source: payload.source ?? null,
   });
-  await writeTelemetry(
-    sessionTelemetryRow(start, {
-      project,
-      fetched,
-      ranked,
-      standing,
-      kernel,
-      assembled,
-      injected,
-      deferred,
-      deliveredTop,
-    })
-  );
+  const telemetry = sessionTelemetryRow(start, {
+    project,
+    fetched,
+    ranked,
+    standing,
+    kernel,
+    assembled,
+    injected,
+    deferred,
+    deliveredTop,
+  });
+  if (afterAnswer && telemetry.pending_harvest !== undefined) {
+    await afterAnswer(async (delivered) => {
+      if (!delivered) delete telemetry.pending_harvest;
+      await writeTelemetry(telemetry);
+    });
+  } else {
+    await writeTelemetry(telemetry);
+  }
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(
     start.url,

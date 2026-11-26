@@ -18,6 +18,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
+import { EventEmitter } from "node:events";
 import { dispatchLaneRoutes } from "../src/http-lane-routes.js";
 
 interface Reply {
@@ -110,10 +111,10 @@ test("a missing `payload` key is an empty payload, not a crash", async () => {
 
 test("the dispatcher claims only its three POST routes", () => {
   const seen: string[] = [];
-  const fakeRes = {
+  const fakeRes = Object.assign(new EventEmitter(), {
     writeHead: () => undefined,
     end: () => undefined,
-  } as unknown as Parameters<typeof dispatchLaneRoutes>[1];
+  }) as unknown as Parameters<typeof dispatchLaneRoutes>[1];
   const fakeReq = {
     on: (ev: string, cb: (...a: unknown[]) => void) => {
       // readJsonBody subscribes; feed it an empty body so nothing hangs.

@@ -1,4 +1,4 @@
-import { createLaneDelivery } from "./lane-delivery.js";
+import { confirmLaneDelivery, createLaneDelivery } from "./lane-delivery.js";
 /**
  * Route dispatch for the three hook lanes that moved daemon-side in #369:
  * POST /hook/stop, /hook/session, /hook/todo. Loopback-only — the host gate in
@@ -20,6 +20,7 @@ import { createLaneDelivery } from "./lane-delivery.js";
  */
 import type { DraftReviewDelivery } from "./draft-review.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { setTimeout as delay } from "node:timers/promises";
 import { runStopLane, type ClaudeStopPayload } from "./stop-lane.js";
 import { runSessionLane, type SessionPayload } from "./session-lane.js";
 import { runSubagentStartLane } from "./subagent-start-lane.js";
@@ -37,12 +38,13 @@ function runLane<P>(
   req: IncomingMessage,
   res: ServerResponse,
   run: (payload: P, self: string) => Promise<string>,
-  notice?: (out: string, payload: SaveNoticePayload, isConnected: () => boolean) => Promise<string>
-): void {
-  const answer = (body: string): void => {
+  notice?: (out: string, payload: SaveNoticePayload, isConnected: () => boolean) => Promise<string>,
+  answer = (body: string): void => {
+    if (res.destroyed || res.writableEnded) return;
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(body);
-  };
+  }
+): void {
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
       const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
@@ -108,8 +110,19 @@ export function dispatchLaneRoutes(
   // without the session notices (drafts, task cards) a session start carries.
   if (url === "/hook/session") {
     const subagentStart = (payload: SessionPayload) => payload.hook_event_name === "SubagentStart";
-    // #1743: the relay booking waits for the answer (or a dropped connection), never delays it.
-    const afterAnswer = (booking: () => Promise<void>) => res.once("close", () => void booking());
+    const delivery = createLaneDelivery(res);
+    const afterAnswer = (booking: (delivered: boolean) => Promise<void>) =>
+      delivery.run(() =>
+        confirmLaneDelivery(
+          async (delivered) => {
+            // Let the response leave the event loop before touching the synchronous SQLite stores.
+            await delay(0);
+            await booking(delivered);
+          },
+          Infinity,
+          "context"
+        )
+      );
     runLane<SessionPayload>(
       req,
       res,
@@ -119,7 +132,8 @@ export function dispatchLaneRoutes(
           : runSessionLane(payload, self, warmupEmbedding, undefined, draftReview, afterAnswer),
       notice &&
         ((out, payload, connected) =>
-          subagentStart(payload as SessionPayload) ? Promise.resolve(out) : notice(out, payload, connected))
+          subagentStart(payload as SessionPayload) ? Promise.resolve(out) : notice(out, payload, connected)),
+      delivery.answer
     );
     return true;
   }
