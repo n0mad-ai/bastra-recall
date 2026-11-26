@@ -75,6 +75,7 @@ test("Abnahme 3: #1264 unchanged — forwarded with Host 127.0.0.1 and no token 
       { "x-forwarded-host": PUBLIC_HOST },
       { forwarded: "for=203.0.113.9" },
       { "x-real-ip": "203.0.113.9" },
+      { "cf-connecting-ip": "203.0.113.9" },
       { via: "1.1 proxy" },
       { "x-forwarded-for": "" },
     ] as Array<Record<string, string>>) {
@@ -210,14 +211,25 @@ test("Abnahme 6: a daemon restart keeps device and browser sessions", async () =
   await createAccount();
   let device = "";
   let browser = "";
-  await withServer(async (port) => {
-    device = (await signIn(port, "public", true)).cookie;
-    browser = (await signIn(port, "local")).cookie;
-  });
-  await withServer(async (port) => {
-    assert.equal((await graph(port, device, "public")).status, 200);
-    assert.equal((await graph(port, browser)).status, 200);
-  });
+  const home = await mkdtemp(join(tmpdir(), "bastra-ui-auth-home-"));
+  try {
+    await withServer(
+      async (port) => {
+        device = (await signIn(port, "public", true)).cookie;
+        browser = (await signIn(port, "local")).cookie;
+      },
+      { home }
+    );
+    await withServer(
+      async (port) => {
+        assert.equal((await graph(port, device, "public")).status, 200);
+        assert.equal((await graph(port, browser)).status, 200);
+      },
+      { home }
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });
 
 test("Abnahme 8: an existing user without an account keeps everything on the Mac; MCP, hooks, /api/v1 and OAuth unchanged", async () => {

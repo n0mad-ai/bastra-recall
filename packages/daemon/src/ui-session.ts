@@ -250,19 +250,22 @@ export function uiSessionClearCookie(origin: UiSessionOrigin): string {
 
 /**
  * Session token from a Cookie request header. Only the cookie name of this
- * origin counts; the first occurrence wins; anything not shaped like a token
+ * origin counts; a repeated name means no session (ambiguous); anything not shaped like a token
  * yields null.
  */
 export function readUiSessionCookie(header: unknown, origin: UiSessionOrigin): string | null {
   if (typeof header !== "string" || Buffer.byteLength(header, "utf8") > COOKIE_HEADER_MAX_BYTES) return null;
   const { name } = COOKIE[origin];
+  let found: string | null = null;
+  let count = 0;
   for (const part of header.split(";")) {
     const eq = part.indexOf("=");
     if (eq < 0 || part.slice(0, eq).trim() !== name) continue;
+    count++;
     const value = part.slice(eq + 1).trim();
-    return isToken(value) ? value : null;
+    found = isToken(value) ? value : null;
   }
-  return null;
+  return count === 1 ? found : null;
 }
 
 /** CSRF value for the X-Bastra-CSRF header, derived from the raw session token. */

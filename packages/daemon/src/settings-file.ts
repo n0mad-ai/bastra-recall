@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
 import { peekAppRecord, readAppRecord, writeAppRecord } from "./app-record-store.js";
 import { forgetRedactionSetting } from "./user-text-redaction.js";
+import { uiAuthStores } from "./ui-auth-stores.js";
 import {
   SETTINGS_REGISTRY,
   parseStoredSettings,
+  storedSettingAt,
   DEFAULT_UPDATE_MODE,
   type CliSettings,
   type DocsMode,
@@ -221,7 +223,13 @@ export async function mutateSettings(
       const refusal = settingsFileRefusal(state, opts);
       if (refusal) throw new Error(refusal);
       const next = mutate(settings);
-      if (next !== null) await writeSettings(next, path);
+      if (next === null) return;
+      await writeSettings(next, path);
+      // #1198: public sessions belong to one public origin. Every write path
+      // runs through here, so any change of the stored value ends them.
+      if (storedSettingAt(next, "ui", "public_origin") !== storedSettingAt(settings, "ui", "public_origin")) {
+        uiAuthStores()?.sessions.revokeOrigin("public");
+      }
     },
     // `requireLock`: reject instead of writing without the cross-process lock
     // (path-lock.ts). For the model answers and the question claim; every

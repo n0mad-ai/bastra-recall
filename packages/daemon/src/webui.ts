@@ -515,7 +515,8 @@ export async function handleWebUi(
       "Content-Type": type,
       "Content-Length": contentLength,
       // Short-lived cache: assets change with daemon updates, not per request.
-      "Cache-Control": html === undefined ? "max-age=60" : "no-store",
+      // `private`: a shared cache (CDN) must not keep them and serve them without a session.
+      "Cache-Control": html === undefined ? "private, max-age=60" : "no-store",
       // CSP governs a DOCUMENT, so it rides on the html only — on a stylesheet
       // or a script response the browser ignores it, and shipping it there
       // would just suggest a protection that isn't happening.

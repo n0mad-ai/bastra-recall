@@ -156,9 +156,10 @@ async function buildVault(): Promise<{ dir: string; vault: Vault }> {
 }
 
 /** A daemon on a free port with the web UI on and `ui.public_origin` set. */
-export async function withServer(fn: (port: number) => Promise<void>): Promise<void> {
+export async function withServer(fn: (port: number) => Promise<void>, opts: { home?: string } = {}): Promise<void> {
   const { dir, vault } = await buildVault();
-  const home = await mkdtemp(join(tmpdir(), "bastra-ui-auth-home-"));
+  // A restart test passes the same home: a fresh home starts without `ui.public_origin`, and setting it ends public sessions.
+  const home = opts.home ?? (await mkdtemp(join(tmpdir(), "bastra-ui-auth-home-")));
   const saved = { HOME: process.env.HOME, BASTRA_API_TOKEN: process.env.BASTRA_API_TOKEN };
   process.env.HOME = home;
   process.env.BASTRA_API_TOKEN = API_TOKEN;
@@ -190,6 +191,6 @@ export async function withServer(fn: (port: number) => Promise<void>): Promise<v
     await vault.stop?.();
     await handle.close();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
-    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    if (!opts.home) await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 }

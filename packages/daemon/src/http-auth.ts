@@ -17,7 +17,7 @@ export function isLoopback(req: IncomingMessage): boolean {
 }
 
 /** Headers a reverse proxy adds (RFC 7239 `Forwarded`, the `X-Forwarded-*`
- * family, nginx's usual `X-Real-IP`, RFC 9110 `Via`). No local client of
+ * family, nginx's usual `X-Real-IP`, Cloudflare's `CF-Connecting-IP`, RFC 9110 `Via`). No local client of
  * Recall sends any of them. */
 const FORWARDING_HEADERS = [
   "forwarded",
@@ -25,6 +25,7 @@ const FORWARDING_HEADERS = [
   "x-forwarded-host",
   "x-forwarded-proto",
   "x-real-ip",
+  "cf-connecting-ip",
   "via",
 ];
 

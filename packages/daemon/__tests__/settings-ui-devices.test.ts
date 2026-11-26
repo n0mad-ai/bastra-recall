@@ -20,6 +20,8 @@ import {
 } from "./ui-auth-harness.js";
 import { getUiPublicOrigin } from "../src/settings.js";
 import { uiAuthStores } from "../src/ui-auth-stores.js";
+import { cmdConfig } from "../src/cli/config-cmd.js";
+import { parseArgs } from "../src/cli/commands.js";
 
 beforeEach(() => resetAuth());
 
@@ -221,5 +223,52 @@ test("without an account the list is empty and offers account creation", async (
     assert.equal(res.status, 200, res.body);
     assert.equal(res.json().account, "none");
     assert.deepEqual(res.json().sessions, []);
+  });
+});
+
+// Every write path of ui.public_origin ends public sessions; local ones stay.
+const publicSessions = (res: Res) => sessionsOf(res).filter((x) => x.origin === "public").length;
+
+test("changing ui.public_origin through the settings route ends public sessions only", async () => {
+  await createAccount();
+  await withServer(async (port) => {
+    await signIn(port, "public");
+    const mac = await macClient(port);
+    assert.equal(publicSessions(await mac.get("/ui/settings/devices")), 1);
+    const res = await mac.post("/ui/settings", { changes: { "ui.public_origin": "https://other.example.test" } });
+    assert.equal(res.status, 200, res.body);
+    const after = await mac.get("/ui/settings/devices");
+    assert.equal(publicSessions(after), 0);
+    assert.equal(sessionsOf(after).length, 1, "the local session stays");
+  });
+});
+
+test("changing ui.public_origin with `config set` ends public sessions only", async () => {
+  await createAccount();
+  await withServer(async (port) => {
+    await signIn(port, "public");
+    const mac = await macClient(port);
+    assert.equal(publicSessions(await mac.get("/ui/settings/devices")), 1);
+    const quiet = process.stdout.write;
+    process.stdout.write = () => true;
+    try {
+      assert.equal(await cmdConfig(parseArgs(["config", "set", "ui.public_origin", "https://other.example.test"])), 0);
+    } finally {
+      process.stdout.write = quiet;
+    }
+    const after = await mac.get("/ui/settings/devices");
+    assert.equal(publicSessions(after), 0);
+    assert.equal(sessionsOf(after).length, 1, "the local session stays");
+  });
+});
+
+test("an unrelated setting change keeps public sessions", async () => {
+  await createAccount();
+  await withServer(async (port) => {
+    await signIn(port, "public");
+    const mac = await macClient(port);
+    const res = await mac.post("/ui/settings", { changes: { "ui.backdropBlur": true } });
+    assert.equal(res.status, 200, res.body);
+    assert.equal(publicSessions(await mac.get("/ui/settings/devices")), 1);
   });
 });

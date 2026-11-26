@@ -282,7 +282,10 @@ test("cookie parser accepts only the name of its origin and well-formed tokens",
   assert.equal(readUiSessionCookie(`bastra_ui=${token}`, "public"), null, "wrong name for public");
   assert.equal(readUiSessionCookie(`xbastra_ui=${token}`, "local"), null);
   assert.equal(readUiSessionCookie(`BASTRA_UI=${token}`, "local"), null);
-  assert.equal(readUiSessionCookie(`bastra_ui=${token}; bastra_ui=${"B".repeat(43)}`, "local"), token, "first wins");
+  const dup = `bastra_ui=${token}; bastra_ui=${"B".repeat(43)}`;
+  assert.equal(readUiSessionCookie(dup, "local"), null, "a repeated name means no session");
+  assert.equal(readUiSessionCookie(`bastra_ui=${token}; bastra_ui=bad`, "local"), null, "also with a bad copy");
+  assert.equal(readUiSessionCookie(`__Host-bastra_ui=${token}; bastra_ui=${"B".repeat(43)}`, "public"), token);
   for (const bad of [
     undefined,
     null,

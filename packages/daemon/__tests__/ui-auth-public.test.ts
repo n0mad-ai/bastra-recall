@@ -431,6 +431,11 @@ test("Abnahme 7: no password in clear text — public-ui needs X-Forwarded-Proto
     );
     // Answers with data or the CSRF value are never stored by a cache in between.
     const cookie = cookieOf(ok);
+    // Static files may be cached by the browser only, never by a shared cache (CDN).
+    for (const path of ["/ui/js/login.js", "/ui/js/main.js"]) {
+      const res = await call(port, "GET", path, tunnel({ cookie }));
+      assert.equal(res.headers["cache-control"], "private, max-age=60", path);
+    }
     for (const path of ["/ui/auth/state", "/ui/graph", "/ui/login", "/ui/"]) {
       const res = await call(port, "GET", path, tunnel({ cookie }));
       assert.equal(res.headers["cache-control"], "no-store", path);

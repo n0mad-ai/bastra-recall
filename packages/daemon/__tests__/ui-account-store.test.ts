@@ -224,7 +224,7 @@ test("damaged storage is locked, not open, and never throws", async () => {
   db.close();
 });
 
-test("exportJson leaves out the password check value and session token hashes", async () => {
+test("exportJson leaves out the password check value, session token hashes and failure rows (IPs)", async () => {
   const path = fixture();
   const db = openAppDatabase({ path });
   await new UiAccountStore(db).create("daniel", PASSWORD);
@@ -236,7 +236,9 @@ test("exportJson leaves out the password check value and session token hashes", 
     )
     .run(tokenHash);
   db.sqlite
-    .prepare("INSERT INTO ui_login_failures(bucket,failures,window_started_at,updated_at) VALUES('local',1,1,1)")
+    .prepare(
+      "INSERT INTO ui_login_failures(bucket,failures,window_started_at,updated_at) VALUES('ip:203.0.113.9',1,1,1)"
+    )
     .run();
   db.exportJson(`${path}.json`);
   db.close();
@@ -248,6 +250,8 @@ test("exportJson leaves out the password check value and session token hashes", 
   assert.equal(text.includes(tokenHash), false);
   assert.equal("ui_account" in exported.tables, false);
   assert.equal("ui_sessions" in exported.tables, false);
-  assert.equal(exported.tables.ui_login_failures.length, 1);
+  // Failure rows hold source IP addresses: omitted as well.
+  assert.equal("ui_login_failures" in exported.tables, false);
+  assert.equal(text.includes("ip:203.0.113.9"), false);
   assert.ok("app_records" in exported.tables, "other tables stay in the export");
 });

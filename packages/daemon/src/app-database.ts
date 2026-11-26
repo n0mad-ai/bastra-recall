@@ -144,8 +144,8 @@ export const APP_MIGRATIONS: readonly AppMigration[] = [
 ];
 
 // #1198: password check values and session token hashes never leave the
-// database through a diagnostic export.
-const EXPORT_OMITTED_TABLES = new Set(["ui_account", "ui_sessions"]);
+// database through a diagnostic export; failure rows hold source IP addresses.
+const EXPORT_OMITTED_TABLES = new Set(["ui_account", "ui_sessions", "ui_login_failures"]);
 
 export interface AppDatabaseOptions {
   /** Explicit local path for isolated fixtures or an installation's state root. */
