@@ -419,7 +419,8 @@ test("review telemetry contains IDs and counts, no quote text or model prompts",
       b = row(id, 1, first + " companion");
     await candidate(a);
     await candidate(b);
-    await takeDraftReview(id);
+    // #1743: the session start books the review once it reached the context.
+    await (await takeDraftReview(id)).settle?.(true);
     await answerDraftReview(a.id, "confirm", id);
     await answerDraftReview(b.id, "reject", id);
     const text = (

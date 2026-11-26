@@ -1780,7 +1780,10 @@ the context, so the next start sends them again; the same two sources reset the
 per-session hint dedup and the shadow session budget. `resume` resets neither.
 Recalls and pending suggestions are sent on every start. Telemetry:
 `constants_skipped` on `session_hook_call` names the parts left out, and
-`hint_tokens_by_part` counts only what was actually sent.
+`hint_tokens_by_part` counts only what was actually sent. When the
+session-context cap cuts whole sections, `deferred_sections` names them; a cut
+pending suggestion, trend or draft review is not booked as delivered and comes
+at a later start with room (#1743).
 
 #### Rule kernel (session hook and gate, #1305)
 
@@ -3801,7 +3804,10 @@ Quellen setzen die Hinweis-Deduplizierung pro Session und das Schatten-
 Sitzungsbudget zurück. `resume` setzt keins von beiden zurück. Recalls und
 offene Vorschläge gehen bei jedem Start raus. Telemetrie: `constants_skipped` am
 Event `session_hook_call` nennt die weggelassenen Teile, und
-`hint_tokens_by_part` zählt nur, was tatsächlich geschickt wurde.
+`hint_tokens_by_part` zählt nur, was tatsächlich geschickt wurde. Schneidet die
+Obergrenze des Sitzungskontexts ganze Abschnitte ab, nennt `deferred_sections`
+sie; ein abgeschnittener offener Vorschlag, Trend oder Entwurfsprüfungs-Block
+gilt nicht als ausgeliefert und kommt bei einem späteren Start mit Platz (#1743).
 
 #### Regelkern (Session-Hook und Gate, #1305)
 

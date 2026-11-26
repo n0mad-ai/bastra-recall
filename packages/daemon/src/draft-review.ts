@@ -20,6 +20,10 @@ export interface DraftReviewCandidate {
 export interface DraftReviewDelivery {
   block: string;
   fingerprints: string[];
+  /** #1743: books the outcome once the session start knows whether the block
+   *  reached the context. Delivered: the `draft_review_shown` event. Cut by
+   *  the context cap: the claim is released, so the drafts are offered again. */
+  settle?: (delivered: boolean) => Promise<void>;
 }
 function candidateOf(row: Draft): DraftReviewCandidate | null {
   const c = row.review_candidate as DraftReviewCandidate | undefined;
@@ -129,11 +133,33 @@ export async function takeDraftReview(
       true
     );
     if (!delivery) return empty;
-    await writeDraftEvent({ kind: "draft_review_shown", count: delivery.ids.length, draft_ids: delivery.ids });
-    return { block: delivery.block, fingerprints: delivery.fingerprints };
+    const settle = async (delivered: boolean) => {
+      if (delivered) {
+        await writeDraftEvent({ kind: "draft_review_shown", count: delivery.ids.length, draft_ids: delivery.ids });
+        return;
+      }
+      await releaseDraftReview(vaultId, delivery.ids, now).catch(() => {});
+    };
+    return { block: delivery.block, fingerprints: delivery.fingerprints, settle };
   } catch {
     return empty;
   }
+}
+/** #1743: a claimed review that never reached the context is not shown. */
+async function releaseDraftReview(vaultId: string, ids: readonly string[], now: number): Promise<void> {
+  await transactDrafts(
+    async (rows) => {
+      for (const row of rows) {
+        if (!ids.includes(row.id)) continue;
+        const rest = shown(row).filter((v) => v !== vaultId);
+        if (rest.length) row.review_shown_vaults = rest;
+        else delete row.review_shown_vaults;
+      }
+    },
+    now,
+    true,
+    true
+  );
 }
 /** Remove only matching quote lines from the old block in this same start. */
 export function suppressReviewedHarvestQuotes(blocks: string, fingerprints: readonly string[]): string {

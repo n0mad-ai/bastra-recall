@@ -458,7 +458,7 @@ export function formatPendingBlock(entries: PendingSuggestion[]): string {
 export function formatPendingRelay(
   relay: PendingRelay,
   budget = PENDING_BLOCK_CHAR_BUDGET
-): { text: string; recencyChars: number; trendsChars: number } {
+): { text: string; recencyText: string; trendsText: string; recencyChars: number; trendsChars: number } {
   const recency = renderLane(relay.recency, "recency", Math.min(PENDING_BLOCK_CHAR_BUDGET, Math.max(0, budget)));
   const trends = renderLane(
     relay.trends,
@@ -467,6 +467,8 @@ export function formatPendingRelay(
   );
   return {
     text: [recency.text, trends.text].filter(Boolean).join("\n"),
+    recencyText: recency.text,
+    trendsText: trends.text,
     recencyChars: recency.text.length,
     trendsChars: trends.text.length,
   };
@@ -535,6 +537,30 @@ function renderLane(entries: PendingSuggestion[], lane: PendingLane, budget: num
 export interface PendingRelay {
   recency: PendingSuggestion[];
   trends: PendingSuggestion[];
+  /** #1743: trends whose session counter this read advanced, with the values
+   *  before it — what {@link returnPendingRelay} restores when the start did
+   *  not deliver them after all. */
+  advanced?: TrendAdvance[];
+}
+
+export interface TrendAdvance {
+  ts: number;
+  blocks: string;
+  sessions: number;
+  last_session?: string;
+}
+
+/** #1743: the counter step this read made on a live trend, as values to restore. */
+function advanceOf(before: PendingSuggestion, after: PendingSuggestion): TrendAdvance[] {
+  if (isTombstone(before) || after.last_session === before.last_session) return [];
+  return [
+    {
+      ts: before.ts,
+      blocks: before.blocks,
+      sessions: after.sessions! - 1,
+      ...(before.last_session !== undefined ? { last_session: before.last_session } : {}),
+    },
+  ];
 }
 
 /**
@@ -575,6 +601,7 @@ export async function takePendingRelay(
           const recency = valid.filter((e) => laneOf(e) === "recency" && now - e.ts <= PENDING_MAX_AGE_MS);
           const trends: PendingSuggestion[] = [];
           const tombstones: PendingSuggestion[] = [];
+          const advanced: TrendAdvance[] = [];
           for (const e of valid) {
             if (laneOf(e) !== "trends") continue;
             let sessions = typeof e.sessions === "number" && e.sessions >= 0 ? e.sessions : 0;
@@ -587,6 +614,7 @@ export async function takePendingRelay(
             if (last !== undefined) row.last_session = last;
             if (sessions <= maxSessions) {
               (isTombstone(e) ? tombstones : trends).push(row);
+              advanced.push(...advanceOf(e, row));
             } else if (!isTombstone(e)) {
               // Aged out — this start no longer shows it. Keep a tombstone so the
               // Stop hook re-writing the same standing trend does not revive it.
@@ -601,13 +629,81 @@ export async function takePendingRelay(
           } else {
             deleteAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 });
           }
-          return { recency, trends };
+          return { recency, trends, advanced };
         },
         { crossProcess: true, noQueue: true, takeOverDead: true }
       )) ?? { recency: [], trends: [] }
     );
   } catch {
     return { recency: [], trends: [] };
+  }
+}
+
+/**
+ * #1743: undo a session-start read for what that start did not deliver — the
+ * context cap cut the section after {@link takePendingRelay} had consumed it.
+ * Recency rows go back with their original timestamp, so the 7-day age limit
+ * and the per-lane {@link MAX_ENTRIES} cap still bound the store; trend
+ * counters it advanced go back to their previous values, unless a writer has
+ * replaced the row meanwhile. Same lock as the read. Never throws: a failed
+ * return leaves the read as it was.
+ */
+export async function returnPendingRelay(
+  back: { recency: PendingSuggestion[]; trends: TrendAdvance[]; sessionId: string | null },
+  now: number = Date.now()
+): Promise<void> {
+  if (!pendingRelayEnabled() || back.recency.length + back.trends.length === 0) return;
+  const path = pendingSuggestionsPath();
+  try {
+    await tryWithPathLock(
+      path,
+      async () => {
+        let rows: PendingSuggestion[] = [];
+        try {
+          const parsed = JSON.parse(
+            readAppRecord("pending-suggestions", path, validateLegacyJson, { busyTimeoutMs: 0 })
+          ) as unknown;
+          if (!Array.isArray(parsed)) return;
+          rows = parsed as PendingSuggestion[];
+        } catch (error) {
+          if (sqliteBusy(error) || (error as NodeJS.ErrnoException).code !== "ENOENT") return;
+        }
+        const same = (a: { ts: number; blocks: string }, b: { ts: number; blocks: string }) =>
+          a.ts === b.ts && a.blocks === b.blocks;
+        const recency = back.recency.filter(
+          (r) => now - r.ts <= PENDING_MAX_AGE_MS && !rows.some((e) => laneOf(e) === "recency" && same(e, r))
+        );
+        for (const undo of back.trends) {
+          const row = rows.find(
+            (e) =>
+              laneOf(e) === "trends" &&
+              !isTombstone(e) &&
+              same(e, undo) &&
+              e.last_session === (back.sessionId ?? undefined) &&
+              e.sessions === undo.sessions + 1
+          );
+          if (!row) continue;
+          row.sessions = undo.sessions;
+          if (undo.last_session === undefined) delete row.last_session;
+          else row.last_session = undo.last_session;
+        }
+        // Returned rows are older than anything written since the read: they
+        // go first, and the usual cap drops the oldest ordinary rows.
+        const entries = [...recency, ...rows];
+        const ordinary = entries.filter((e) => laneOf(e) === "recency" && !e.provisional);
+        const allowed = new Set(ordinary.slice(-MAX_ENTRIES));
+        if (ordinary.length > MAX_ENTRIES)
+          reportLoss(`${ordinary.length - MAX_ENTRIES} oldest entries dropped at the ${MAX_ENTRIES}-entry cap`);
+        await writePendingRows(
+          path,
+          entries.filter((e) => laneOf(e) !== "recency" || e.provisional || allowed.has(e)),
+          0
+        );
+      },
+      { crossProcess: true, noQueue: true, takeOverDead: true }
+    );
+  } catch {
+    /* best-effort, like the read it undoes */
   }
 }
 

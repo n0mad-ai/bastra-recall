@@ -53,6 +53,9 @@ export interface SessionHookTelemetry {
   /** #675: after-session harvest blocks this start delivered — the join key
    *  for the harvest save rate (`bastra logs --stats`). Absent before #675. */
   pending_harvest?: number;
+  /** #1743: sections the session-context cap (#1336) cut from this start —
+   *  they were there, but did not reach the context. Absent when none was cut. */
+  deferred_sections?: string[];
   /** #509: which session-start constants (taxonomy, doku, language) were left
    *  out because this session's context already carries the identical text.
    *  Fehlt auf Zeilen vor #509. */

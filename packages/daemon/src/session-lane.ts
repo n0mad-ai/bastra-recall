@@ -202,7 +202,10 @@ export async function runSessionLane(
   warmup?: WarmupCoordinator,
   /** Tests inject an open model recommendation; the shipped one is the default. */
   modelNotice: () => Promise<ModelOffer | null> = pendingModelNotice,
-  draftReview?: () => Promise<DraftReviewDelivery>
+  draftReview?: () => Promise<DraftReviewDelivery>,
+  /** #1743: runs the relay booking once the HTTP answer is out. Absent
+   *  (in-process callers, tests): booked before the lane returns. */
+  afterAnswer?: (booking: () => Promise<void>) => void
 ): Promise<string> {
   const startedAt = Date.now();
   // #1674: the budget's remainder runs on a monotonic clock; startedAt stays the telemetry stamp.
@@ -248,10 +251,16 @@ export async function runSessionLane(
     soulBlock,
     gated
   );
-  const { out, injected } = await finishSessionOutput(standing, assembled, {
+  const { out, injected, deferred } = await finishSessionOutput(standing, assembled, {
     modelNotice,
     protectedParts: [kernel.text, standing.language, soulBlock],
   });
+  // #1743: only now is it known what reached the context; what the cap cut
+  // stays pending. The route books it after the answer went out — awaited
+  // here, its two small writes made a cut start measurably slower.
+  const settle = () => standing.settleRelay(injected).catch(() => {});
+  if (afterAnswer) afterAnswer(settle);
+  else await settle();
   await rememberSessionStartKernel(payload, kernel.text, injected).catch(() => {});
   const retained = (part: string) => (part.trim() && injected.includes(part.trim()) ? part : "");
   const deliveredTop = retained(assembled.recallBlock) ? ranked.top : [];
@@ -262,7 +271,17 @@ export async function runSessionLane(
     source: payload.source ?? null,
   });
   await writeTelemetry(
-    sessionTelemetryRow(start, { project, fetched, ranked, standing, kernel, assembled, injected, deliveredTop })
+    sessionTelemetryRow(start, {
+      project,
+      fetched,
+      ranked,
+      standing,
+      kernel,
+      assembled,
+      injected,
+      deferred,
+      deliveredTop,
+    })
   );
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(
@@ -346,7 +365,7 @@ async function finishSessionOutput(
   standing: StandingBlocks,
   assembled: AssembledContext,
   opts: { modelNotice: () => Promise<ModelOffer | null>; protectedParts: string[] }
-): Promise<{ out: string; injected: string }> {
+): Promise<{ out: string; injected: string; deferred: string[] }> {
   let { out, injected } = assembled;
   const modelNoticeOutput = await appendModelSessionNotice(out, opts.modelNotice);
   if (modelNoticeOutput.block) {
@@ -354,13 +373,13 @@ async function finishSessionOutput(
     injected = String(JSON.parse(out).hookSpecificOutput.additionalContext);
     standing.update += modelNoticeOutput.block;
   }
-  if (out === "{}") return { out, injected };
+  if (out === "{}") return { out, injected, deferred: [] };
   const parsed = JSON.parse(out);
   const context = parsed.hookSpecificOutput?.additionalContext;
-  if (typeof context !== "string") return { out, injected };
+  if (typeof context !== "string") return { out, injected, deferred: [] };
   const capped = capSessionContext(context, opts.protectedParts);
   parsed.hookSpecificOutput.additionalContext = capped.text;
-  return { out: JSON.stringify(parsed), injected: capped.text };
+  return { out: JSON.stringify(parsed), injected: capped.text, deferred: capped.deferred };
 }
 
 /** The `session_hook_call` row: what was asked, what came back, what reached the context. */
@@ -374,6 +393,8 @@ function sessionTelemetryRow(
     kernel: RenderedKernel;
     assembled: AssembledContext;
     injected: string;
+    /** #1743: sections the cap cut — present, but not delivered. */
+    deferred: string[];
     deliveredTop: SessionHit[];
   }
 ): SessionHookTelemetry {
@@ -407,12 +428,20 @@ function sessionTelemetryRow(
     hinted_ids: deliveredTop.map((h) => h.id),
     hinted_types: deliveredTop.map((h) => h.type),
     pending_lanes: standing.pendingLanes,
-    ...(standing.pendingHarvest > 0 ? { pending_harvest: standing.pendingHarvest } : {}),
+    ...pendingHarvestField(standing.pendingParts.map(retained).join("")),
+    ...(r.deferred.length ? { deferred_sections: r.deferred } : {}),
     constants_skipped: standing.constantsSkipped,
     kernel: kernelTelemetry(kernel, fetched.sideData),
     status: r.assembled.emptyAnswer && fetched.status === "ok" ? "no-hits" : fetched.status,
     error: fetched.errMsg,
   };
+}
+
+/** #675: after-session harvest blocks this start delivered — counted in the
+ *  delivered relay text, so a block the cap cut (#1743) is not counted. */
+function pendingHarvestField(deliveredRelay: string): { pending_harvest?: number } {
+  const n = (deliveredRelay.match(/<session-harvest /g) ?? []).length;
+  return n > 0 ? { pending_harvest: n } : {};
 }
 
 /** #490/#493: how warm the model was, and whether that reading is an estimate. */
@@ -656,7 +685,9 @@ interface StandingBlocks {
   pending: string;
   doku: string;
   pendingLanes: SessionHookTelemetry["pending_lanes"];
-  pendingHarvest: number;
+  /** #1743: the recency and trends blocks inside `pending`, each a section of its own for the cap. */
+  pendingParts: [string, string];
+  settleRelay: (injected: string) => Promise<void>;
   constantsSkipped: string[];
 }
 
@@ -702,7 +733,8 @@ async function collectStandingBlocks(
     pending: relay.pendingBlock,
     doku: await dokuBlockFor(project, projectConfidence),
     pendingLanes: relay.pendingLanes,
-    pendingHarvest: relay.pendingHarvest,
+    pendingParts: [relay.recencyText, relay.trendsText],
+    settleRelay: relay.settle,
     constantsSkipped: [],
   };
   blocks.language = await languageBlock();
@@ -848,7 +880,8 @@ function retainedParts(
     onboarding: retained(standing.onboarding),
     update: retained(standing.update),
     patch: retained(standing.patch),
-    pending: retained(standing.pending),
+    // #1743: the two lane blocks are cut one by one; count each that arrived.
+    pending: standing.pendingParts.map(retained).filter(Boolean).join("\n"),
     doku: retained(standing.doku),
   };
 }

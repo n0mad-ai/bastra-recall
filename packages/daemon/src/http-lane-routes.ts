@@ -108,13 +108,15 @@ export function dispatchLaneRoutes(
   // without the session notices (drafts, task cards) a session start carries.
   if (url === "/hook/session") {
     const subagentStart = (payload: SessionPayload) => payload.hook_event_name === "SubagentStart";
+    // #1743: the relay booking waits for the answer (or a dropped connection), never delays it.
+    const afterAnswer = (booking: () => Promise<void>) => res.once("close", () => void booking());
     runLane<SessionPayload>(
       req,
       res,
       (payload, self) =>
         subagentStart(payload)
           ? runSubagentStartLane(payload, gateKernel)
-          : runSessionLane(payload, self, warmupEmbedding, undefined, draftReview),
+          : runSessionLane(payload, self, warmupEmbedding, undefined, draftReview, afterAnswer),
       notice &&
         ((out, payload, connected) =>
           subagentStart(payload as SessionPayload) ? Promise.resolve(out) : notice(out, payload, connected))

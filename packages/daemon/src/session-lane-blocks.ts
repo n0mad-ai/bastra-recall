@@ -21,6 +21,7 @@ import {
   PENDING_BLOCK_CHAR_BUDGET,
   formatPendingRelay,
   isCountableSessionStart,
+  returnPendingRelay,
   takePendingRelay,
   type PendingSuggestion,
 } from "./pending-suggestions.js";
@@ -198,8 +199,15 @@ export interface PendingRelayBlocks {
   pendingBlock: string;
   reviewBlock: string;
   pendingLanes: SessionHookTelemetry["pending_lanes"];
-  pendingHarvest: number;
+  /** #1743: the two lane blocks inside `pendingBlock`, each its own section for the cap. */
+  recencyText: string;
+  trendsText: string;
+  /** #1743: books what reached the final context and returns what the cap
+   *  cut — suggestions stay pending, trend starts uncounted, drafts unshown. */
+  settle: (injected: string) => Promise<void>;
 }
+
+const reached = (injected: string, part: string) => part.trim() !== "" && injected.includes(part.trim());
 
 /**
  * #48 Redesign: still abgelegte Stop-Hook-Vorschläge der LETZTEN Session
@@ -216,7 +224,9 @@ export async function pendingRelayBlocks(
     pendingBlock: "",
     reviewBlock: "",
     pendingLanes: { recency: 0, trends: 0, recency_chars: 0, trends_chars: 0 },
-    pendingHarvest: 0,
+    recencyText: "",
+    trendsText: "",
+    settle: async () => {},
   };
   try {
     // #513: Recency wird konsumiert, Trends bleiben liegen; nur ein echter
@@ -228,6 +238,8 @@ export async function pendingRelayBlocks(
     for (const row of relay.recency)
       row.blocks = await filterPendingSaveSuggestions(cwd ? projectForFilter(cwd) : null, row.blocks);
     relay.recency = relay.recency.filter((row) => row.blocks.trim());
+    // #1743: what a cut start hands back — the row as stored, before this start's review suppression.
+    const taken = relay.recency.map((row) => ({ row, unreviewed: row.blocks }));
     // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
     // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
     // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
@@ -245,8 +257,23 @@ export async function pendingRelayBlocks(
       Math.max(0, PENDING_BLOCK_CHAR_BUDGET - (review?.block.length ?? 0))
     );
     if (rendered.text) result.pendingBlock = `\n${rendered.text}`;
-    // #675: counted in what was rendered, after the char budget.
-    result.pendingHarvest = (rendered.text.match(/<session-harvest /g) ?? []).length;
+    result.recencyText = rendered.recencyText;
+    result.trendsText = rendered.trendsText;
+    result.settle = async (injected) => {
+      const reviewReached = reached(injected, review?.block ?? "");
+      if (review?.block) await review.settle?.(reviewReached);
+      const recencyCut = rendered.recencyText !== "" && !reached(injected, rendered.recencyText);
+      const trendsCut = rendered.trendsText !== "" && !reached(injected, rendered.trendsText);
+      await returnPendingRelay({
+        recency: recencyCut
+          ? taken
+              .map(({ row, unreviewed }) => ({ ...row, blocks: reviewReached ? row.blocks : unreviewed }))
+              .filter((row) => row.blocks.trim())
+          : [],
+        trends: trendsCut ? (relay.advanced ?? []) : [],
+        sessionId: sessionId ?? null,
+      });
+    };
     result.pendingLanes = {
       recency: relay.recency.length,
       trends: relay.trends.length,
