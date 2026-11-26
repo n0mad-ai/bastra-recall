@@ -343,3 +343,35 @@ test("the choice holds when the view is left and opened again", async () => {
   assert.equal(chip(host, "done").attrs["aria-pressed"], "true");
   assert.ok(titles(host).includes("Bericht done"));
 });
+
+test("Escape from a filed status option restores focus to the filter button", async () => {
+  const { host, v } = await setup();
+  const button = stateBtn(host);
+  await button.click();
+  const option = chip(host, "done");
+  Object.assign(option, { closest: (selector: string) => (selector === ".tk-rv__state" ? button.parent : null) });
+  let focused = false;
+  button.focus = () => {
+    focused = true;
+  };
+  assert.equal(v.escapeReports(option), true);
+  assert.equal(stateMenu(host).hidden, true);
+  assert.equal(focused, true);
+});
+
+test("Escape in the filed status list keeps an open report note draft", async () => {
+  const { host, v } = await setup();
+  const button = stateBtn(host);
+  await button.click();
+  const option = chip(host, "done");
+  Object.assign(option, { closest: (selector: string) => (selector === ".tk-rv__state" ? button.parent : null) });
+  const draft = {
+    anchor: { kind: "paragraph", index: 1, excerpt: "fixture" },
+    noteId: null,
+    draft: { value: "unsaved" },
+  };
+  v.R.edit = draft;
+  assert.equal(v.escapeReports(option), true);
+  assert.equal(v.R.edit, draft);
+  assert.equal(stateMenu(host).hidden, true);
+});

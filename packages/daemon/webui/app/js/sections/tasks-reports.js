@@ -637,16 +637,21 @@ export function reportsRenderer(host) {
   };
 }
 
-/** Escape in the reading view (tasks.js key handler, after the pop-overs) closes what is open there:
- *  the note field, else the project or status list, else — in the search field (`target`) — the search. It never
- *  leaves the view, which is an area of its own reached from the rail (Daniel 18.11.2026). True when
- *  it closed something; false leaves Escape to the rest of the page. */
+function focusedPickerTrigger(target) {
+  return target?.closest?.(R.smenu ? ".tk-rv__state" : ".tk-rv__proj")?.firstChild;
+}
+
+/** Escape first closes the picker which has focus, then the note field or an open picker,
+ *  then the search if it has focus. Returns true when the view handled Escape. */
 export function escapeReports(target) {
   if (!R.open) return false;
-  if (R.edit) notesUi.cancel();
-  else if (R.menu || R.smenu) {
+  const menuOpen = R.menu || R.smenu;
+  const trigger = menuOpen ? focusedPickerTrigger(target) : null;
+  if (R.edit && !trigger) notesUi.cancel();
+  else if (menuOpen) {
     R.menu = R.smenu = false;
     emit("reports");
+    trigger?.focus();
   } else if (R.q && target?.classList?.contains("tk-rv__input")) setQuery("");
   else return false;
   return true;

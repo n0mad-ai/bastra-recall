@@ -118,8 +118,12 @@
   padding-block: 10px;
 }
 .tk-rv .mb__head .mb__search {
-  flex: 1 1 100px;
-  min-width: 100px;
+  flex: 1 1 80px;
+  min-width: 80px;
+}
+.tk-rv .mb__head .mb__search:has(.mb__hits:not(:empty)) {
+  flex-basis: 140px;
+  min-width: 140px;
 }
 /* the count of unread and all reports gives way first: hidden, not wrapped, when the view is narrower
  * than the head needs with it (js/sections/tasks-reports.js TIGHT, which shortens the search hint) */

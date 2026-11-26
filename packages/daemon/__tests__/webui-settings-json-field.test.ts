@@ -107,7 +107,8 @@ test("web UI settings: clearing an invalid daemon.env draft drops it and unblock
 test("web UI settings: an invalid-only JSON draft is visible and discardable from Changes", async () => {
   const f = await field();
   const frame = h("main", null);
-  const section = Object.assign(h("div", null), { closest: () => frame, parentElement: frame });
+  const section = Object.assign(h("div", null), { closest: () => frame });
+  frame.append(section);
   f.mountArea(section, { refreshLens() {} });
   const panel = h("aside", null);
   f.changesTab(panel);
