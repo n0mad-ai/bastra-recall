@@ -523,7 +523,7 @@ test("search and project pick list sit in the head like the memory browser's; th
   assert.equal(byClass(head, "tk-rv__input").length, 1);
   assert.equal(byClass(one(host, "tk-rv__side"), "mb__search").length, 0, "no search above the list");
   const kids = head.children.map((n) => n.className.split(" ")[0]);
-  assert.deepEqual(kids, ["mb__title", "mb__slash", "mb__scope", "mb__search", "mb__hits"], "no ESC button");
+  assert.deepEqual(kids, ["mb__scope", "tk-rv__fgrp", "mb__scope", "mb__search", "mb__hits"], "no ESC button");
 });
 
 test("project filter: like the memory browser's pick list; it narrows the list together with the search", async () => {

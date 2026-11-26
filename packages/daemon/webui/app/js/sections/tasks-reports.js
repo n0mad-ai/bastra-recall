@@ -73,6 +73,9 @@ import { statusFilter, groupHead } from "./tasks-reports-filter.js";
 /** Below this slot width list and reader share one column (memory browser: 760 px for list + reader;
  *  the report list is narrower, so two columns still fit at 640). */
 const NARROW = 640;
+/** Below this width the head's count is hidden (css/tasks-reports.css @container, same width) and the
+ *  search field shows its short hint, so the head stays one line. */
+const TIGHT = 1000;
 
 const dataKey = () => JSON.stringify([data.reports, data.deletedReports]);
 let lastKey = dataKey();
@@ -105,7 +108,7 @@ function enter() {
 /** Leaving the Tasks area ends the view, so the next visit starts on the calendar. */
 export function resetReports() {
   if (!R.open) return;
-  R.open = R.menu = false;
+  R.open = R.menu = R.smenu = false;
   R.q = "";
   R.hits = R.undo = R.project = null;
   setOutline(null, null);
@@ -531,10 +534,14 @@ function withDeleted(live, gone) {
   return [...live, ...gone].sort((a, b) => behind(a) - behind(b) || at(a) - at(b));
 }
 
-/** Closes the project pick list on a click outside it, as in the memory browser. */
+/** Closes the project or the status pick list on a click outside it, as in the memory browser. */
 function closeMenuOutside(e) {
-  if (!R.menu || e.target?.closest?.(".tk-rv__proj")) return;
-  R.menu = false;
+  const inside = (sel) => e.target?.closest?.(sel);
+  const project = R.menu && !inside(".tk-rv__proj"),
+    status = R.smenu && !inside(".tk-rv__state");
+  if (!project && !status) return;
+  if (project) R.menu = false;
+  if (status) R.smenu = false;
   emit("reports");
 }
 
@@ -549,12 +556,12 @@ function listNodes(rows, rowEl) {
   ]);
 }
 
-/** The reading view in the memory browser's frame: head (title, project, search, count), the status
- *  filter, list | reader. Mounted into its own slot (tasks.js); list and reader keep their scroll
+/** The reading view in the memory browser's frame: head (title, project, status filter, search,
+ *  count), list | reader. Mounted into its own slot (tasks.js); list and reader keep their scroll
  *  position across polling because only a real change rebuilds them. */
 export function reportsRenderer(host) {
-  const head = reportsHead(),
-    filter = statusFilter(),
+  const filter = statusFilter(),
+    head = reportsHead([filter.chips, filter.more]),
     list = h("nav.mb__list", { "aria-label": t("tk.rep.title"), on: { keydown: walk } }),
     side = h("div.tk-rv__side", null, list),
     // the reader's head stands above the scrolling text (lid), so its line spans the scrollbar too
@@ -562,11 +569,11 @@ export function reportsRenderer(host) {
     read = h("div.mb__reader", { on: { scroll: trackOutline } }),
     pane = h("div.tk-rv__pane", null, lid, read),
     body = h("div.mb__body", null, side, pane),
-    view = h("section.tk-rv", { "aria-label": t("tk.rep.title") }, h("span.mb__ticks"), head.el, filter.el, body);
+    view = h("section.tk-rv", { "aria-label": t("tk.rep.title") }, h("span.mb__ticks"), head.el, body);
   document.addEventListener("pointerdown", closeMenuOutside);
   /** No reports at all; none search and project filter leave (then with a way back to the full list);
-   *  or only the status filter hides them (its switches are right above): "nothing waits" only when none
-   *  of the hidden ones needs the owner, else how many the switches hide. */
+   *  or only the status filter in the head hides them: "nothing waits" only when none
+   *  of the hidden ones needs the owner, else how many the filter hides. */
   const empty = (any, matched, waiting) =>
     !any
       ? h("div.mb__empty", { text: t("tk.rep.none") })
@@ -610,7 +617,7 @@ export function reportsRenderer(host) {
     if (!narrow || !R.sel) R.list = !R.sel && !R.undo;
     view.classList.toggle("is-narrow", narrow);
     view.classList.toggle("is-reading", !R.list);
-    head.paint(every, rows.length, unreadCount(all), all.length);
+    head.paint(every, rows.length, unreadCount(all), all.length, host.clientWidth > 0 && host.clientWidth < TIGHT);
     filter.paint(stateCounts(matched.filter((r) => r.until === undefined)));
     const waiting = matched.some((r) => ATTENTION.includes(stateOf(r)));
     const lk = JSON.stringify([rows, R.sel, every.length > 0, matched.length, waiting]);
@@ -618,7 +625,9 @@ export function reportsRenderer(host) {
       const active = document.activeElement;
       const focusedId = list.contains(active) ? active.getAttribute("data-report-id") : null;
       resetClocks();
-      list.replaceChildren(...(rows.length ? listNodes(rows, rowEl) : [empty(every.length > 0, matched.length, waiting)]));
+      list.replaceChildren(
+        ...(rows.length ? listNodes(rows, rowEl) : [empty(every.length > 0, matched.length, waiting)])
+      );
       runClocks();
       if (focusedId)
         ([...list.children].find((row) => row.getAttribute("data-report-id") === focusedId) ?? head.input).focus();
@@ -629,14 +638,14 @@ export function reportsRenderer(host) {
 }
 
 /** Escape in the reading view (tasks.js key handler, after the pop-overs) closes what is open there:
- *  the note field, else the project list, else — in the search field (`target`) — the search. It never
+ *  the note field, else the project or status list, else — in the search field (`target`) — the search. It never
  *  leaves the view, which is an area of its own reached from the rail (Daniel 18.11.2026). True when
  *  it closed something; false leaves Escape to the rest of the page. */
 export function escapeReports(target) {
   if (!R.open) return false;
   if (R.edit) notesUi.cancel();
-  else if (R.menu) {
-    R.menu = false;
+  else if (R.menu || R.smenu) {
+    R.menu = R.smenu = false;
     emit("reports");
   } else if (R.q && target?.classList?.contains("tk-rv__input")) setQuery("");
   else return false;

@@ -111,8 +111,11 @@ test("text size: medium and large are bigger and airier than small (the reader's
 
 test("one height for the view's head, the list rows and the report's head; title up to two lines, meta one", () => {
   assert.match(rule(".tk-rv")["--rv-row"], /^\d+px$/);
-  for (const sel of [".tk-rv .mb__head", ".tk-rv .mb-row", ".tk-rep__head"])
-    assert.equal(rule(sel).height, "var(--rv-row)", sel);
+  for (const sel of [".tk-rv .mb-row", ".tk-rep__head"]) assert.equal(rule(sel).height, "var(--rv-row)", sel);
+  // the view's head holds project, status filter, search and count: it keeps the row height while they
+  // fit in one line and grows and wraps instead of clipping a switch when they do not (Daniel 26.11.2026)
+  const head = rule(".tk-rv .mb__head");
+  assert.deepEqual([head["min-height"], head.height, head["flex-wrap"]], ["var(--rv-row)", "auto", "wrap"]);
   assert.equal(rule(".tk-rep__head")["flex-wrap"], "nowrap");
   assert.equal(rule(".tk-rv .mb-row")["padding-block"], "0");
   // the title may take a second line (then "…"); two title lines and the meta line fit the row height
@@ -124,6 +127,12 @@ test("one height for the view's head, the list rows and the report's head; title
   assert.deepEqual([meta["white-space"], meta["flex-wrap"], meta.overflow], ["nowrap", "nowrap", "hidden"]);
   const narrow = rule(".tk-rv.is-narrow .tk-rep__head");
   assert.deepEqual([narrow["flex-wrap"], narrow.height], ["wrap", "auto"], "narrow screens may wrap");
+});
+
+test("the report text starts the reader's padding below the head: no first heading margin on top", () => {
+  // the head stands above the scrolling text, so the first heading's margin no longer collapses into
+  // the gap below it (Daniel 26.11.2026: the gap below the head was too high)
+  assert.equal(rule(".mb-rd .tk-rep__md > :first-child")["margin-top"], "0");
 });
 
 test("N4/N2: your own drafts are amber in the list like the notes in the report", () => {

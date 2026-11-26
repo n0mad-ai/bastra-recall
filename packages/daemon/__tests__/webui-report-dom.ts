@@ -50,6 +50,9 @@ export class Node_ {
   get isConnected() {
     return false;
   }
+  get parentElement() {
+    return this.parent;
+  }
   get firstChild() {
     return this.children[0] ?? null;
   }

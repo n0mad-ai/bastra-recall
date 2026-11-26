@@ -11,14 +11,21 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
-- Reports view: a status filter above the list. One switch per state
-  (New, Question, In progress, Handed over, Read, Done, Outdated), each with
-  its colour and count. By default the list shows only the reports that wait
-  for the owner (new, question, in progress, handed over); read, done and
-  outdated reports are switched on by hand and then stand as groups of their
-  own below the open ones. Search and project filter narrow first, the counts
-  show what they leave; the open report keeps its row whatever the filter
-  says. The choice holds while the page is open.
+- Reports view: a status filter in the head, between the project pick list
+  and the search field. New, Question, In progress and Handed over are
+  switches with their colour and count, on by default; Read, Done and
+  Outdated sit in a pick list after them ("Filed"), built and used like the
+  project pick list, several at once, each with its colour and count; the
+  closed list shows how many of them are on. Switched on, read, done and
+  outdated reports stand as groups of their own below the open ones. Search
+  and project filter narrow first, the counts show what they leave; the open
+  report keeps its row whatever the filter says. The choice holds while the
+  page is open. The head holds project, switches, pick list and search in
+  one line from a view width of about 850 px (a 1680 px window with the
+  chat open); it no longer repeats the title "Reports", the count of unread
+  and all reports gives way first below about 1000 px and the search field
+  then shows a short hint. Narrower, the head wraps instead of cutting a
+  switch.
 
 - `bastra doctor` reports an existing Graphify setup when it finds a
   registered Graphify guard command, a Graphify section in Claude's
@@ -233,7 +240,8 @@ until a new design replaces it; this name is independent of the product version.
   marked by the accent line on the row's right edge instead of coloured lines
   above and below the row. The open report's head now stands above the
   scrolling text with a shadow onto it, so its bottom line reaches the right
-  edge even beside a scrollbar.
+  edge even beside a scrollbar; the text starts 20 px below it, as in the
+  memory reader.
 
 - Save-quality hints no longer use a fixed list of English technology words
   (`api`, `css`, `react`, …). The hints "only generic technology words" for
@@ -441,10 +449,17 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- Session start: a section the context cap (#1336) cuts is no longer booked
+  as delivered. Pending save suggestions stay pending, a trend does not spend
+  one of its starts, and a draft review is neither marked shown nor logged as
+  `draft_review_shown`; they come at a later start that has room. The
+  `session_hook_call` row names the cut sections in `deferred_sections`, and
+  `pending_harvest` counts only delivered harvest blocks (#1743).
+
 - Reports view: an empty list says "Nothing waits for you" only when no new,
   question, in-progress or handed-over report is in the current project and
-  search. When the status switches hide such a report, it says "No report
-  matches this selection" with how many the switches hide. The group heads
+  search. When the status filter hides such a report, it says "No report
+  matches this selection" with how many the filter hides. The group heads
   (Open, Read, Done, Outdated) are headings for screen readers; their look and
   the arrow keys in the list are unchanged.
 

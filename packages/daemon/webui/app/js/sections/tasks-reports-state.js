@@ -14,7 +14,7 @@ import { ATTENTION } from "./tasks-reports-model.js";
 // while `next` (the report shown after it, null for none) is on screen
 // project: the project filter in the head (null = all projects) · menu: its pick list is open
 // states: the states the status filter shows (tasks-reports-filter.js); kept while this page lives, so
-// leaving the view and coming back keeps the choice
+// leaving the view and coming back keeps the choice · smenu: the status filter's pick list is open
 export const R = {
   open: false,
   sel: null,
@@ -29,6 +29,7 @@ export const R = {
   project: null,
   menu: false,
   states: new Set(ATTENTION),
+  smenu: false,
 };
 
 /** A change the report store can refuse when it is full (#1609): then the message says so and how to

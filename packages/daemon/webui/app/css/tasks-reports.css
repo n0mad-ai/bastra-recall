@@ -33,6 +33,8 @@
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
   font-family: var(--sans);
   color: var(--ink);
+  /* the head's count hides by the view's own width (@container below) */
+  container-type: inline-size;
 }
 .tk-rv__hits {
   margin-right: auto;
@@ -105,9 +107,26 @@
   background: var(--bg);
   box-shadow: 0 10px 22px -8px var(--shade-75);
 }
-/* the view's head and the list rows take the same height (rows: two lines, centred) */
+/* the view's head and the list rows take the same height (rows: two lines, centred); when project,
+ * status filter, search and count do not fit in one line, the head grows and wraps instead of
+ * clipping a switch (Daniel 26.11.2026), the search field narrowing first */
 .tk-rv .mb__head {
-  height: var(--rv-row);
+  flex-wrap: wrap;
+  row-gap: 8px;
+  height: auto;
+  min-height: var(--rv-row);
+  padding-block: 10px;
+}
+.tk-rv .mb__head .mb__search {
+  flex: 1 1 100px;
+  min-width: 100px;
+}
+/* the count of unread and all reports gives way first: hidden, not wrapped, when the view is narrower
+ * than the head needs with it (js/sections/tasks-reports.js TIGHT, which shortens the search hint) */
+@container (max-width: 999px) {
+  .tk-rv__hits {
+    display: none;
+  }
 }
 .tk-rv .mb-row {
   height: var(--rv-row);
@@ -278,43 +297,54 @@
   color: var(--ink-soft);
 }
 
-/* the status filter above the list (js/sections/tasks-reports-filter.js): the memory browser's chip
- * row; each switch carries its state's dot, the open states first, the filed-away ones after a divider */
-.tk-rv .tk-rv__filter {
-  gap: 6px 14px;
-  padding: 8px 16px;
-  border-bottom-color: var(--line-14);
-}
+/* the status filter in the head (js/sections/tasks-reports-filter.js): four switches in the memory
+ * browser's chip look, each with its state's dot, then the pick list of the filed-away states, the
+ * project pick list's button and list; an entry's dot is hollow while its state is off */
 .tk-rv__fgrp {
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
-.tk-rv__fsep {
-  align-self: stretch;
-  width: 1px;
-  background: var(--line-14);
-}
+/* slightly tighter than the memory browser's chips (padding 9 px, gap 6 px), so project, switches,
+ * pick list and search fit one line at the usual width; font and height stay */
 .tk-rv .tk-rv__chip {
+  gap: 4px;
   height: 24px;
+  padding: 0 7px;
   font-size: 10.5px;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
-.tk-rv .tk-rv__chip .mb__chipdot {
+.tk-rv .tk-rv__chip .mb__chipdot,
+.tk-rv .tk-rv__sopt .mb__optdot {
   background: var(--tc);
 }
 .tk-rv .tk-rv__chip:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
 }
-/* a switched-off state steps back: hollow dot, muted text */
-.tk-rv .tk-rv__chip:not(.is-on) .mb__chipdot {
+.tk-rv .tk-rv__chip:not(.is-on) .mb__chipdot,
+.tk-rv .tk-rv__sopt:not(.is-on) .mb__optdot {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--tc);
 }
 .tk-rv .tk-rv__chip.is-on {
   color: var(--ink);
+}
+.tk-rv .tk-rv__sopt:not(.is-on) {
+  color: var(--muted);
+}
+.tk-rv .tk-rv__state {
+  flex: none;
+}
+.tk-rv .tk-rv__smenu.is-end {
+  left: auto;
+  right: 0;
+}
+.tk-rv .mb__scopesq {
+  flex: none;
 }
 /* the list's group heads (read, done, outdated) */
 .tk-rv .tk-rv__gh {
@@ -343,7 +373,13 @@
   padding: 2px 8px;
 }
 
-/* report text: the memory reader's text block plus what reports add */
+/* report text: the memory reader's text block plus what reports add. The head stands above the
+ * scrolling text now, so nothing collapses the first heading's top margin into the reader's padding
+ * any more: the text starts the reader's padding (20 px) below the head, as in the memory reader
+ * (Daniel 26.11.2026: the gap below the head was too high) */
+.mb-rd .tk-rep__md > :first-child {
+  margin-top: 0;
+}
 .tk-rep__md > :last-child {
   margin-bottom: 0;
 }
