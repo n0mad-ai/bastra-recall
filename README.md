@@ -167,7 +167,7 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) — update with `bastra update`, or opt into automatic updates. `bastra update` updates the way you installed: Homebrew, or the npm package you installed (`bastra-recall` or `@bastra-recall/daemon`). Coming from 1.1.8 or older with `npm install -g bastra-recall`? Run `npm install -g bastra-recall@latest` once, then `bastra update` ([details](./docs/USAGE.md#updating--what-bastra-update-installs)).
 - [Model recommendations](./docs/USAGE.md#model-recommendations--when-a-release-suggests-a-different-local-text-model) — a release can suggest a better local text model; you are asked, never switched automatically.
 - [Reviewed-miss harvester](./docs/reviewed-miss-harvester.md) — an offline repository tool for reviewing missed recall opportunities; it applies nothing automatically.
-- [Remote access](./docs/REMOTE-ACCESS.md) — connect ChatGPT on the web and phone to your own Recall through your own HTTPS address.
+- [Remote access](./docs/REMOTE-ACCESS.md) — connect ChatGPT on the web and phone to your own Recall through your own HTTPS address, and optionally open the web UI there behind a sign-in.
 - [Statusline and terminal panels](./packages/statusline/README.md#english) — setup, views and data limits for Claude Code and Codex.
 - [Product docs](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) — let the assistant maintain user guides for your projects.
 - [Bastra Commons](./docs/commons.md) — on hold: off by default and not developed further for now.
@@ -353,7 +353,7 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) – mit `bastra update` aktualisieren oder automatische Updates aktivieren. `bastra update` aktualisiert so, wie du installiert hast: über Homebrew oder das npm-Paket, das du installiert hast (`bastra-recall` oder `@bastra-recall/daemon`). Du kommst von 1.1.8 oder älter und hast mit `npm install -g bastra-recall` installiert? Dann einmal `npm install -g bastra-recall@latest` ausführen, danach `bastra update` ([Details](./docs/USAGE.md#aktualisieren--was-bastra-update-installiert)).
 - [Modell-Empfehlungen](./docs/USAGE.md#modell-empfehlungen--wenn-ein-release-ein-anderes-lokales-textmodell-vorschlägt) – ein Release kann ein besseres lokales Textmodell vorschlagen; du wirst gefragt, nie automatisch umgestellt.
 - [Reviewed-Miss-Harvester](./docs/reviewed-miss-harvester.md#deutsch) — ein Offline-Repo-Werkzeug zum Prüfen verpasster Abrufchancen; es wendet nichts automatisch an.
-- [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) – ChatGPT im Web und auf dem Handy über deine eigene HTTPS-Adresse mit deinem Recall verbinden.
+- [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) – ChatGPT im Web und auf dem Handy über deine eigene HTTPS-Adresse mit deinem Recall verbinden und optional die Weboberfläche dort hinter einer Anmeldung öffnen.
 - [Statusline und Terminal-Panels](./packages/statusline/README.md#deutsch) – Einrichtung, Ansichten und Datengrenzen für Claude Code und Codex.
 - [Produkt-Dokumentation](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) – Anleitungen deiner Projekte vom Assistenten pflegen lassen.
 - [Bastra Commons](./docs/commons.md) – ruht: standardmäßig aus und vorerst nicht weiterentwickelt.

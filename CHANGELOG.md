@@ -11,6 +11,24 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
+- **Web UI sign-in and optional access through your own address (#1198).**
+  The web UI now has a sign-in with user name and password (one account, one
+  vault; password of at least 15 characters). New commands: `bastra account
+  setup | status | reset-password | devices | revoke <id> | logout-all |
+  unlock` and `bastra ui remote on <https-address> | off | status`.
+  With `ui.public_origin` set, the web UI can also be opened through your own
+  tunnel or proxy address: only `/ui` is added, only after sign-in, and never
+  settings, folder access, vault import, the assistant address, hooks or
+  health. Sessions last 24 hours (2 hours idle); "stay signed in on this
+  device" lasts 30 days and can be revoked per device. Wrong passwords are
+  limited per source and per account (5 in 15 minutes lock a source; 20 in 24
+  hours close the outside sign-in for an hour; locks double up to 24 hours).
+  Private memories are visible after sign-in, also from outside. The password
+  hash lives in the local app database; backups of it contain it. Setup,
+  tunnel rule and checks: [Remote access](./docs/REMOTE-ACCESS.md#web-ui-through-your-own-address-sign-in).
+  **For existing installations:** without an account nothing changes. Once you
+  create one, the web UI asks for the sign-in on your computer too.
+
 - Reports view: a status filter in the head, between the project pick list
   and the search field. New, Question, In progress and Handed over are
   switches with their colour and count, on by default; Read, Done and

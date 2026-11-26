@@ -21,6 +21,7 @@ Contents:
 - [Step 5: connect ChatGPT (web and phone)](#step-5-connect-chatgpt-web-and-phone)
 - [Other clients](#other-clients)
 - [Manage and revoke clients](#manage-and-revoke-clients)
+- [Web UI through your own address (sign-in)](#web-ui-through-your-own-address-sign-in)
 - [Troubleshooting](#troubleshooting)
 - [Limits](#limits)
 
@@ -100,8 +101,10 @@ tested.
 
 ## Security model
 
-**What is published.** Only two groups of paths, everything else answers `404`
-at the tunnel:
+**What is published.** By default only two groups of paths, everything else
+answers `404` at the tunnel. The web UI under `/ui` is a third, optional group;
+it stays closed until you switch it on
+([Web UI through your own address](#web-ui-through-your-own-address-sign-in)):
 
 | Path | Who may use it |
 |---|---|
@@ -109,7 +112,8 @@ at the tunnel:
 | `/api/v1/oauth/register`, `/authorize`, `/token` | Public by design; each checks its own credentials (allowlist, API token on the approval page, PKCE) |
 | `/.well-known/oauth-protected-resource/api/v1/mcp`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` | Public `GET` documents without secrets |
 
-`/hook/*`, `/ui`, the vault map and every other local route stay unreachable.
+`/hook/*`, the vault map and every other local route stay unreachable. So does
+`/ui`, unless you turn on the optional web UI access below.
 
 **Two kinds of token** open `/api/v1/mcp`:
 
@@ -187,8 +191,10 @@ internet look like a local tool and skip the token check. Forwarding headers
 disable that exception even with empty or localhost values; every other local
 route (`/hook/*`, `/ui`, `/health`, `/tools` and the rest outside `/api/v1/*`,
 except the public OAuth discovery documents under `/.well-known/`) also
-requires the Bearer token when one of them is present. Keep these routes
-private all the same. The required `401` check in
+requires the Bearer token when one of them is present. The one exception is
+the optional [web UI access](#web-ui-through-your-own-address-sign-in): it is
+off by default and only matches the exact host you set. Keep all other routes
+private. The required `401` check in
 [Step 4](#step-4-verify-from-outside) proves that unauthenticated requests are
 rejected by your actual tunnel setup.
 
@@ -398,7 +404,8 @@ curl -s -o /dev/null -w '%{http_code}\n' $H/api/v1/health                    # 4
 # With the API token: 200.
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer <token>" $H/api/v1/health   # 200
 
-# Local-only routes stay closed at the tunnel.
+# Local-only routes stay closed at the tunnel. (/ui answers 404 as long as
+# you have not added the /ui rule from "Web UI through your own address".)
 curl -s -o /dev/null -w '%{http_code}\n' $H/ui                               # 404
 curl -s -o /dev/null -w '%{http_code}\n' $H/hook/recall                      # 404
 
@@ -493,6 +500,212 @@ and reconnect the clients you trust.
 To switch remote access off completely, stop the tunnel (`launchctl bootout …`
 on macOS). Nothing can reach the daemon from outside while the tunnel is down.
 
+## Web UI through your own address (sign-in)
+
+You can also open the web UI (`bastra map`) from outside, for example on your
+phone, through the same tunnel. This is optional and off by default.
+
+### What changes
+
+- The web UI now has a **sign-in with user name and password**. One account,
+  one vault. There are no further users.
+- **Without an account nothing changes.** On your computer the web UI opens as
+  before, and from outside nothing is reachable: even with the tunnel rule in
+  place, every `/ui` request answers `403` until an account exists.
+- **With an account, the sign-in applies on your computer too.** `bastra map`
+  then shows the sign-in page first.
+- The account only protects `/ui`. `/api/v1`, the MCP forwarders, hooks and the
+  command line work as before, with the same tokens.
+
+### Step by step
+
+1. **Create the account** on the computer that runs Recall, in a terminal:
+
+   ```sh
+   bastra account setup
+   ```
+
+   It asks for a user name, then for the password twice (hidden). The password
+   needs at least 15 characters and at most 1024 bytes. It is read only from
+   the terminal, never from arguments, environment or a pipe. Without a
+   terminal the command stops with a message. It never overwrites an existing
+   account.
+
+2. **Switch on remote access** with your public address (`https://` only, no
+   path, no `localhost`):
+
+   ```sh
+   bastra ui remote on https://recall.example.com
+   ```
+
+   This takes effect at once; no restart. `bastra ui remote status` shows the
+   current state.
+
+3. **Let `/ui` through the tunnel.** Add one rule to the `ingress` list in
+   `~/.cloudflared/config.yml`, before the last rule (`http_status:404`):
+
+   ```yaml
+   ingress:
+     - hostname: recall.example.com
+       path: ^/api/v1/
+       service: http://127.0.0.1:6723
+     - hostname: recall.example.com
+       path: ^/\.well-known/oauth-(protected-resource(/api/v1/mcp)?|authorization-server)$
+       service: http://127.0.0.1:6723
+     - hostname: recall.example.com
+       path: ^/ui(/|$)
+       service: http://127.0.0.1:6723
+     - service: http_status:404
+   ```
+
+   Then restart the tunnel (macOS: `launchctl kickstart -k gui/$(id -u)/com.example.cloudflared-recall`,
+   with your own label). Publish only `/ui` additionally; do not open anything
+   else.
+
+4. **Check the proxy settings.** Whatever you use in front of Recall must:
+   - pass the public host through **unchanged** (the same rule as in
+     [The Host rule](#the-host-rule-why-the-tunnel-must-not-rewrite-host)), and
+     the host must match the address from step 2 exactly;
+   - set `X-Forwarded-Proto: https`. Requests for the public host without it
+     are refused.
+
+   In Cloudflare, also switch on **Always Use HTTPS** for the domain (SSL/TLS →
+   Edge Certificates), so the password is never sent over plain `http`.
+
+5. **Sign in.** Open `https://recall.example.com/ui/` in a browser and sign in.
+
+### Verify
+
+From a machine outside your network (replace the hostname):
+
+```sh
+H=https://recall.example.com
+
+# The sign-in page is reachable.
+curl -s -o /dev/null -w '%{http_code}\n' $H/ui/login                 # 200
+
+# Without a session, no data: 401 for data routes ...
+curl -s -o /dev/null -w '%{http_code}\n' $H/ui/graph                 # 401
+curl -s -o /dev/null -w '%{http_code}\n' $H/ui/health                # 401
+
+# ... and the closed routes answer 403 even after sign-in.
+curl -s -o /dev/null -w '%{http_code}\n' $H/ui/settings              # 403
+
+# Hooks stay closed.
+curl -s -o /dev/null -w '%{http_code}\n' $H/hook/recall              # 404
+```
+
+A page request without a session (with `Accept: text/html`) is redirected to
+`/ui/login` instead of answering `401`. If `/ui/graph` returns data without a
+session, stop: switch remote access off (below) and check the proxy.
+
+### Switch off
+
+```sh
+bastra ui remote off
+```
+
+This clears the address, takes effect at once and ends every session that
+came through the tunnel. Then remove the `/ui` rule from the `ingress` list and
+restart the tunnel. Your account and local sessions stay.
+
+### Security model of the web UI
+
+**Reachable from the internet** (only after sign-in, except the sign-in page
+itself): the memory browser, graph, search, tasks, reports, chat and the other
+pages of the web UI.
+
+**Never reachable from the internet**, with or without a session (answer
+`403`): settings (`/ui/settings`), the assistant address, the folder picker
+(`/ui/fs`), vault import (`/ui/import-vault`) and the first-account setup
+page. Hooks and `/health` are not published at all. Change these things on
+your computer.
+
+Private memories are shown after sign-in, **also from outside**. Whoever signs
+in sees your whole vault in the web UI. Treat the password like the key to it.
+
+**Sessions:**
+
+| Item | Lifetime |
+|---|---|
+| Normal session | 24 hours at most, and it ends after 2 hours without use |
+| "Stay signed in on this device" | 30 days at most |
+
+Background polls of the page do not extend a session. Sessions survive a daemon
+restart. A session made on your computer does not work through the tunnel, and
+the other way round.
+
+The session cookie is `HttpOnly` and `SameSite=Strict`. Through the tunnel it is
+also `Secure`, and answers carry `Strict-Transport-Security`. Every write
+request needs the session's CSRF header; through the tunnel it must also carry
+exactly your public address as `Origin`.
+
+**Protection against password guessing.** Counted per source (through
+Cloudflare: the address from `CF-Connecting-IP`; IPv6 per /64 network):
+
+- 5 wrong passwords within 15 minutes lock that source for 15 minutes. Every
+  further lock doubles the time, up to 24 hours.
+- 20 wrong passwords within 24 hours from all outside sources together close
+  the sign-in from outside for 1 hour. Every further lock doubles the time, up
+  to 24 hours. A wrong user name counts too.
+- At most 30 attempts per minute from outside, and one password check runs at
+  a time (4 more may wait). Beyond that the answer is `429` with `Retry-After`.
+- Sign-in on your computer is only limited to 5 attempts per minute. The outside
+  locks never block it, and existing sessions stay valid during a lock.
+
+Behind a proxy that does not send `CF-Connecting-IP`, all outside requests
+count as one source, so a single guesser can lock everyone out. Cloudflare sends
+the header.
+
+**Passwords.** At least 15 characters, at most 1024 bytes; nothing is cut off.
+Stored as an Argon2id hash (64 MiB, 3 passes), never the password itself.
+
+**Where the hash lives.** In Recall's local app database (`recall.db`). A backup
+of that database contains the password hash and the session records. Treat such
+backups like the vault. The JSON export of the database leaves these tables out.
+
+### Locked out? Lost the password?
+
+On your computer only:
+
+```sh
+bastra account status           # account, sessions, active locks, remote on/off
+bastra account unlock           # clear all locks and counters
+bastra account reset-password   # new password (asks twice, hidden); ends all sessions
+```
+
+### See and revoke devices
+
+```sh
+bastra account devices          # id, kind, origin, last use, expires, label
+bastra account revoke <id>      # end one session (an unambiguous start of the id, 6+ characters, works)
+bastra account logout-all       # end all sessions
+```
+
+In the web UI on your computer, the same is under **Settings → Account and
+devices**. These settings are not available through the tunnel.
+A password change in the web UI or `reset-password` ends all sessions.
+
+Deutsch: Die Weboberfläche ist über die eigene Adresse optional von außen
+erreichbar, geschützt durch Anmeldung mit Nutzername und Passwort (ein Konto,
+mindestens 15 Zeichen). Ohne Konto bleibt lokal alles wie bisher und von außen
+ist nichts erreichbar; mit Konto ist auch lokal eine Anmeldung nötig. Ablauf:
+`bastra account setup`, dann `bastra ui remote on https://<eigene-adresse>`,
+dann am Tunnel zusätzlich nur `/ui` durchlassen (cloudflared: `path: ^/ui(/|$)`),
+den öffentlichen Host unverändert weitergeben, `X-Forwarded-Proto: https`
+setzen und bei Cloudflare „Always Use HTTPS" einschalten. Aus: `bastra ui remote
+off` und Regel entfernen. Von außen nie erreichbar: Einstellungen,
+Ordnerzugriff, Vault-Import, Assistenten-Adresse, Hooks, Health. Private
+Erinnerungen sind nach der Anmeldung auch von außen sichtbar. Sitzungen: 24
+Stunden, 2 Stunden Leerlauf, „auf diesem Gerät angemeldet bleiben" 30 Tage.
+Gegen Passwort-Raten gibt es Sperren (5 Fehlversuche in 15 Minuten sperren die
+Quelle 15 Minuten, 20 in 24 Stunden sperren die Anmeldung von außen 1 Stunde;
+jede weitere Sperre verdoppelt die Zeit bis höchstens 24 Stunden). Bei
+Aussperrung hilft nur lokal `bastra account unlock` oder `reset-password`;
+Geräte widerrufst du mit `bastra account devices` und `revoke` oder in den
+Einstellungen unter „Konto und Geräte". Der Passwort-Prüfwert liegt in der
+lokalen App-Datenbank; Sicherungen davon enthalten ihn.
+
 ## Troubleshooting
 
 **`curl …/api/v1/health` without a token returns `200`.** The tunnel rewrites
@@ -546,7 +759,7 @@ remove the setting (see [The Host rule](#the-host-rule-why-the-tunnel-must-not-r
   a public endpoint for your vault.
 - **Single user.** Whoever knows the API token can approve clients. There are
   no separate user accounts or per-client permissions; every approved client
-  gets the same tool set.
+  gets the same tool set. The web UI has one account and no further users.
 - **No task tools remotely.** Task tools need a local caller and their own
   credentials, so the remote door leaves them out.
 - **Untested:** the ChatGPT Android app, Linux and Windows hosts,
