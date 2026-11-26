@@ -21,6 +21,7 @@ import { Telemetry } from "../src/telemetry.js";
 import { saveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { isOneWordTrigger } from "../src/save-quality.js";
 import { lowSignalReasons } from "../src/low-signal.js";
+import { distinctiveTokensForActedOn } from "../src/load-memory-handler.js";
 
 async function makeDeps(): Promise<{ deps: ToolDeps; close: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-no-wordlist-"));
@@ -59,6 +60,28 @@ test("a single word stays one word, also with a hyphen at its edge", () => {
   for (const trigger of ["an", "css", "Deploy", "-css", "css-", "--css--", "  css  ", "api_key", ""]) {
     assert.equal(isOneWordTrigger(trigger), true, JSON.stringify(trigger));
   }
+});
+
+test("acted_on: former list words are distinctive tokens and count as a match", () => {
+  // Before 2026-11-26 `server`, `design`, `memory`, `test` were dropped here, so
+  // this memory had only `rollout` as a token and an edit touching `server
+  // design` scored 0. acted_on values before and after are not comparable.
+  const tokens = distinctiveTokensForActedOn("Server design memory test for the rollout");
+  assert.deepEqual(tokens, ["server", "design", "memory", "test", "rollout"]);
+  // Still filtered: tokens shorter than four characters and function words
+  // (per-language data, not a technology list).
+  assert.deepEqual(distinctiveTokensForActedOn("the api for css and with"), []);
+
+  const telemetry = new Telemetry();
+  telemetry.rotateTurn("s");
+  telemetry.recordLoadedMemory({ memory_id: "m", distinctive_tokens: tokens, hook_hint: null, session_id: "s" });
+  const [episode] = telemetry.matchLoadedMemories({
+    tool_name: "Edit",
+    tool_input_excerpt: "// server design note",
+    session_id: "s",
+  });
+  assert.equal(episode.match_strength, 2);
+  assert.equal(episode.acted_on, true);
 });
 
 test("the curator's low-signal report applies the same hyphen rule", () => {
