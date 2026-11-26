@@ -20,6 +20,7 @@
 @import "./backdrop.css";
 @import "./dashboard.css";
 @import "./dialogs.css";
+@import "./auth.css";
 @import "./telemetry.css";
 @import "./tasks-reports.css";
 @import "./tasks.css";

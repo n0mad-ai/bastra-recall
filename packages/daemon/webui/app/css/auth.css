@@ -1,0 +1,122 @@
+/* Recall web UI — sign-in page (login.html) and the header's account entry (js/account-menu.js).
+ * The page reuses the dialog box, fields and buttons of dialogs.css; here only what the page adds:
+ * centering, bigger touch targets for phones and tablets, the account button. */
+body.auth-page {
+  overflow: auto;
+}
+.auth {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+.auth__box {
+  width: min(440px, 100%);
+  max-height: none;
+  overflow: visible;
+}
+.auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth__field,
+.acct__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.auth__label,
+.acct__field label {
+  font: 10.5px var(--mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* 16px type keeps phones from zooming into a focused field; 44px is a comfortable touch target. */
+.auth .dlg-in {
+  height: 46px;
+  font-size: 16px;
+}
+.auth__remember {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.auth__remember label {
+  flex: 1;
+  padding: 10px 0;
+  cursor: pointer;
+}
+.auth__check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+.auth .dlg-btn {
+  height: 46px;
+  font-size: 12px;
+}
+.auth__submit {
+  width: 100%;
+}
+.auth .dlg__text {
+  font-size: 14px;
+}
+.auth .dlg__status {
+  font-size: 12.5px;
+}
+.auth__loading {
+  text-align: center;
+}
+.auth .dlg-in:focus-visible,
+.auth__check:focus-visible,
+.acct__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* header entry: name of the signed-in user, or a quiet "create account" link */
+.htab-r .htab-r__account {
+  order: 3;
+}
+.acct:empty {
+  display: none;
+}
+.acct__btn {
+  max-width: 150px;
+  height: 42px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.acct__btn:hover {
+  color: var(--accent);
+}
+.acct__btn--quiet {
+  color: var(--muted);
+  font-size: 10px;
+}
+.acct__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (max-width: 720px) {
+  .acct__btn {
+    max-width: 90px;
+  }
+}

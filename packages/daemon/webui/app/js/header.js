@@ -10,6 +10,7 @@ import { reportTickerItems } from "./sections/tasks-reports.js";
 import { unreadCount } from "./sections/tasks-reports-model.js";
 import { getArea } from "./areas.js";
 import { placeWeather, weatherPicker } from "./weather-place.js";
+import { mountAccount } from "./account-menu.js";
 
 const AMB = "#d9a441";
 let app, ctxRef, leftTab, crumbEl, rightTab, statMem, statMemD, statLinks, liveBtn, wxT, wxC, lensBtnWrap;
@@ -66,6 +67,7 @@ export function mountHeader(root, ctx) {
     wxC
   );
   lensBtnWrap = h("span.htab-r__tail");
+  const accountWrap = mountAccount();
   rightTab = h(
     "div.htab-r",
     null,
@@ -80,6 +82,7 @@ export function mountHeader(root, ctx) {
       liveBtn,
       h("span.vsep.wx-sep"),
       wxBtn,
+      accountWrap,
       lensBtnWrap
     )
   );

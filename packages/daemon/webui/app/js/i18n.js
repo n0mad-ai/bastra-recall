@@ -6,9 +6,11 @@ import viewsEn from "./i18n/views-en.js";
 import viewsDe from "./i18n/views-de.js";
 import oldviewsEn from "./i18n/oldviews-en.js";
 import oldviewsDe from "./i18n/oldviews-de.js";
+import authEn from "./i18n/auth-en.js";
+import authDe from "./i18n/auth-de.js";
 
-Object.assign(en, viewsEn, oldviewsEn);
-Object.assign(de, viewsDe, oldviewsDe);
+Object.assign(en, viewsEn, oldviewsEn, authEn);
+Object.assign(de, viewsDe, oldviewsDe, authDe);
 const CATALOGS = { en, de };
 export const LANG = CATALOGS[document.documentElement.dataset.lang] ? document.documentElement.dataset.lang : "en";
 document.documentElement.lang = LANG;

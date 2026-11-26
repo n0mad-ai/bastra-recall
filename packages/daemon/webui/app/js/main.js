@@ -1,4 +1,5 @@
 // Recall web UI — boot and render loop for the shell.
+import "./auth-client.js"; // first: every request below goes through its CSRF header and sign-in redirect
 import { h } from "./dom.js";
 import { t } from "./i18n.js";
 import { state, setState, subscribe } from "./state.js";
