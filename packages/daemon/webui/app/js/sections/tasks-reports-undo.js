@@ -11,16 +11,15 @@ import { emit, act } from "./tasks-store.js";
 import { api, fmtAt } from "./tasks-api.js";
 import { leftParts } from "./tasks-reports-model.js";
 import { R, write } from "./tasks-reports-state.js";
-import { listed, shown } from "./tasks-reports-search.js";
+import { shown } from "./tasks-reports-search.js";
 
 /** Deletes the report and moves on to the row below it (or above, at the end of the list). While that
  *  one is on screen, a notice offers to undo the delete (the daemon keeps it for a while). */
 export function remove(id, open) {
-  const filtered = shown(),
-    rows = filtered.some((r) => r.id === id) ? filtered : listed(),
+  const rows = shown(),
     at = rows.findIndex((r) => r.id === id),
-    next = at < 0 ? null : (rows[at + 1] ?? rows[at - 1]),
-    title = rows[at]?.title ?? "";
+    next = rows[at + 1] ?? rows[at - 1],
+    title = data.reports.find((r) => r.id === id)?.title ?? "";
   return act(async () => {
     let r = null;
     try {

@@ -136,14 +136,48 @@ test("when only the status filter hides every report, the list says so without a
     reports: [{ ...REPORTS[0], read_at: 5, status: "done" }],
   });
   await ctx.v.openReports();
-  // the only report is open, so it stays; once the view forgets it, the empty note shows
-  ctx.v.R.sel = null;
-  ctx.draw();
+  assert.equal(ctx.v.R.sel, null, "opening the list does not select an excluded report");
   const list = one(ctx.host, "mb__list");
   assert.equal(list.textContent, "tk.rep.filter.none");
   assert.equal(byClass(list, "mb-btn").length, 0, "the switches are right above");
   type(ctx.host, "nichts passt");
   assert.equal(one(list, "tk-rv__nohit").children[0].textContent, "tk.rep.find.none", "a search that hides all");
+});
+
+test("polling leaves the reader unselected when all reports are excluded", async () => {
+  const { v, updateReports } = await setup();
+  updateReports([ONE_EACH[3]]);
+  assert.equal(v.R.sel, null, "the selected report disappeared and the only remaining report is done");
+});
+
+test("deleting a report opens its next visible neighbour across groups", async () => {
+  const { host, v } = await setup();
+  await chip(host, "read").click();
+  await v.openReport(ID(2));
+  const current = titles(host).indexOf("Bericht handed");
+  assert.equal(titles(host)[current + 1], "Bericht in_progress");
+  const remove = byClass(one(host, "tk-rep__acts"), "mb-btn").find((button) => button.textContent === "tk.rep.delete");
+  assert.ok(remove);
+  await remove.click();
+  assert.equal(v.R.sel, ID(7));
+});
+
+test("polling restores row focus by report when a status change regroups the list", async () => {
+  const { host, context, updateReports } = await setup();
+  await chip(host, "read").click();
+  const doc = context.document as { activeElement: Node_ | null };
+  doc.activeElement = listRows(host).find((row) => one(row, "mb-row__t").textContent === "Bericht question")!;
+  let focused: Node_ | null = null;
+  const focus = Node_.prototype.focus;
+  Node_.prototype.focus = function () {
+    focused = this;
+  };
+  try {
+    updateReports(ONE_EACH.map((r) => (r.id === ID(1) ? { ...r, status: "read" } : r)));
+    assert.equal(focused && one(focused, "mb-row__t").textContent, "Bericht question");
+  } finally {
+    Node_.prototype.focus = focus;
+  }
 });
 
 test("the choice holds when the view is left and opened again", async () => {

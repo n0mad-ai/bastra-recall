@@ -4,7 +4,7 @@
 import { data } from "../data.js";
 import { emit } from "./tasks-store.js";
 import { api } from "./tasks-api.js";
-import { reportRows, matchReports, inProject, inStates } from "./tasks-reports-model.js";
+import { reportRows, matchReports, inProject, inStates, grouped } from "./tasks-reports-model.js";
 import { R } from "./tasks-reports-state.js";
 
 /** 1 for a report marked outdated: it leaves the place the list opened with and goes behind the
@@ -19,8 +19,11 @@ export function listed() {
 export const hitsNow = () => (R.hits && R.hits.q === R.q.trim() ? R.hits.ids : null);
 /** The open report keeps its row whatever the status filter says, so marking it never pulls it away. */
 export const keepRow = (r) => r.id === R.sel;
-/** The rows the search, the project filter and the status filter leave in the list. */
-export const shown = () => inStates(inProject(matchReports(listed(), R.q, hitsNow()), R.project), R.states, keepRow);
+/** Live reports that match the filters, in the same group order as the rendered list. */
+export function shown() {
+  const matched = inProject(matchReports(listed(), R.q, hitsNow()), R.project);
+  return grouped(inStates(matched, R.states, keepRow)).flatMap((g) => g.rows);
+}
 
 /** The daemon searches the report text too (#1597); a short pause after typing, the latest search wins.
  *  A Recall without the text search refuses the query: then title and project stay the search. */

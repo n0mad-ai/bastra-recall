@@ -53,6 +53,9 @@ export class Node_ {
   get firstChild() {
     return this.children[0] ?? null;
   }
+  getAttribute(k: string) {
+    return this.attrs[k] ?? null;
+  }
   setAttribute(k: string, v: string) {
     this.attrs[k] = v;
   }

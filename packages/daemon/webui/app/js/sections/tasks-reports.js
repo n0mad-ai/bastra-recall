@@ -81,7 +81,7 @@ onData(() => {
   lastKey = key;
   if (R.q.trim()) searchText(); // new or changed reports: the text search runs again
   if (R.sel && !data.reports.some((r) => r.id === R.sel)) R.sel = null; // deleted elsewhere
-  if (R.open && !R.sel && !R.undo && data.reports.length) openReport((shown()[0] ?? listed()[0]).id);
+  if (R.open && !R.sel && !R.undo) openFirstVisible("reports");
   else emit("reports");
 });
 
@@ -116,16 +116,21 @@ export function closeReports() {
   emit();
 }
 
-/** Opens the reading view (head button, dashboard widget): the first report the filters leave (unread
- *  first, data.reports is ordered that way), otherwise the newest. */
+/** Selects the first visible report, leaving the reader empty when the filters hide all reports. */
+function openFirstVisible(change) {
+  const first = shown()[0];
+  if (first) openReport(first.id);
+  else emit(change);
+}
+
+/** Opens the reading view (head button, dashboard widget). */
 export async function openReports() {
   enter();
   R.order = data.reports.map((r) => r.id);
   R.sel = null;
   S.compose = S.showDue = false;
   S.proposal = null;
-  if (data.reports.length) openReport((shown()[0] ?? data.reports[0]).id);
-  else emit();
+  openFirstVisible();
   await loadReports();
 }
 
@@ -324,6 +329,7 @@ function listRow(r) {
         .filter(Boolean)
         .join(" "),
       "aria-current": on ? "true" : null,
+      "data-report-id": r.id,
       title: fmtAt(r.createdAt),
       on: { click: () => openReport(r.id) },
     },
@@ -606,12 +612,13 @@ export function reportsRenderer(host) {
     filter.paint(stateCounts(matched.filter((r) => r.until === undefined)));
     const lk = JSON.stringify([rows, R.sel, every.length > 0, matched.length > 0]);
     if (lk !== listKey) {
-      const rowEls = () => [...list.querySelectorAll(".mb-row")],
-        focused = rowEls().indexOf(document.activeElement);
+      const active = document.activeElement;
+      const focusedId = list.contains(active) ? active.getAttribute("data-report-id") : null;
       resetClocks();
       list.replaceChildren(...(rows.length ? listNodes(rows, rowEl) : [empty(every.length > 0, matched.length > 0)]));
       runClocks();
-      if (focused >= 0) rowEls()[focused]?.focus();
+      if (focusedId)
+        ([...list.children].find((row) => row.getAttribute("data-report-id") === focusedId) ?? head.input).focus();
       listKey = lk;
     }
     paintReader({ top: lid, read }, all, narrow, seen);
