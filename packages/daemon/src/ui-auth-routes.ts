@@ -100,7 +100,13 @@ async function authState(req: IncomingMessage, res: ServerResponse, state: UiReq
 
 async function body(req: IncomingMessage, res: ServerResponse): Promise<Record<string, unknown> | null> {
   try {
-    return await readJsonBody(req, AUTH_BODY_MAX_BYTES);
+    const parsed: unknown = await readJsonBody(req, AUTH_BODY_MAX_BYTES);
+    // JSON null, false, 0 or "" would otherwise read as "already answered" and leave the request hanging.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      sendJson(res, 400, { error: "invalid-request" });
+      return null;
+    }
+    return parsed as Record<string, unknown>;
   } catch (error) {
     const tooLarge = (error as Error).message.startsWith("body too large");
     sendJson(res, tooLarge ? 413 : 400, { error: tooLarge ? "too-large" : "invalid-request" });
