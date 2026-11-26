@@ -58,6 +58,7 @@ import {
   stateOf,
   stateCounts,
   grouped,
+  ATTENTION,
 } from "./tasks-reports-model.js";
 import { stateMark, askedAbout } from "./tasks-reports-status.js";
 import { annotateReport } from "./tasks-report-notes.js";
@@ -564,12 +565,13 @@ export function reportsRenderer(host) {
     view = h("section.tk-rv", { "aria-label": t("tk.rep.title") }, h("span.mb__ticks"), head.el, filter.el, body);
   document.addEventListener("pointerdown", closeMenuOutside);
   /** No reports at all; none search and project filter leave (then with a way back to the full list);
-   *  or only the status filter hides them (its switches are right above). */
-  const empty = (any, matched) =>
+   *  or only the status filter hides them (its switches are right above): "nothing waits" only when none
+   *  of the hidden ones needs the owner, else how many the switches hide. */
+  const empty = (any, matched, waiting) =>
     !any
       ? h("div.mb__empty", { text: t("tk.rep.none") })
       : matched
-        ? h("div.mb__empty", { text: t("tk.rep.filter.none") })
+        ? h("div.mb__empty", { text: waiting ? t("tk.rep.filter.hidden", { n: matched }) : t("tk.rep.filter.none") })
         : h(
             "div.mb__empty.tk-rv__nohit",
             null,
@@ -610,12 +612,13 @@ export function reportsRenderer(host) {
     view.classList.toggle("is-reading", !R.list);
     head.paint(every, rows.length, unreadCount(all), all.length);
     filter.paint(stateCounts(matched.filter((r) => r.until === undefined)));
-    const lk = JSON.stringify([rows, R.sel, every.length > 0, matched.length > 0]);
+    const waiting = matched.some((r) => ATTENTION.includes(stateOf(r)));
+    const lk = JSON.stringify([rows, R.sel, every.length > 0, matched.length, waiting]);
     if (lk !== listKey) {
       const active = document.activeElement;
       const focusedId = list.contains(active) ? active.getAttribute("data-report-id") : null;
       resetClocks();
-      list.replaceChildren(...(rows.length ? listNodes(rows, rowEl) : [empty(every.length > 0, matched.length > 0)]));
+      list.replaceChildren(...(rows.length ? listNodes(rows, rowEl) : [empty(every.length > 0, matched.length, waiting)]));
       runClocks();
       if (focusedId)
         ([...list.children].find((row) => row.getAttribute("data-report-id") === focusedId) ?? head.input).focus();

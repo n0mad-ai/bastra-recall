@@ -62,6 +62,20 @@ test("a single word stays one word, also with a hyphen at its edge", () => {
   }
 });
 
+test("a part after a hyphen counts as a word only with a letter or a digit in it", () => {
+  for (const trigger of [
+    "css-__", // underscores only
+    "css-́", // a lone combining accent
+    "__-css",
+    "css-_-́-",
+  ]) {
+    assert.equal(isOneWordTrigger(trigger), true, JSON.stringify(trigger));
+  }
+  for (const trigger of ["css-_x", "css-1", "Café-Ölung", "日本-東京", "css-é"]) {
+    assert.equal(isOneWordTrigger(trigger), false, JSON.stringify(trigger));
+  }
+});
+
 test("acted_on: former list words are distinctive tokens and count as a match", () => {
   // Before 2026-11-26 `server`, `design`, `memory`, `test` were dropped here, so
   // this memory had only `rollout` as a token and an edit touching `server

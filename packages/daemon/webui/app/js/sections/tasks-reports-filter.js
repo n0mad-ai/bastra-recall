@@ -71,7 +71,8 @@ export function statusFilter() {
 }
 
 /** The label above a group of the list (read, done, outdated, and the open ones when another group is
- *  shown), in the memory browser's group head (css/membrowser.css: mb__gh). */
+ *  shown), in the memory browser's group head (css/membrowser.css: mb__gh). A heading for screen readers
+ *  on the level of the reader's report title (h2); a div with the role, so the look stays the same. */
 const GROUP_LABELS = {
   open: "tk.rep.group.open",
   read: "tk.rep.group.read",
@@ -79,4 +80,9 @@ const GROUP_LABELS = {
   outdated: "tk.rep.group.outdated",
 };
 export const groupHead = (group, n) =>
-  h("div.mb__gh.tk-rv__gh", null, h("span", { text: t(GROUP_LABELS[group]) }), h("span", { text: String(n) }));
+  h(
+    "div.mb__gh.tk-rv__gh",
+    { role: "heading", "aria-level": "2" },
+    h("span", { text: t(GROUP_LABELS[group]) }),
+    h("span", { text: String(n) })
+  );

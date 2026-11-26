@@ -89,6 +89,9 @@ export class Node_ {
     return node === this || this.all().includes(node as Node_);
   }
   querySelectorAll(sel: string) {
+    // "tag.class", as the list's arrow keys ask for its rows
+    const own = /^(\w+)\.([\w-]+)$/.exec(sel);
+    if (own) return this.all().filter((n) => n.tagName === own[1].toUpperCase() && n.classList.contains(own[2]));
     const [outer, inner] = sel.split(" ").map((s) => s.toUpperCase());
     return this.all()
       .filter((n) => n.tagName === outer)

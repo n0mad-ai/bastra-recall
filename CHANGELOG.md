@@ -241,8 +241,9 @@ until a new design replaces it; this name is independent of the product version.
   summary's own words, and the acted-on measurement no longer drops those
   words either. The one-word check stays and now counts a hyphenated term as
   several words in any language: `Discord-Relay` or `Key-Rotation` is no
-  longer flagged, `css` still is. The curator's low-signal report follows the
-  same rule (#1647).
+  longer flagged, `css` still is. A part after a hyphen counts only when it
+  holds a letter or a digit of any script, so `css-__` stays one word. The
+  curator's low-signal report follows the same rule (#1647).
 
 - The credential-redaction guide explains when already stored drafts,
   queued suggestions and tasks may be cleaned after redaction is turned
@@ -439,6 +440,13 @@ until a new design replaces it; this name is independent of the product version.
 - Removed the README banner (#1565).
 
 ### Fixed
+
+- Reports view: an empty list says "Nothing waits for you" only when no new,
+  question, in-progress or handed-over report is in the current project and
+  search. When the status switches hide such a report, it says "No report
+  matches this selection" with how many the switches hide. The group heads
+  (Open, Read, Done, Outdated) are headings for screen readers; their look and
+  the arrow keys in the list are unchanged.
 
 - Reports view: the marked row of the jump list in the right panel no longer
   flickers when the Tasks area redraws (polling, a change elsewhere); the row

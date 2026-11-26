@@ -74,18 +74,23 @@ export interface SaveQualityResult {
   }>;
 }
 
+/** A letter or a digit of any script: what makes a part of a hyphenated term a word. */
+const WORD_PART = /[\p{L}\p{N}]/u;
+
 /** #642: the specificity check, shared with the curator's low-signal report so
  *  both ask the same question. Language-neutral, no word list (owner decision
  *  2026-11-26, which also removed the technology-word hints).
  *
  *  A hyphen separates words here: `Discord-Relay` names two things. `tokens()`
  *  keeps `a-b` as one token for matching, so the parts are counted after it;
- *  a hyphen at either edge or a doubled one adds no empty word. Unicode hyphens
- *  and dashes already end a token, and `_` still joins (`api_key` is one name). */
+ *  a hyphen at either edge or a doubled one adds no empty word, and a part
+ *  needs a letter or a digit of any script to count (`css-__` or a lone
+ *  combining accent after the hyphen is still one word). Unicode hyphens and
+ *  dashes already end a token, and `_` still joins (`api_key` is one name). */
 export function isOneWordTrigger(trigger: string): boolean {
   let count = 0;
   for (const token of words(trigger)) {
-    for (const part of token.split("-")) if (part !== "" && ++count > 1) return false;
+    for (const part of token.split("-")) if (WORD_PART.test(part) && ++count > 1) return false;
   }
   return true;
 }

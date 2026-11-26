@@ -451,6 +451,7 @@ export default {
   "tk.rep.filter.questionTip": "Ein Folgebericht wartet auf deine Antwort",
   "tk.rep.filter.readTip": "Gelesen, ohne offene Anmerkungen",
   "tk.rep.filter.none": "Nichts wartet auf dich. Weitere Berichte zeigen die Filter oben.",
+  "tk.rep.filter.hidden": "Kein Bericht passt zu dieser Auswahl. Die Filter oben blenden {n} Bericht(e) aus.",
   "tk.rep.group.open": "OFFEN",
   "tk.rep.group.read": "GELESEN",
   "tk.rep.group.done": "ABGEARBEITET",

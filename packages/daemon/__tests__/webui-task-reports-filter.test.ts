@@ -144,6 +144,62 @@ test("when only the status filter hides every report, the list says so without a
   assert.equal(one(list, "tk-rv__nohit").children[0].textContent, "tk.rep.find.none", "a search that hides all");
 });
 
+test("when the switches hide a report that waits, the list does not claim nothing waits", async () => {
+  const ctx = await view();
+  (ctx.context.data as { reports: unknown }).reports = ctx.v.reportRows({
+    reports: [
+      { ...REPORTS[0], read_at: 5, status: "question" },
+      { ...REPORTS[1], read_at: 5, status: "done" },
+    ],
+  });
+  // the question switch off before the view opens, so no open report keeps its row
+  ctx.v.R.states.delete("question");
+  await ctx.v.openReports();
+  assert.equal(chip(ctx.host, "question").attrs["aria-pressed"], "false");
+  const list = one(ctx.host, "mb__list");
+  assert.equal(listRows(ctx.host).length, 0);
+  assert.equal(list.textContent, 'tk.rep.filter.hidden {"n":2}', "both reports are hidden by the switches");
+  assert.equal(byClass(list, "mb-btn").length, 0, "the switches are right above");
+  // the question switched on again and closed: nothing waits any more, so the old text is right
+  await chip(ctx.host, "question").click();
+  ctx.updateReports([
+    { ...REPORTS[0], read_at: 5, status: "read" },
+    { ...REPORTS[1], read_at: 5, status: "done" },
+  ]);
+  assert.equal(one(ctx.host, "mb__list").textContent, "tk.rep.filter.none");
+});
+
+test("group heads are headings for screen readers; rows and arrow keys stay as they were", async () => {
+  const { host, context } = await setup();
+  await chip(host, "done").click();
+  const list = one(host, "mb__list");
+  const heads = byClass(list, "mb__gh");
+  assert.equal(heads.length, 2);
+  for (const g of heads) {
+    assert.equal(g.attrs.role, "heading");
+    assert.equal(g.attrs["aria-level"], "2", "on the level of the reader's report title (h2)");
+    assert.equal(g.tagName, "DIV", "the look stays the memory browser's");
+  }
+  assert.equal(list.tagName, "NAV");
+  const rows = listRows(host);
+  for (const row of rows) assert.equal(row.tagName, "BUTTON");
+  // the arrow keys skip the heads: from the last open row straight to the done one
+  const doc = context.document as { activeElement: Node_ | null };
+  let focused: Node_ | null = null;
+  const focus = Node_.prototype.focus;
+  Node_.prototype.focus = function () {
+    focused = this;
+  };
+  try {
+    doc.activeElement = rows.at(-2)!;
+    const e = { key: "ArrowDown", currentTarget: list, preventDefault() {} };
+    for (const fn of list.listeners.keydown) fn(e);
+    assert.equal(focused, rows.at(-1));
+  } finally {
+    Node_.prototype.focus = focus;
+  }
+});
+
 test("polling leaves the reader unselected when all reports are excluded", async () => {
   const { v, updateReports } = await setup();
   updateReports([ONE_EACH[3]]);

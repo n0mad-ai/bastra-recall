@@ -429,6 +429,7 @@ export default {
   "tk.rep.filter.questionTip": "A follow-up report waits for your answer",
   "tk.rep.filter.readTip": "Read, no open notes",
   "tk.rep.filter.none": "Nothing waits for you. The filters above show more reports.",
+  "tk.rep.filter.hidden": "No report matches this selection. The filters above hide {n} report(s).",
   "tk.rep.group.open": "OPEN",
   "tk.rep.group.read": "READ",
   "tk.rep.group.done": "DONE",
