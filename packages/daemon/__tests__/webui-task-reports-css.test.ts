@@ -189,10 +189,15 @@ test("one marking per row: a stripe on the left for open states, none for new an
   // the open report: the accent stripe on the left, in the state stripe's place, winning over it by order
   assert.equal(merged(".tk-rv .mb-row.is-sel")["--stripe"], "0 0 var(--accent)");
   const last = (pred: (sel: string, d: Record<string, string>) => boolean) =>
-    rules.map(([s, d], i) => (pred(s as string, d as Record<string, string>) ? i : -1)).reduce((a, b) => Math.max(a, b));
+    rules
+      .map(([s, d], i) => (pred(s as string, d as Record<string, string>) ? i : -1))
+      .reduce((a, b) => Math.max(a, b));
   const sel = last((s, d) => selectorsOf(s).includes(".tk-rv .mb-row.is-sel") && d["--stripe"] === "0 0 var(--accent)");
   for (const s of ["question", "in_progress", "handed"])
-    assert.ok(sel > last((x, d) => selectorsOf(x).includes(`.tk-rv .mb-row.st-${s}`) && "--stripe" in d), `selection after the ${s} stripe`);
+    assert.ok(
+      sel > last((x, d) => selectorsOf(x).includes(`.tk-rv .mb-row.st-${s}`) && "--stripe" in d),
+      `selection after the ${s} stripe`
+    );
   assert.ok(!/inset 0 (1px|-1px)/.test(css), "no coloured line above or below a row any more");
 });
 
