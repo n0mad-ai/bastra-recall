@@ -24,6 +24,7 @@ import {
 import { autostartSnapshot, settingsAutostart, type SettingsAutostart } from "./settings-autostart.js";
 import { listClients, revokeClient } from "./oauth-store.js";
 import { listOllamaModels } from "./learned-recall/reranker.js";
+import { DEVICES_PATH, devicesAction, devicesList } from "./settings-devices.js";
 const sessions = new Map<string, { csrf: string; expires: number; path: string; host: string; lastUsed: number }>();
 const ttl = 15 * 60_000,
   cookieName = "bastra_settings_session";
@@ -103,6 +104,31 @@ async function snapshot(path: string, options: SettingsUiOptions) {
     restartAvailable: !!options.restart,
   };
 }
+/** POST /ui/settings/session: a fresh settings session (cookie + CSRF) for this browser. */
+async function openSession(req: IncomingMessage, res: ServerResponse, id: string, path: string): Promise<void> {
+  const body = await readJsonBody(req, 256);
+  if (Object.keys(body).length) failure(400);
+  // The new cookie replaces this browser's old one, so the old session can
+  // no longer be presented: free its slot (#1733). Only the cookie holder
+  // knows its id, so no other browser's session can be pushed out this way.
+  sessions.delete(id);
+  if (sessions.size >= capacity) {
+    let lru: string | undefined,
+      lruAt = Infinity;
+    for (const [key, session] of sessions)
+      if (session.lastUsed < lruAt) {
+        lru = key;
+        lruAt = session.lastUsed;
+      }
+    if (lru && Date.now() - lruAt >= reclaimIdleMs) sessions.delete(lru);
+  }
+  if (sessions.size >= capacity) failure(429);
+  const fresh = randomBytes(32).toString("base64url"),
+    csrf = randomBytes(32).toString("base64url");
+  sessions.set(fresh, { csrf, expires: Date.now() + ttl, path, host: req.headers.host!, lastUsed: Date.now() });
+  res.setHeader("Set-Cookie", cookie(fresh));
+  sendJson(res, 200, { csrf, expiresIn: ttl / 1000 });
+}
 export function dispatchSettingsUi(
   req: IncomingMessage,
   res: ServerResponse,
@@ -130,28 +156,7 @@ export function dispatchSettingsUi(
       for (const [id, session] of sessions) if (session.expires <= Date.now()) sessions.delete(id);
       const id = presentedSession(req);
       if (url === "/ui/settings/session" && method === "POST") {
-        const body = await readJsonBody(req, 256);
-        if (Object.keys(body).length) failure(400);
-        // The new cookie replaces this browser's old one, so the old session can
-        // no longer be presented: free its slot (#1733). Only the cookie holder
-        // knows its id, so no other browser's session can be pushed out this way.
-        sessions.delete(id);
-        if (sessions.size >= capacity) {
-          let lru: string | undefined,
-            lruAt = Infinity;
-          for (const [key, session] of sessions)
-            if (session.lastUsed < lruAt) {
-              lru = key;
-              lruAt = session.lastUsed;
-            }
-          if (lru && Date.now() - lruAt >= reclaimIdleMs) sessions.delete(lru);
-        }
-        if (sessions.size >= capacity) failure(429);
-        const fresh = randomBytes(32).toString("base64url"),
-          csrf = randomBytes(32).toString("base64url");
-        sessions.set(fresh, { csrf, expires: Date.now() + ttl, path, host: req.headers.host!, lastUsed: Date.now() });
-        res.setHeader("Set-Cookie", cookie(fresh));
-        sendJson(res, 200, { csrf, expiresIn: ttl / 1000 });
+        await openSession(req, res, id, path);
         return;
       }
       const session = sessions.get(id);
@@ -165,6 +170,12 @@ export function dispatchSettingsUi(
       if (method === "GET" && url === "/ui/settings/models") {
         session.lastUsed = Date.now();
         sendJson(res, 200, { models: await listOllamaModels({ timeoutMs: 2000 }).catch(() => [] as string[]) });
+        return;
+      }
+      if (method === "GET" && url === DEVICES_PATH) {
+        session.lastUsed = Date.now();
+        const answer = await devicesList(req, path);
+        sendJson(res, answer.status, answer.body);
         return;
       }
       if (method !== "POST") failure(405);
@@ -223,6 +234,11 @@ export function dispatchSettingsUi(
           options.oauthPath ?? (options.path ? join(dirname(path), "oauth.json") : undefined)
         );
         sendJson(res, 200, await snapshot(path, options));
+        return;
+      }
+      const devices = await devicesAction(req, url, body, path);
+      if (devices) {
+        sendJson(res, devices.status, devices.body);
         return;
       }
       if (url === "/ui/settings/restart") {

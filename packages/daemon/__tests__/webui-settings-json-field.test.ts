@@ -36,6 +36,7 @@ async function field() {
       hudTiles: () => h("div", null),
       onData: () => () => {},
       loadingBlock() {},
+      devicesBody: () => null,
       loadingInline() {},
       t: (key: string) => key,
       state: {},

@@ -91,6 +91,8 @@ export const GROUPS = [
     keys: ["tasks.enabled", "tasks.notifications", "tasks.chatActiveMinutes", "tasks.reportUndo", "tasks.chatConsent"],
   },
   { id: "api", keys: ["api.token", "cors.origins"], oauth: true },
+  // Account and devices (#1198): its own panel, no registry rows.
+  { id: "devices", keys: [], devices: true },
   { id: "logs", keys: ["telemetry.enabled", "logs.retention", "logs.path", "training.capture"] },
   { id: "more", keys: [] },
 ];
@@ -220,7 +222,7 @@ async function call(path, body) {
   return settingsJson(res, json);
 }
 
-function settingsApi(path, body) {
+export function settingsApi(path, body) {
   return settingsSession.run(settingsCsrf, async (csrf, { renew, invalidate }) => {
     const { res, json } = await requestSettings(path, body, csrf);
     // 403 csrf_mismatch: another tab replaced the session cookie (#1699). Origin/host 403s carry no code.

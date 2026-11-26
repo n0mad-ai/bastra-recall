@@ -47,6 +47,7 @@ import { findTab, changesTab } from "./settings-panel.js";
 import { backdropCtl } from "./settings-backdrop.js";
 import { soulControl } from "./settings-soul.js";
 import { assistantNameCtl } from "./settings-assistant.js";
+import { devicesBody } from "./settings-devices.js";
 import en from "../i18n/settings-en.js";
 import de from "../i18n/settings-de.js";
 
@@ -575,7 +576,7 @@ function mount(el, ctx) {
     }
     GROUPS.forEach((g) => {
       const keys = groupKeys(g);
-      if (!keys.length && !(g.oauth && store.model?.oauthClients?.length)) return;
+      if (!keys.length && !g.devices && !(g.oauth && store.model?.oauthClients?.length)) return;
       const rs = keys.map((k) => row(entry(k)));
       rows.push(...rs);
       const n = String(sections.length + 1).padStart(2, "0");
@@ -599,7 +600,8 @@ function mount(el, ctx) {
           "div.st-sec__rows",
           null,
           rs.map((r) => r.el),
-          g.oauth ? oauthRows() : null
+          g.oauth ? oauthRows() : null,
+          g.devices ? devicesBody() : null
         )
       );
       sections.push({ g, el: sec, rows: rs, n });
