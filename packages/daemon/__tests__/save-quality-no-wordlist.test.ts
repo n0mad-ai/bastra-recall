@@ -68,10 +68,12 @@ test("a part after a hyphen counts as a word only with a letter or a digit in it
     "css-́", // a lone combining accent
     "__-css",
     "css-_-́-",
+    "css-🙂",
+    "🧪-css",
   ]) {
     assert.equal(isOneWordTrigger(trigger), true, JSON.stringify(trigger));
   }
-  for (const trigger of ["css-_x", "css-1", "Café-Ölung", "日本-東京", "css-é"]) {
+  for (const trigger of ["css-_x", "css-1", "css-٢", "Café-Ölung", "日本-東京", "css-e\u0301", "css-🙂-relay"]) {
     assert.equal(isOneWordTrigger(trigger), false, JSON.stringify(trigger));
   }
 });

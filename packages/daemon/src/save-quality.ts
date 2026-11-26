@@ -90,7 +90,10 @@ const WORD_PART = /[\p{L}\p{N}]/u;
 export function isOneWordTrigger(trigger: string): boolean {
   let count = 0;
   for (const token of words(trigger)) {
-    for (const part of token.split("-")) if (WORD_PART.test(part) && ++count > 1) return false;
+    // The tokenizer already requires a letter or number at the start.
+    if (++count > 1) return false;
+    const hyphen = token.indexOf("-");
+    if (hyphen !== -1 && WORD_PART.test(token.slice(hyphen + 1))) return false;
   }
   return true;
 }
