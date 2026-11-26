@@ -141,7 +141,7 @@ test("the help guard runs before the dispatch switch, for every command", async 
 /** The commands cli.ts actually dispatches on, read from the source. */
 async function dispatchedCommands(): Promise<Set<string>> {
   const src = await readFile(join(here, "..", "src", "cli.ts"), "utf8");
-  const body = src.slice(src.indexOf("switch (args.command)"), src.indexOf("default:"));
+  const body = src.slice(src.indexOf("switch (args.command)"), src.lastIndexOf("error: unknown command"));
   const found = new Set<string>();
   for (const m of body.matchAll(/case\s+"([a-z-]+)"/g)) found.add(m[1]);
   return found;

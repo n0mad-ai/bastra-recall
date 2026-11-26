@@ -71,6 +71,15 @@ Befehle:
   oauth [list|revoke <id|all>]
                              Über OAuth freigegebene entfernte MCP-Clients (ChatGPT,
                              claude.ai-Konnektoren); 'revoke' sperrt einen oder alle
+  account <setup|status|reset-password|devices|revoke <griff>|logout-all|unlock>
+                             Das Konto der Web-Oberfläche: anlegen (Passwort
+                             verdeckt), Sitzungen und Sperren ansehen, Sitzungen
+                             beenden, Anmelde-Sperren löschen, neues Passwort
+  ui remote <on <https-adresse>|off|status>
+                             Web-Oberfläche hinter deinem eigenen Tunnel übers
+                             Internet erreichbar machen (Anmeldung nötig); 'off'
+                             beendet alle öffentlichen Sitzungen sofort.
+                             'bastra ui' allein = 'bastra map'
   code <enable|disable|index|rebuild|status>
                              Code-Kenntnis je Repository (experimentell): zeigt
                              einem Agenten, was von einer Datei abhängt, bevor er

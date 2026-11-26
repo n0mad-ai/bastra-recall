@@ -26,6 +26,7 @@ export const COMMANDS = [
   "models",
   "token",
   "oauth",
+  "account",
   "commons",
   "bridges",
   "map",

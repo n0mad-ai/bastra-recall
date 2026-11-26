@@ -106,6 +106,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   models: [],
   token: ["--json", "--origin"],
   oauth: ["--json"],
+  account: [],
   commons: [],
   bridges: [],
   map: [],

@@ -102,8 +102,20 @@ Alias: bastra ui
 
 Usage:
   bastra ui
+  bastra ui remote on <https-address>
+  bastra ui remote off
+  bastra ui remote status
 
-Opens the vault map in your browser. See 'bastra map --help'.
+Without a subcommand it opens the vault map in your browser. See
+'bastra map --help'.
+
+  remote on      Allow the web UI through your tunnel at this public address
+                 (https only, no path), e.g. https://recall.example.com. The
+                 tunnel must let '/ui' through. Sign-in with the account is the
+                 only protection from outside; without an account ('bastra
+                 account setup') nobody gets in. Takes effect at once.
+  remote off     Clear the address and end every public session at once
+  remote status  Whether remote access is on, and its address
 `,
 
   import: `bastra import — seed the vault from what you already wrote elsewhere

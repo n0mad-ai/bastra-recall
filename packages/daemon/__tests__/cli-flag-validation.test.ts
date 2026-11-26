@@ -215,7 +215,7 @@ test("#536 — every value-taking option reads its equals form and rejects an em
 
 test("#536 — every dispatched command has a flag list (drift gate)", async () => {
   const src = await readFile(join(here, "..", "src", "cli.ts"), "utf8");
-  const body = src.slice(src.indexOf("switch (args.command)"), src.indexOf("default:"));
+  const body = src.slice(src.indexOf("switch (args.command)"), src.lastIndexOf("error: unknown command"));
   const dispatched = [...body.matchAll(/case\s+"([a-z-]+)"/g)].map((m) => m[1]);
   assert.ok(dispatched.length > 10, "sanity: the dispatch table was parsed");
   const missing = dispatched.filter((c) => COMMAND_FLAGS[c] === undefined);

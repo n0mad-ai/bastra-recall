@@ -106,6 +106,9 @@ Alias: bastra ui
 
 Aufruf:
   bastra ui
+  bastra ui remote on <https-adresse>
+  bastra ui remote off
+  bastra ui remote status
 
 Öffnet die Vault-Karte im Browser. Siehe 'bastra map --help'.
 `,

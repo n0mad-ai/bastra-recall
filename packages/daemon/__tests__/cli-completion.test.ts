@@ -21,9 +21,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** The commands cli.ts actually dispatches on, read from the source. */
 async function dispatchedCommands(): Promise<Set<string>> {
   const src = await readFile(join(here, "..", "src", "cli.ts"), "utf8");
-  // Only the switch over args.command — stop at the default branch so the
-  // nested switches inside case bodies cannot leak in.
-  const body = src.slice(src.indexOf("switch (args.command)"), src.indexOf("default:"));
+  // The switches over args.command (dispatch and the functions it hands on to),
+  // up to the last default branch, so later helpers cannot leak in.
+  const body = src.slice(src.indexOf("switch (args.command)"), src.lastIndexOf("error: unknown command"));
   const found = new Set<string>();
   for (const m of body.matchAll(/case\s+"([a-z-]+)"/g)) found.add(m[1]);
   return found;

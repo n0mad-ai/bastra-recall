@@ -95,6 +95,14 @@ Commands:
   oauth [list|revoke <id|all>]
                              Remote MCP clients approved via OAuth (ChatGPT,
                              claude.ai connectors); 'revoke' cuts one or all off
+  account <setup|status|reset-password|devices|revoke <handle>|logout-all|unlock>
+                             The web UI account: create it (hidden password
+                             prompt), see sessions and locks, end sessions,
+                             clear sign-in locks, set a new password
+  ui remote <on <https-address>|off|status>
+                             Open the web UI to the internet behind your own
+                             tunnel (sign-in required); 'off' ends all public
+                             sessions at once. Plain 'bastra ui' = 'bastra map'
   code <enable|disable|index|rebuild|status>
                              Code awareness per repository (experimental):
                              shows an agent what depends on a file before it
@@ -261,6 +269,7 @@ export function commandHelp(language: HelpLanguage): Record<string, string> {
     models: setup.models,
     token: setup.token,
     oauth: setup.oauth,
+    account: setup.account,
     commons: memory.commons,
     bridges: memory.bridges,
     map: memory.map,

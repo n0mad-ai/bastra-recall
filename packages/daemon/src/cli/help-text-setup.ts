@@ -301,6 +301,37 @@ Options:
   --json          Machine-readable output
 `,
 
+  account: `bastra account — the web UI account, its sessions and sign-in locks
+
+Usage:
+  bastra account setup
+  bastra account status
+  bastra account reset-password
+  bastra account devices
+  bastra account revoke <handle>
+  bastra account logout-all
+  bastra account unlock
+
+One account, one vault. The web UI asks for the user name and password.
+
+  setup           Create the first account: user name, then the password twice
+                  (hidden). Never overwrites an existing account.
+  status          Account present, none or damaged; active sessions, active
+                  locks, and whether remote access is on (with its address)
+  reset-password  New password (twice, hidden); ends every session. Also the
+                  repair for a damaged account record.
+  devices         Active sessions: handle, kind, origin, name, last active,
+                  expires (no secrets)
+  revoke          End one session by its handle (the start of it is enough
+                  when unambiguous)
+  logout-all      End every session
+  unlock          Clear all sign-in locks and failed-attempt counters
+
+The password is only read from the terminal, never from arguments, environment
+or a pipe. Changes bite at once, the daemon need not restart.
+Remote access: 'bastra ui remote --help'.
+`,
+
   oauth: `bastra oauth — remote MCP clients approved through the OAuth login
 
 Usage:

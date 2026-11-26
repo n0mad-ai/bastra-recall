@@ -309,6 +309,37 @@ Optionen:
   --json          Maschinenlesbare Ausgabe
 `,
 
+  account: `bastra account — das Konto der Web-Oberfläche, seine Sitzungen und Anmelde-Sperren
+
+Aufruf:
+  bastra account setup
+  bastra account status
+  bastra account reset-password
+  bastra account devices
+  bastra account revoke <griff>
+  bastra account logout-all
+  bastra account unlock
+
+Ein Konto, ein Vault. Die Web-Oberfläche fragt Nutzername und Passwort ab.
+
+  setup           Das erste Konto anlegen: Nutzername, dann das Passwort zweimal
+                  (verdeckt). Überschreibt nie ein bestehendes Konto.
+  status          Konto vorhanden, keines oder beschädigt; aktive Sitzungen,
+                  aktive Sperren und ob der Fernzugriff an ist (mit Adresse)
+  reset-password  Neues Passwort (zweimal, verdeckt); beendet alle Sitzungen.
+                  Auch der Reparaturweg bei beschädigter Kontoablage.
+  devices         Aktive Sitzungen: Griff, Art, Herkunft, Name, zuletzt aktiv,
+                  läuft ab (keine Geheimnisse)
+  revoke          Eine Sitzung über ihren Griff beenden (der Anfang genügt,
+                  wenn er eindeutig ist)
+  logout-all      Alle Sitzungen beenden
+  unlock          Alle Anmelde-Sperren und Fehlversuch-Zähler löschen
+
+Das Passwort wird nur im Terminal gelesen, nie aus Argumenten, Umgebung oder
+Pipes. Änderungen wirken sofort, der Daemon muss nicht neu starten.
+Fernzugriff: 'bastra ui remote --help'.
+`,
+
   oauth: `bastra oauth — entfernte MCP-Clients, die über die OAuth-Anmeldung freigegeben wurden
 
 Aufruf:

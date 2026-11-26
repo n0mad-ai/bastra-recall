@@ -18,6 +18,7 @@ import { cmdConfig } from "./cli/config-cmd.js";
 import { cmdEmbeddings } from "./cli/embeddings-cmd.js";
 import { cmdModels, modelNoticeAfterCommand } from "./cli/models-cmd.js";
 import { cmdToken } from "./cli/token.js";
+import { cmdAccount, cmdUiRemote } from "./cli/account-cmd.js";
 import { cmdOAuth } from "./cli/oauth-cmd.js";
 import { cmdCommons } from "./cli/commons.js";
 import { cmdCode } from "./cli/code-cmd.js";
@@ -131,8 +132,20 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       return cmdCode({ sub: args.surface, positional: args.positional, yes: args.yes });
     case "bridges":
       return cmdBridges({ sub: args.surface, positional: args.positional });
-    case "map":
+    default:
+      return dispatchMore(args);
+  }
+}
+
+/** The rest of the command table, split off `dispatch` to keep each switch within its complexity budget. */
+async function dispatchMore(args: ReturnType<typeof parseArgs>): Promise<number> {
+  switch (args.command) {
+    case "account":
+      return cmdAccount({ sub: args.surface, positional: args.positional });
     case "ui":
+      if (args.surface === "remote") return cmdUiRemote({ positional: args.positional });
+      return cmdMap();
+    case "map":
       return cmdMap();
     case "import":
       return cmdImport(args);
@@ -152,6 +165,14 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       return cmdSave(process.argv.slice(2));
     case "reconcile":
       return cmdReconcile(args);
+    default:
+      return dispatchRest(args);
+  }
+}
+
+/** The last part of the command table (see dispatchMore). */
+async function dispatchRest(args: ReturnType<typeof parseArgs>): Promise<number> {
+  switch (args.command) {
     case "rules":
       return cmdRules(args);
     case "tasks":
