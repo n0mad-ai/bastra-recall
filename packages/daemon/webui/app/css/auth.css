@@ -10,6 +10,15 @@ body.auth-page {
   place-items: center;
   padding: 24px 16px;
 }
+/* Little visible height (landscape tablet with the on-screen keyboard): the card sits at the top and the page
+ * gets room below it, so it scrolls and the focused field and the button can be brought into view even when
+ * the browser keeps the layout height and only shrinks the visible area. */
+@media (max-height: 640px) {
+  .auth {
+    place-items: start center;
+    padding-bottom: 60vh;
+  }
+}
 .auth__box {
   width: min(440px, 100%);
   max-height: none;

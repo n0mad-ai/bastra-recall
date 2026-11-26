@@ -346,6 +346,9 @@ export default {
   "st.k.ui.backdrop": "Background image",
   "st.k.ui.backdropDim": "Dim background",
   "st.k.ui.backdropBlur": "Blur background",
+  "st.k.ui.public_origin": "Public address of the web interface",
+  "st.k.ui.public_origin.d":
+    "The https address the web interface is reachable at through your tunnel, for example https://recall.example.com. Empty = no access through the tunnel.",
   "st.unit.%": "%",
   "st.custom": "Custom value …",
   "st.custom.ph": "custom value",

@@ -351,6 +351,9 @@ export default {
   "st.k.ui.backdrop": "Hintergrundbild",
   "st.k.ui.backdropDim": "Hintergrund abdunkeln",
   "st.k.ui.backdropBlur": "Hintergrund weichzeichnen",
+  "st.k.ui.public_origin": "Öffentliche Adresse der Web-Oberfläche",
+  "st.k.ui.public_origin.d":
+    "Die https-Adresse, unter der die Web-Oberfläche über deinen Tunnel erreichbar ist, zum Beispiel https://recall.example.com. Leer = kein Zugriff über den Tunnel.",
   "st.unit.%": "%",
   "st.custom": "Eigener Wert …",
   "st.custom.ph": "eigener Wert",

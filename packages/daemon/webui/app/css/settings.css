@@ -4,6 +4,11 @@
   max-width: 660px;
 }
 
+/* the settings column's own width decides the layout, not the window's: beside the agent it can be narrow */
+.st-body {
+  container-type: inline-size;
+}
+
 /* ── groups ── */
 .st-sec {
   padding: 26px 12px 6px;
@@ -89,7 +94,7 @@
 /* ── rows ── */
 .st-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) fit-content(60%);
   align-items: center;
   gap: 12px 20px;
   padding: 14px 10px;
@@ -759,4 +764,24 @@
 .st-ch__acts .st-btn {
   flex: 1;
   height: 32px;
+}
+
+/* narrow settings column (portrait tablet): head and rows stack instead of squeezing the text */
+@container (max-width: 560px) {
+  .st-sec__head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .st-sec__ask {
+    grid-row: auto;
+    order: 1;
+    justify-self: start;
+    margin-top: 6px;
+  }
+  .st-row,
+  .st-row--wide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .st-row__ctl {
+    justify-content: flex-start;
+  }
 }
