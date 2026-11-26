@@ -209,7 +209,8 @@ test("queue: one check at a time, 4 waiting, the 6th is refused with a wait", as
   assert.deepEqual(await throttle.verify(local, async () => "local ran"), { kind: "done", value: "local ran" });
 
   for (let n = 0; n < 5; n++) {
-    await new Promise((resolve) => setImmediate(resolve));
+    // The slot is handed over one macrotask after the previous check ended.
+    for (let tick = 0; tick < 2; tick++) await new Promise((resolve) => setImmediate(resolve));
     assert.equal(releases.length, n + 1, "exactly one more check started");
     releases[n]();
   }
@@ -217,6 +218,35 @@ test("queue: one check at a time, 4 waiting, the 6th is refused with a wait", as
   assert.equal(maxRunning, 1);
   // Free again.
   assert.deepEqual(await throttle.verify(sixth, async () => true), { kind: "done", value: true });
+});
+
+test("waiting attempts are not checked once a lock was set while they waited", async () => {
+  const { attempt, throttle, clock } = setup();
+  for (let n = 1; n <= 4; n++) attempt("public", "203.0.113.5", false);
+  const decisions = Array.from({ length: 5 }, () =>
+    throttle.check({ access: "public", cfConnectingIp: "203.0.113.5" })
+  );
+  let calls = 0;
+  const runs = decisions.map((d) => {
+    assert.equal(d.kind, "allowed");
+    const allowed = d as Extract<UiLoginDecision, { kind: "allowed" }>;
+    return throttle
+      .verify(allowed, async () => {
+        calls++;
+        return false;
+      })
+      .then((run) => {
+        if (run.kind === "done") throttle.report(allowed, run.value);
+        return run;
+      });
+  });
+  const results = await Promise.all(runs);
+  assert.equal(calls, 1, "only the first attempt reached the password check");
+  assert.equal(results[0].kind, "done");
+  for (const run of results.slice(1))
+    assert.deepEqual(run, { kind: "locked", lockedUntil: clock.t + 15 * MIN, retryAfterSeconds: 15 * 60 });
+  // The queue is free again.
+  assert.equal(throttle.check({ access: "public", cfConnectingIp: "198.51.100.7" }).kind, "allowed");
 });
 
 test("a failing check frees the queue slot", async () => {

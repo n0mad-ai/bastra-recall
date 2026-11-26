@@ -78,7 +78,10 @@ export type UiLoginDecision =
   | { kind: "locked"; lockedUntil: number; retryAfterSeconds: number }
   | { kind: "busy"; retryAfterSeconds: number };
 
-export type UiLoginRun<T> = { kind: "done"; value: T } | { kind: "busy"; retryAfterSeconds: number };
+export type UiLoginRun<T> =
+  | { kind: "done"; value: T }
+  | { kind: "locked"; lockedUntil: number; retryAfterSeconds: number }
+  | { kind: "busy"; retryAfterSeconds: number };
 
 /** One counter row for status displays (CLI `account status`, device management). */
 export interface UiLoginThrottleEntry {
@@ -154,12 +157,8 @@ export class UiLoginThrottle {
     const now = this.now();
     return this.db.transaction((): UiLoginDecision => {
       if (request.access === "public") {
-        const lockedUntil = Math.max(
-          this.activeLock(SOURCE_PREFIX + source, now),
-          this.activeLock(ACCOUNT_BUCKET, now)
-        );
-        if (lockedUntil > now)
-          return { kind: "locked", lockedUntil, retryAfterSeconds: retryAfterSeconds(lockedUntil - now) };
+        const locked = this.publicLock(source, now);
+        if (locked) return locked;
         if (this.queueFull()) return { kind: "busy", retryAfterSeconds: QUEUE_RETRY_AFTER_SECONDS };
       }
       const [bucket, limit] =
@@ -175,6 +174,10 @@ export class UiLoginThrottle {
   /**
    * Runs the password check. Public checks go one at a time through a queue of
    * at most 4 waiting; a full queue answers "busy" without running `check`.
+   * Once a public attempt has its turn, the source and account locks are read
+   * again: a lock set while it waited answers "locked" without running `check`.
+   * Call report() right after verify() resolves, without another await in
+   * between, so the next waiter sees that outcome.
    */
   async verify<T>(attempt: UiLoginAttempt, check: () => Promise<T>): Promise<UiLoginRun<T>> {
     if (attempt.access === "local") return { kind: "done", value: await check() };
@@ -182,11 +185,12 @@ export class UiLoginThrottle {
     if (this.checking) await new Promise<void>((resolve) => this.waiting.push(resolve));
     else this.checking = true;
     try {
-      return { kind: "done", value: await check() };
+      return this.publicLock(attempt.source, this.now()) ?? { kind: "done", value: await check() };
     } finally {
-      // Hand the slot straight to the next waiter, or free it.
+      // Hand the slot to the next waiter (after the current caller's report(),
+      // which runs in the microtasks before setImmediate), or free it.
       const next = this.waiting.shift();
-      if (next) next();
+      if (next) setImmediate(next);
       else this.checking = false;
     }
   }
@@ -265,9 +269,18 @@ export class UiLoginThrottle {
       .run(bucket, row.failures, row.windowStartedAt, row.lockedUntil, row.lockoutLevel, row.updatedAt);
   }
 
-  private activeLock(bucket: string, now: number): number {
-    const lockedUntil = this.read(bucket)?.lockedUntil ?? 0;
-    return lockedUntil > now ? lockedUntil : 0;
+  /** The active source or account lock (the later end), or null. */
+  private publicLock(
+    source: string,
+    now: number
+  ): { kind: "locked"; lockedUntil: number; retryAfterSeconds: number } | null {
+    const lockedUntil = Math.max(
+      this.read(SOURCE_PREFIX + source)?.lockedUntil ?? 0,
+      this.read(ACCOUNT_BUCKET)?.lockedUntil ?? 0
+    );
+    return lockedUntil > now
+      ? { kind: "locked", lockedUntil, retryAfterSeconds: retryAfterSeconds(lockedUntil - now) }
+      : null;
   }
 
   /** 0 when the attempt fits into the current minute (and is counted), else ms until the next window. */
