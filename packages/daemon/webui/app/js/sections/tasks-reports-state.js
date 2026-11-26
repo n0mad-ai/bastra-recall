@@ -3,6 +3,7 @@
 // (tasks-reports-undo.js) all read and change this one object.
 import { t } from "../i18n.js";
 import { api } from "./tasks-api.js";
+import { ATTENTION } from "./tasks-reports-model.js";
 
 // open: reading view replaces the calendar · sel: report shown · body: its text (null = loading)
 // notes: the shown report's notes · edit: the open note field { anchor, noteId (null = new), draft }
@@ -12,6 +13,8 @@ import { api } from "./tasks-api.js";
 // hits: { q, ids } the daemon's text search found for q · undo: { id, title, next } the last delete, undoable
 // while `next` (the report shown after it, null for none) is on screen
 // project: the project filter in the head (null = all projects) · menu: its pick list is open
+// states: the states the status filter shows (tasks-reports-filter.js); kept while this page lives, so
+// leaving the view and coming back keeps the choice
 export const R = {
   open: false,
   sel: null,
@@ -25,6 +28,7 @@ export const R = {
   undo: null,
   project: null,
   menu: false,
+  states: new Set(ATTENTION),
 };
 
 /** A change the report store can refuse when it is full (#1609): then the message says so and how to

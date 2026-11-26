@@ -68,6 +68,7 @@ async function rail() {
     strip(await read("sections/tasks-reports-size.js")),
     strip(await read("sections/tasks-reports-toc.js")),
     strip(await read("sections/tasks-reports-status.js")),
+    strip(await read("sections/tasks-reports-filter.js")),
     strip(await read("sections/tasks-reports.js")),
   ].join("\n");
   const v = runInNewContext(

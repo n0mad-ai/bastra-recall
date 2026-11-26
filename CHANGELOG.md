@@ -11,6 +11,15 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
+- Reports view: a status filter above the list. One switch per state
+  (New, Question, In progress, Handed over, Read, Done, Outdated), each with
+  its colour and count. By default the list shows only the reports that wait
+  for the owner (new, question, in progress, handed over); read, done and
+  outdated reports are switched on by hand and then stand as groups of their
+  own below the open ones. Search and project filter narrow first, the counts
+  show what they leave; the open report keeps its row whatever the filter
+  says. The choice holds while the page is open.
+
 - `bastra doctor` reports an existing Graphify setup when it finds a
   registered Graphify guard command, a Graphify section in Claude's
   instructions or the Graphify skill. The note explains the overlap with
@@ -217,6 +226,15 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Changed
 
+- Reports view: every state has its own colour on the row's dot and label —
+  Question amber, In progress amber with the dashed frame of a draft, Handed
+  over a quiet light grey, New cyan, Done green. Rows waiting on someone carry
+  the state's stripe on the left; New and Done have none. The open report is
+  marked by the accent line on the row's right edge instead of coloured lines
+  above and below the row. The open report's head now stands above the
+  scrolling text with a shadow onto it, so its bottom line reaches the right
+  edge even beside a scrollbar.
+
 - Save-quality hints no longer use a fixed list of English technology words
   (`api`, `css`, `react`, …). The hints "only generic technology words" for
   `recall_when` and "generic tags" are gone, the example trigger keeps the
@@ -421,6 +439,12 @@ until a new design replaces it; this name is independent of the product version.
 - Removed the README banner (#1565).
 
 ### Fixed
+
+- Reports view: the marked row of the jump list in the right panel no longer
+  flickers when the Tasks area redraws (polling, a change elsewhere); the row
+  is marked before it enters the page, so its highlight does not fade in
+  again. The labels "Done" and "Outdated" show their own colour instead of
+  cyan.
 
 - A space inside a wiki-link target does not separate a report question
   from its answer marker. The daemon and report reader agree on when to

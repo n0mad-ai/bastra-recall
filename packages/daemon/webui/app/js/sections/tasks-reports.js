@@ -28,6 +28,12 @@
 // Reading aids (Daniel 18.11.2026): the text size in the reader's head (tasks-reports-size.js), the
 // answered questions counted in its meta line, and the jump list as the right panel's tab while this
 // view is open (tasks-reports-toc.js); the panel keeps its own open/closed state and button.
+// Above the list the status filter (Daniel 26.11.2026, tasks-reports-filter.js): by default only the
+// reports that need the owner; read, done and outdated ones on demand, as groups of their own. Every
+// state has its colour on the row's dot and, while it waits on someone, on the stripe at the row's left
+// edge; the open report is marked by the accent at the row's right edge instead (css/tasks-reports.css).
+// The reader's head stands above the scrolling text, not inside it, so its line and shadow span the
+// reader's full width whether or not a scrollbar is shown (Daniel 26.11.2026).
 import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { ICON } from "../areas.js";
@@ -48,15 +54,20 @@ import {
   matchReports,
   inWork,
   inProject,
+  inStates,
+  stateOf,
+  stateCounts,
+  grouped,
 } from "./tasks-reports-model.js";
 import { stateMark, askedAbout } from "./tasks-reports-status.js";
 import { annotateReport } from "./tasks-report-notes.js";
 import { R, write } from "./tasks-reports-state.js";
-import { behind, listed, hitsNow, shown, searchText, setQuery } from "./tasks-reports-search.js";
+import { behind, listed, hitsNow, shown, keepRow, searchText, setQuery } from "./tasks-reports-search.js";
 import { remove, undoNotice, undoable, deletedRow, resetClocks, runClocks } from "./tasks-reports-undo.js";
 import { reportsHead } from "./tasks-reports-head.js";
 import { textSize, sizeSwitch } from "./tasks-reports-size.js";
 import { setOutline, trackOutline } from "./tasks-reports-toc.js";
+import { statusFilter, groupHead } from "./tasks-reports-filter.js";
 
 /** Below this slot width list and reader share one column (memory browser: 760 px for list + reader;
  *  the report list is narrower, so two columns still fit at 640). */
@@ -105,15 +116,15 @@ export function closeReports() {
   emit();
 }
 
-/** Opens the reading view (head button, dashboard widget): the first unread report, otherwise the
- *  newest (data.reports is ordered that way). */
+/** Opens the reading view (head button, dashboard widget): the first report the filters leave (unread
+ *  first, data.reports is ordered that way), otherwise the newest. */
 export async function openReports() {
   enter();
   R.order = data.reports.map((r) => r.id);
   R.sel = null;
   S.compose = S.showDue = false;
   S.proposal = null;
-  if (data.reports.length) openReport(data.reports[0].id);
+  if (data.reports.length) openReport((shown()[0] ?? data.reports[0]).id);
   else emit();
   await loadReports();
 }
@@ -299,23 +310,24 @@ function noteMarks(c, tag) {
 
 // Rows and reader are the memory browser's (css/membrowser.css: mb-row, mb-rd); Daniel wants the
 // reports to look like it. Only the frame and the deltas live in css/tasks-reports.css.
-// A report with open notes of the owner is "In progress" and amber like the notes in the report.
+// The row's state class (st-…) gives its dot, stripe and tint their colour (Daniel 26.11.2026).
 // An outdated report (#1678) steps back: muted row, no unread look.
 function listRow(r) {
   const on = R.sel === r.id,
     fresh = isUnread(r),
     work = inWork(r),
     old = r.outdatedAt !== null;
-  const tone = work ? "var(--amber)" : fresh ? "var(--accent)" : "var(--line-45)";
   return h(
     "button.mb-row",
     {
-      cls: [fresh ? "is-new" : "", work ? "is-work" : "", old ? "is-old" : "", on ? "is-sel" : ""].join(" "),
+      cls: [`st-${stateOf(r)}`, fresh ? "is-new" : "", work ? "is-work" : "", old ? "is-old" : "", on ? "is-sel" : ""]
+        .filter(Boolean)
+        .join(" "),
       "aria-current": on ? "true" : null,
       title: fmtAt(r.createdAt),
       on: { click: () => openReport(r.id) },
     },
-    h("span.mb-row__sq", { vars: { "--tc": tone } }),
+    h("span.mb-row__sq"),
     h("span.mb-row__t", { text: r.title }),
     h("span.mb-row__ago", { text: ago(r.createdAt) }),
     h(
@@ -442,14 +454,13 @@ function readerHead(r, narrow, asks) {
 }
 
 /** Origin, project and filing time stand in the head; below the text only the read time remains.
- *  Returns the article and the report's outline for the jump list (null while the text loads). */
+ *  Returns the head, the article and the report's outline for the jump list (null while the text loads). */
 function reader(r, narrow) {
   const annotated = R.body === null ? null : annotateReport(bodyNodes(R.body), notesUi);
   focusNote = annotated?.focus ?? null;
   const el = h(
     "article.mb-rd",
-    null,
-    readerHead(r, narrow, annotated?.toc.asks ?? []),
+    { "aria-label": r.title },
     annotated
       ? h("div.mb-rd__text.tk-rep__md", { cls: `is-size-${textSize()}` }, annotated.nodes)
       : h("div.mb-rd__text.is-wait", { text: t("tk.loading") }),
@@ -462,7 +473,7 @@ function reader(r, narrow) {
           h("span.mb-rd__fv", { text: fmtAt(r.readAt) })
         )
   );
-  return { el, outline: annotated?.toc ?? null };
+  return { head: readerHead(r, narrow, annotated?.toc.asks ?? []), el, outline: annotated?.toc ?? null };
 }
 
 /** Where the cursor stands in the note field being typed in, so a rebuild can put it back (#1610). */
@@ -480,7 +491,7 @@ function putCaret(el, c) {
  *  size changed, and hands the jump list the new outline.
  *  A rebuilt reader keeps its scroll place; an opened (or still open) note field gets the cursor, and
  *  a field typed in during the rebuild (a live update) keeps selection and scroll place. */
-function paintReader(read, rows, narrow, seen) {
+function paintReader({ top: lid, read }, rows, narrow, seen) {
   const r = rows.find((x) => x.id === R.sel);
   const key = JSON.stringify([r, narrow, R.notes, R.edit && [R.edit.anchor, R.edit.noteId], R.undo, textSize()]);
   if (key === seen.key && R.body === seen.body) return;
@@ -490,8 +501,10 @@ function paintReader(read, rows, narrow, seen) {
   focusNote = null;
   const shown = r
     ? reader(r, narrow)
-    : { el: h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") }), outline: null };
-  read.replaceChildren(...[undoNotice(openReport), shown.el].filter(Boolean));
+    : { head: null, el: h("div.mb__nosel", { text: t(rows.length ? "tk.rep.pick" : "tk.rep.none") }), outline: null };
+  // the undo notice and the head stand above the scrolling text
+  lid.replaceChildren(...[undoNotice(openReport), shown.head].filter(Boolean));
+  read.replaceChildren(shown.el);
   setOutline(shown.outline, read);
   read.scrollTop = seen.sel !== R.sel ? 0 : top;
   if (focusNote && (seen.edit !== R.edit || hadFocus)) {
@@ -518,36 +531,54 @@ function closeMenuOutside(e) {
   emit("reports");
 }
 
-/** The reading view in the memory browser's frame: head (title, project, search, count, ESC), list |
- *  reader. Mounted into its own slot (tasks.js); list and reader keep their scroll position across
- *  polling because only a real change rebuilds them. */
+/** The list's rows: the open reports first, read, done and outdated ones each under a group head
+ *  of its own; the heads show only when more than one group is in the list. A deleted report still
+ *  undoable keeps its row in its group whatever the status filter says. */
+function listNodes(rows, rowEl) {
+  const groups = grouped(rows);
+  return groups.flatMap((g) => [
+    ...(groups.length > 1 ? [groupHead(g.group, g.rows.length)] : []),
+    ...g.rows.map(rowEl),
+  ]);
+}
+
+/** The reading view in the memory browser's frame: head (title, project, search, count), the status
+ *  filter, list | reader. Mounted into its own slot (tasks.js); list and reader keep their scroll
+ *  position across polling because only a real change rebuilds them. */
 export function reportsRenderer(host) {
   const head = reportsHead(),
+    filter = statusFilter(),
     list = h("nav.mb__list", { "aria-label": t("tk.rep.title"), on: { keydown: walk } }),
     side = h("div.tk-rv__side", null, list),
+    // the reader's head stands above the scrolling text (lid), so its line spans the scrollbar too
+    lid = h("div.tk-rv__lid"),
     read = h("div.mb__reader", { on: { scroll: trackOutline } }),
-    body = h("div.mb__body", null, side, read),
-    view = h("section.tk-rv", { "aria-label": t("tk.rep.title") }, h("span.mb__ticks"), head.el, body);
+    pane = h("div.tk-rv__pane", null, lid, read),
+    body = h("div.mb__body", null, side, pane),
+    view = h("section.tk-rv", { "aria-label": t("tk.rep.title") }, h("span.mb__ticks"), head.el, filter.el, body);
   document.addEventListener("pointerdown", closeMenuOutside);
-  /** No reports at all, or none search and filter leave (then with a way back to the full list). */
-  const empty = (any) =>
-    any
-      ? h(
-          "div.mb__empty.tk-rv__nohit",
-          null,
-          h("span", { text: t("tk.rep.find.none") }),
-          h("button.mb-btn", {
-            text: t("tk.rep.find.clear"),
-            on: {
-              click: () => {
-                R.project = null;
-                setQuery("");
-                head.input.focus();
+  /** No reports at all; none search and project filter leave (then with a way back to the full list);
+   *  or only the status filter hides them (its switches are right above). */
+  const empty = (any, matched) =>
+    !any
+      ? h("div.mb__empty", { text: t("tk.rep.none") })
+      : matched
+        ? h("div.mb__empty", { text: t("tk.rep.filter.none") })
+        : h(
+            "div.mb__empty.tk-rv__nohit",
+            null,
+            h("span", { text: t("tk.rep.find.none") }),
+            h("button.mb-btn", {
+              text: t("tk.rep.find.clear"),
+              on: {
+                click: () => {
+                  R.project = null;
+                  setQuery("");
+                  head.input.focus();
+                },
               },
-            },
-          })
-        )
-      : h("div.mb__empty", { text: t("tk.rep.none") });
+            })
+          );
   const rowEl = (r) => (r.until === undefined ? listRow(r) : deletedRow(r, openReport));
   let listKey = "";
   // what the reader shows now (paintReader rebuilds it only on a real change)
@@ -565,23 +596,25 @@ export function reportsRenderer(host) {
     const all = listed(),
       gone = undoable(),
       every = withDeleted(all, gone),
-      rows = inProject(withDeleted(matchReports(all, R.q, hitsNow()), matchReports(gone, R.q)), R.project),
+      matched = inProject(withDeleted(matchReports(all, R.q, hitsNow()), matchReports(gone, R.q)), R.project),
+      rows = inStates(matched, R.states, (r) => keepRow(r) || r.until !== undefined),
       narrow = host.clientWidth > 0 && host.clientWidth < NARROW;
     if (!narrow || !R.sel) R.list = !R.sel && !R.undo;
     view.classList.toggle("is-narrow", narrow);
     view.classList.toggle("is-reading", !R.list);
     head.paint(every, rows.length, unreadCount(all), all.length);
-    const lk = JSON.stringify([rows, R.sel, every.length > 0]);
+    filter.paint(stateCounts(matched.filter((r) => r.until === undefined)));
+    const lk = JSON.stringify([rows, R.sel, every.length > 0, matched.length > 0]);
     if (lk !== listKey) {
       const rowEls = () => [...list.querySelectorAll(".mb-row")],
         focused = rowEls().indexOf(document.activeElement);
       resetClocks();
-      list.replaceChildren(...(rows.length ? rows.map(rowEl) : [empty(every.length > 0)]));
+      list.replaceChildren(...(rows.length ? listNodes(rows, rowEl) : [empty(every.length > 0, matched.length > 0)]));
       runClocks();
       if (focused >= 0) rowEls()[focused]?.focus();
       listKey = lk;
     }
-    paintReader(read, all, narrow, seen);
+    paintReader({ top: lid, read }, all, narrow, seen);
   };
 }
 

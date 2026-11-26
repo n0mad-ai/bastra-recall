@@ -24,6 +24,7 @@ test("report texts exist in German and English", async () => {
         "tasks-reports-size",
         "tasks-reports-toc",
         "tasks-reports-status",
+        "tasks-reports-filter",
       ].map((f) => read(`js/sections/${f}.js`))
     )
   ).join("\n");

@@ -8,7 +8,7 @@ async function model() {
   const source = (await read("views/code-lines.js")) + (await read("sections/tasks-reports-model.js"));
   return runInNewContext(
     source.replace(/^import .*$/gm, "").replace(/^export /gm, "") +
-      "\n({ reportRows, unreadCount, isUnread, stateOf, originText, reportBlocks, byUnread, matchReports })",
+      "\n({ reportRows, unreadCount, isUnread, stateOf, originText, reportBlocks, byUnread, matchReports, FILTER_STATES, ATTENTION, stateCounts, inStates, grouped })",
     {}
   );
 }
@@ -161,4 +161,90 @@ test("search (#1597): a compatibility uppercase in the title matches lowercase i
   const m = await model();
   const rows = m.reportRows({ reports: [{ id: "a", title: "𝐀udit", created_at: 1 }] });
   assert.equal(m.matchReports(rows, "audit")[0]?.id, "a");
+});
+
+// Status filter above the list (Daniel 26.11.2026): by default only the reports that need the owner.
+type FilterRow = { id: string };
+/** The part of the model the status filter uses. */
+interface FilterModel {
+  reportRows(answer: unknown): FilterRow[];
+  stateOf(r: FilterRow): string;
+  FILTER_STATES: string[];
+  ATTENTION: string[];
+  stateCounts(rows: FilterRow[]): Record<string, number>;
+  inStates(rows: FilterRow[], on: Set<string>, keep?: (r: FilterRow) => boolean): FilterRow[];
+  grouped(rows: FilterRow[]): Array<{ group: string; rows: FilterRow[] }>;
+}
+const filterModel = async () => (await model()) as FilterModel;
+const STATE_ROWS = (m: FilterModel) =>
+  m.reportRows({
+    reports: ["new", "read", "question", "done", "handed", "outdated", "in_progress", "new"].map((status, i) => ({
+      id: `r${i}`,
+      title: `${status} ${i}`,
+      origin: { client: "codex" },
+      created_at: 100 - i,
+      ...(status === "new" ? {} : { read_at: 200 }),
+      ...(status === "outdated" ? { outdated_at: 300 } : {}),
+      status,
+    })),
+  });
+
+test("status filter: every state is a switch; new, question, in progress and handed over are on by default", async () => {
+  const m = await filterModel();
+  assert.deepEqual(plain(m.FILTER_STATES), ["new", "question", "in_progress", "handed", "read", "done", "outdated"]);
+  assert.deepEqual(plain(m.ATTENTION), ["new", "question", "in_progress", "handed"]);
+  const rows = STATE_ROWS(m);
+  assert.deepEqual(plain(m.stateCounts(rows)), {
+    new: 2,
+    question: 1,
+    in_progress: 1,
+    handed: 1,
+    read: 1,
+    done: 1,
+    outdated: 1,
+  });
+  assert.deepEqual(plain(m.stateCounts([])), {
+    new: 0,
+    question: 0,
+    in_progress: 0,
+    handed: 0,
+    read: 0,
+    done: 0,
+    outdated: 0,
+  });
+  const open = m.inStates(rows, new Set(m.ATTENTION));
+  assert.deepEqual(
+    open.map((r) => m.stateOf(r)).sort(),
+    ["handed", "in_progress", "new", "new", "question"],
+    "read, done and outdated stay out by default"
+  );
+  // only questions; a row the caller keeps (the open report) stays whatever its state
+  const asks = m.inStates(rows, new Set(["question"]), (r) => r.id === "r3");
+  assert.deepEqual(plain(asks.map((r) => r.id)), ["r2", "r3"]);
+  assert.deepEqual(plain(m.inStates(rows, new Set())), []);
+});
+
+test("status filter: open reports first, then read, done and outdated as groups of their own, order kept", async () => {
+  const m = await filterModel();
+  const rows = STATE_ROWS(m);
+  const groups = m.grouped(rows);
+  const openIds = rows.filter((r) => m.ATTENTION.includes(m.stateOf(r))).map((r) => r.id);
+  assert.equal(openIds.length, 5);
+  assert.deepEqual(plain(groups.map((g) => [g.group, g.rows.map((r) => r.id)])), [
+    ["open", openIds],
+    ["read", ["r1"]],
+    ["done", ["r3"]],
+    ["outdated", ["r5"]],
+  ]);
+  // the order inside a group is the order the rows came in
+  assert.deepEqual(
+    plain(groups[0].rows.map((r) => r.id)),
+    plain(rows.map((r) => r.id).filter((id: string) => openIds.includes(id)))
+  );
+  assert.deepEqual(
+    plain(m.grouped(m.inStates(rows, new Set(["done"]))).map((g) => g.group)),
+    ["done"],
+    "empty groups are left out"
+  );
+  assert.deepEqual(plain(m.grouped([])), []);
 });

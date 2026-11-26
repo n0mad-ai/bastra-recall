@@ -1,10 +1,10 @@
-// Task reports — the list's order, the search in the view's head (#1597) and the project filter beside
-// it: title and project filter at once, the daemon's text search joins in after a short pause, the
-// latest search wins.
+// Task reports — the list's order, the search in the view's head (#1597), the project filter beside
+// it and the status filter above the list: title and project filter at once, the daemon's text search
+// joins in after a short pause, the latest search wins.
 import { data } from "../data.js";
 import { emit } from "./tasks-store.js";
 import { api } from "./tasks-api.js";
-import { reportRows, matchReports, inProject } from "./tasks-reports-model.js";
+import { reportRows, matchReports, inProject, inStates } from "./tasks-reports-model.js";
 import { R } from "./tasks-reports-state.js";
 
 /** 1 for a report marked outdated: it leaves the place the list opened with and goes behind the
@@ -17,8 +17,10 @@ export function listed() {
 }
 /** The daemon's text hits, while they belong to the current search. */
 export const hitsNow = () => (R.hits && R.hits.q === R.q.trim() ? R.hits.ids : null);
-/** The rows the search and the project filter leave in the list. */
-export const shown = () => inProject(matchReports(listed(), R.q, hitsNow()), R.project);
+/** The open report keeps its row whatever the status filter says, so marking it never pulls it away. */
+export const keepRow = (r) => r.id === R.sel;
+/** The rows the search, the project filter and the status filter leave in the list. */
+export const shown = () => inStates(inProject(matchReports(listed(), R.q, hitsNow()), R.project), R.states, keepRow);
 
 /** The daemon searches the report text too (#1597); a short pause after typing, the latest search wins.
  *  A Recall without the text search refuses the query: then title and project stay the search. */

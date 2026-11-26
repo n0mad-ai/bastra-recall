@@ -36,8 +36,9 @@ test("every state has its label and look; a read report shows none", async () =>
     marks.map((m: Node_ | null) => m && [m.textContent, m.className]),
     [
       ["tk.rep.new", "mb-row__ai"],
-      ["tk.rep.inWork", "mb-row__ai tk-rv__work"],
-      ["tk.rep.handedState", "mb-row__ai tk-rv__work"],
+      // Daniel 26.11.2026: in progress (the owner's drafts) dashed amber, handed over a colour of its own
+      ["tk.rep.inWork", "mb-row__ai tk-rv__work tk-rv__draft"],
+      ["tk.rep.handedState", "mb-row__ai tk-rv__handed"],
       ["tk.rep.doneState", "mb-row__ai tk-rv__done"],
       null,
     ]

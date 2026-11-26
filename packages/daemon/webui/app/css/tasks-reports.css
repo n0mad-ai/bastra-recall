@@ -70,25 +70,40 @@
   border-right: 0;
 }
 .tk-rv.is-narrow.is-reading .tk-rv__side,
-.tk-rv.is-narrow:not(.is-reading) .mb__reader {
+.tk-rv.is-narrow:not(.is-reading) .tk-rv__pane {
   display: none;
 }
 
-/* reader head: title, meta line and the actions stay on top while the report scrolls; it spans the
- * reader edge to edge (over .mb-rd's padding) and covers the text that scrolls under it */
-.tk-rep__head {
-  position: sticky;
-  top: 0;
+/* reader column: the head (with the undo notice above it) stands over the scrolling text, outside it,
+ * so its line and shadow reach the column's right edge whether or not a scrollbar is shown (Daniel
+ * 26.11.2026) */
+.tk-rv__pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tk-rv__lid {
+  flex: none;
+  position: relative;
   z-index: 2;
+}
+.tk-rv__pane > .mb__reader {
+  flex: 1;
+}
+
+/* reader head: title, meta line and the actions stay on top while the report scrolls; a shadow below
+ * it sets the text back (Daniel 26.11.2026) */
+.tk-rep__head {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 10px 12px;
   height: var(--rv-row);
-  margin: -20px -26px 20px;
   padding: 0 26px;
   border-bottom: 1px solid var(--line-14);
   background: var(--bg);
+  box-shadow: 0 10px 22px -8px var(--shade-75);
 }
 /* the view's head and the list rows take the same height (rows: two lines, centred) */
 .tk-rv .mb__head {
@@ -183,28 +198,127 @@
 .tk-rv .mb-row:not(.is-new) .mb-row__t {
   color: #b9c6d8;
 }
-/* "In progress": the owner left open notes; the row takes the notes' amber (Daniel 18.11.2026) */
-.tk-rv .mb-row.is-work {
-  background: rgba(217, 164, 65, 0.06);
-  box-shadow: inset 2px 0 0 var(--amber);
+/* Each state's colour (Daniel 26.11.2026): --tc paints the row's dot (css/membrowser.css .mb-row__sq),
+ * the switch's dot in the status filter and, while the report waits on someone, the stripe on the
+ * row's left edge. New: cyan, dot only. Question: amber, stripe and a faint tint. In progress (the
+ * owner's drafts): amber stripe. Handed over (with an agent): the light grey of the text, stripe and a
+ * faint tint. Done: green dot, no stripe, no tint. Read and outdated: quiet grey dots. */
+.tk-rv .st-new {
+  --tc: var(--accent);
 }
-.tk-rv .mb-row.is-work:hover {
+.tk-rv .st-question,
+.tk-rv .st-in_progress {
+  --tc: var(--amber);
+}
+.tk-rv .st-handed {
+  --tc: var(--ink-soft);
+}
+.tk-rv .st-done {
+  --tc: var(--ok);
+}
+.tk-rv .st-read,
+.tk-rv .mb-row.is-deleted {
+  --tc: var(--line-45);
+}
+.tk-rv .st-outdated {
+  --tc: var(--muted);
+}
+/* one marking per row: the state's stripe on the left, the open report's accent line on the right, the
+ * tint of the state or of the selection; no coloured lines above or below (Daniel 26.11.2026) */
+.tk-rv .mb-row,
+.tk-rv .mb-row.is-sel {
+  --stripe: 0 0 transparent;
+  --mark: 0 0 transparent;
+  box-shadow:
+    inset 2px var(--stripe),
+    inset -2px var(--mark);
+}
+.tk-rv .mb-row.st-question,
+.tk-rv .mb-row.st-in_progress,
+.tk-rv .mb-row.st-handed {
+  --stripe: 0 0 var(--tc);
+}
+.tk-rv .mb-row.st-question {
+  background: rgba(217, 164, 65, 0.06);
+}
+.tk-rv .mb-row.st-handed {
+  background: var(--line-04);
+}
+.tk-rv .mb-row.st-question:hover {
   background: rgba(217, 164, 65, 0.1);
 }
-.tk-rv .mb-row.is-work.is-sel {
-  box-shadow:
-    inset 2px 0 0 var(--amber),
-    inset 0 1px 0 var(--accent),
-    inset 0 -1px 0 rgba(56, 217, 245, 0.35);
+.tk-rv .mb-row.st-handed:hover {
+  background: var(--line-08);
+}
+/* the open report: the selection's own accent tint and its line at the row's right edge, next to the
+ * report it shows; the state keeps its dot and stripe */
+.tk-rv .mb-row.is-sel {
+  --mark: 0 0 var(--accent);
+  background: rgba(56, 217, 245, 0.09);
 }
 .tk-rv .mb-row.is-work .mb-row__t {
   color: #f2f7fd;
 }
-.tk-rv__work {
+.tk-rv .tk-rv__work {
   padding: 1px 6px 0;
   border: 1px solid rgba(217, 164, 65, 0.45);
   background: rgba(217, 164, 65, 0.16);
   color: var(--amber);
+}
+/* "In progress": the owner's drafts, dashed like a draft note */
+.tk-rv .tk-rv__work.tk-rv__draft {
+  border-style: dashed;
+  background: transparent;
+}
+/* "Handed over": with an agent now, the quiet light grey */
+.tk-rv .tk-rv__handed {
+  padding: 1px 6px 0;
+  border: 1px solid var(--line-35);
+  background: var(--line-08);
+  color: var(--ink-soft);
+}
+
+/* the status filter above the list (js/sections/tasks-reports-filter.js): the memory browser's chip
+ * row; each switch carries its state's dot, the open states first, the filed-away ones after a divider */
+.tk-rv .tk-rv__filter {
+  gap: 6px 14px;
+  padding: 8px 16px;
+  border-bottom-color: var(--line-14);
+}
+.tk-rv__fgrp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tk-rv__fsep {
+  align-self: stretch;
+  width: 1px;
+  background: var(--line-14);
+}
+.tk-rv .tk-rv__chip {
+  height: 24px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.tk-rv .tk-rv__chip .mb__chipdot {
+  background: var(--tc);
+}
+.tk-rv .tk-rv__chip:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+/* a switched-off state steps back: hollow dot, muted text */
+.tk-rv .tk-rv__chip:not(.is-on) .mb__chipdot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--tc);
+}
+.tk-rv .tk-rv__chip.is-on {
+  color: var(--ink);
+}
+/* the list's group heads (read, done, outdated) */
+.tk-rv .tk-rv__gh {
+  background: var(--bg);
 }
 /* in the list the drafts count in amber as well: they are your notes on that report */
 .tk-rv .mb-row .tk-an__count.is-draft {
@@ -259,12 +373,13 @@
 .tk-rep__md.is-size-l li {
   margin-bottom: 0.3em;
 }
-/* a jump from the jump list stops below the reader's sticky head */
+/* a jump from the jump list stops a little below the reader's head (above the line where the jump list
+ * marks a place as being read: js/sections/tasks-reports-toc.js OUTLINE_LINE) */
 .tk-rep__md h3,
 .tk-rep__md p,
 .tk-rep__md li,
 .tk-rep__md .tk-an__card {
-  scroll-margin-top: 96px;
+  scroll-margin-top: 40px;
 }
 
 /* head: the text size switch next to the actions, three "A" growing in size */
@@ -804,13 +919,15 @@ li.tk-an__card.is-done > .tk-an__subj::before {
 }
 
 /* The report's state (Daniel 18.11.2026; js/sections/tasks-reports-status.js). "Done" is calm: the
-   "ok" green, no fill. "Question" is amber like the other open states and jumps to the follow-up. */
-.tk-rv__done {
+   "ok" green, no fill. "Question" is amber and jumps to the follow-up. The state labels carry the
+   memory browser's .mb-row__ai, which css/membrowser.css (loaded after this file) paints cyan; the
+   ".tk-rv" in front keeps each state's own colour (before 26.11.2026 "Done" and "Outdated" showed cyan). */
+.tk-rv .tk-rv__done {
   color: var(--ok);
   opacity: 0.8;
 }
 /* "Outdated" (#1678) is muted, so the report steps back in list and head */
-.tk-rv__old {
+.tk-rv .tk-rv__old {
   color: var(--muted);
 }
 .tk-rv .mb-row.is-old .mb-row__t {

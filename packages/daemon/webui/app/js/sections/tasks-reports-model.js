@@ -60,7 +60,8 @@ export function leftParts(ms) {
   return { d: Math.floor(s / 86400), h: Math.floor(s / 3600) % 24, m: Math.floor(s / 60) % 60, s: s % 60 };
 }
 
-/** The amber states: notes with the owner or the agents, or a question waiting (Daniel 18.11.2026). */
+/** The states with open business: notes with the owner or the agents, or a question waiting (Daniel
+ *  18.11.2026). Their rows carry the status stripe on the left (css/tasks-reports.css). */
 export const inWork = (r) => ["in_progress", "handed", "question"].includes(stateOf(r));
 
 /** The projects in the list, by name, each with its number of reports (the project filter). */
@@ -286,3 +287,32 @@ export function stateOf(r) {
   if (r.notesOpen > 0) return "in_progress";
   return r.readAt === null ? "new" : "read";
 }
+
+// ── The status filter above the list (Daniel 26.11.2026): "by default only those that need my
+// attention". Each state is one switch; the list shows the reports whose state is switched on, read,
+// done and outdated reports each as a group of their own below the open ones.
+/** Every state the filter offers, in its order: first those that wait on the owner, then the rest. */
+export const FILTER_STATES = ["new", "question", "in_progress", "handed", "read", "done", "outdated"];
+/** On by default. New and Question wait for the owner; In progress holds notes they have not handed over
+ *  yet; Handed over is open with an agent and still owes them an answer. Read, done and outdated reports
+ *  ask nothing of them. */
+export const ATTENTION = ["new", "question", "in_progress", "handed"];
+/** The list's groups in their order: the open reports, then one group per filed-away state. */
+export const REPORT_GROUPS = ["open", "read", "done", "outdated"];
+export const groupOf = (r) => (ATTENTION.includes(stateOf(r)) ? "open" : stateOf(r));
+
+/** How many of `rows` are in each state (the filter's counts). */
+export function stateCounts(rows) {
+  const n = Object.fromEntries(FILTER_STATES.map((s) => [s, 0]));
+  for (const r of rows) n[stateOf(r)] += 1;
+  return n;
+}
+
+/** The rows whose state is in `on`; a row `keep` names stays whatever its state (the open report). */
+export const inStates = (rows, on, keep = () => false) => rows.filter((r) => on.has(stateOf(r)) || keep(r));
+
+/** The rows by group, in REPORT_GROUPS order, each in the order it had; empty groups are left out. */
+export const grouped = (rows) =>
+  REPORT_GROUPS.map((group) => ({ group, rows: rows.filter((r) => groupOf(r) === group) })).filter(
+    (g) => g.rows.length
+  );

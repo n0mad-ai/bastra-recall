@@ -126,12 +126,67 @@ test("one height for the view's head, the list rows and the report's head; title
   assert.deepEqual([narrow["flex-wrap"], narrow.height], ["wrap", "auto"], "narrow screens may wrap");
 });
 
-test("N4/N2: rows with open notes are amber like the notes in the report", () => {
-  const work = rules.find(([sel]) => sel === ".tk-rv .mb-row.is-work");
-  assert.ok(work);
-  assert.match(work[1]["box-shadow"], /var\(--amber\)/);
-  const badge = rules.find(([sel]) => sel === ".tk-rv__work");
+test("N4/N2: your own drafts are amber in the list like the notes in the report", () => {
+  const badge = rules.find(([sel]) => sel === ".tk-rv .tk-rv__work");
   assert.equal(badge?.[1].color, "var(--amber)");
   const drafts = rules.find(([sel]) => sel === ".tk-rv .mb-row .tk-an__count.is-draft");
   assert.equal(drafts?.[1].color, "var(--amber)", "your own drafts are no longer grey in the list");
+});
+
+/** The selectors of a rule, one by one. */
+const selectorsOf = (sel: string) => sel.split(",").map((x) => x.trim());
+/** The declarations every rule naming exactly `sel` sets, merged in file order. */
+const merged = (sel: string) =>
+  Object.assign({}, ...rules.filter(([s]) => selectorsOf(s).includes(sel)).map(([, d]) => d)) as Record<string, string>;
+
+test("status colours (Daniel 26.11.2026): one colour token per state, question and handed over differ", () => {
+  const tone = (state: string) => merged(`.tk-rv .st-${state}`)["--tc"];
+  assert.deepEqual(
+    Object.fromEntries(
+      ["new", "question", "in_progress", "handed", "done", "read", "outdated"].map((s) => [s, tone(s)])
+    ),
+    {
+      new: "var(--accent)",
+      question: "var(--amber)",
+      in_progress: "var(--amber)",
+      handed: "var(--ink-soft)",
+      done: "var(--ok)",
+      read: "var(--line-45)",
+      outdated: "var(--muted)",
+    }
+  );
+  // the labels carry .mb-row__ai, which membrowser.css (loaded later) paints cyan: ".tk-rv" in front wins
+  assert.equal(rule(".tk-rv .tk-rv__done").color, "var(--ok)");
+  assert.equal(rule(".tk-rv .tk-rv__handed").color, "var(--ink-soft)");
+  assert.equal(rule(".tk-rv .tk-rv__old").color, "var(--muted)");
+  assert.equal(rule(".tk-rv .tk-rv__work.tk-rv__draft")["border-style"], "dashed", "in progress: the drafts' dashes");
+  for (const [sel, decls] of rules.filter(([s]) => /\.st-/.test(s)))
+    for (const v of Object.values(decls))
+      assert.doesNotMatch(v, /#[0-9a-f]{3,8}\b/i, `${sel}: a token, no new colour value`);
+});
+
+test("one marking per row: a stripe on the left for open states, none for new and done; no lines above or below", () => {
+  const stripe = (state: string) => merged(`.tk-rv .mb-row.st-${state}`)["--stripe"];
+  for (const s of ["question", "in_progress", "handed"]) assert.equal(stripe(s), "0 0 var(--tc)", `${s} has a stripe`);
+  for (const s of ["new", "done", "read", "outdated"]) assert.equal(stripe(s), undefined, `${s} has no stripe`);
+  // new and done: no tint either (the green dot is enough for done, Daniel 26.11.2026)
+  for (const s of ["new", "done"]) assert.equal(merged(`.tk-rv .mb-row.st-${s}`).background, undefined, s);
+  assert.ok(merged(".tk-rv .mb-row.st-question").background, "a question is tinted");
+  // the row's shadow is the left stripe and the right selection line only: no inset line at the top or bottom
+  const shadow = merged(".tk-rv .mb-row")["box-shadow"];
+  assert.equal(shadow.replace(/\s+/g, " "), "inset 2px var(--stripe), inset -2px var(--mark)");
+  assert.equal(merged(".tk-rv .mb-row.is-sel")["box-shadow"], shadow, "the selection overrides membrowser's lines");
+  // the open report: accent line on the right edge, so it never looks like a state on the left
+  assert.equal(merged(".tk-rv .mb-row.is-sel")["--mark"], "0 0 var(--accent)");
+  assert.ok(!/inset 0 (1px|-1px)/.test(css), "no coloured line above or below a row any more");
+});
+
+test("reader head: outside the scrolling text, with a shadow down onto it; the jump stops above the reading line", () => {
+  const head = rule(".tk-rep__head");
+  assert.equal(head.position, undefined, "not sticky inside the scroller any more");
+  assert.equal(head.margin, undefined, "no negative margin over the reader's padding");
+  assert.match(head["box-shadow"], /^0 \d+px \d+px -?\d+px var\(--shade-\d+\)$/, "a drop shadow downwards");
+  assert.equal(rule(".tk-rv__pane > .mb__reader").flex, "1", "the text scrolls below the head");
+  const stop = parseFloat(merged(".tk-rep__md .tk-an__card")["scroll-margin-top"]);
+  assert.ok(stop > 0 && stop < 64, "a jump lands above the jump list's reading line (OUTLINE_LINE)");
 });

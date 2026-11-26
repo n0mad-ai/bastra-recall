@@ -10,9 +10,10 @@ import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { hereIndex } from "./tasks-reports-model.js";
 
-/** How far below the top of the reading area a place counts as being read: below the reader's
- *  sticky head (css: .tk-rep__head), with a little room. */
-const OUTLINE_LINE = 110;
+/** How far below the top of the scrolling text a place counts as being read. The reader's head stands
+ *  above that area (css: .tk-rv__lid), so this is only a little room; it lies below where a jump stops
+ *  (css: scroll-margin-top of the report's places), so the place jumped to is the one marked. */
+const OUTLINE_LINE = 64;
 
 // the shown report's outline ({ heads, asks } from annotateReport, null without a report), the
 // element that scrolls it, and the rows the panel shows now, in reading order
@@ -106,6 +107,12 @@ function renderOutline(body) {
   const headRows = heads.map((e) => outlineRow(e, "is-head")),
     askRows = asks.map((e) => outlineRow(e, e.answered ? "is-ask.is-done" : "is-ask")),
     answered = asks.filter((e) => e.answered).length;
+  // The place being read is marked before the rows enter the page (Daniel 26.11.2026: "the active one flickers"): the
+  // panel rebuilds this tab whenever the Tasks area redraws (polling, a change elsewhere). Marked after
+  // they entered it, the measuring forced a style pass first, so the new row started unmarked and its
+  // background faded in again (.tk-toc__j transition): the active row flickered, the others did not.
+  outlineRows = [...headRows, ...askRows].sort((a, b) => a.index - b.index);
+  trackOutline();
   // the headings without a count, as in the draft; only the questions count what is left to do
   if (heads.length) body.append(outlineSection(t("tk.rep.toc.heads"), "", headRows, false));
   if (asks.length)
@@ -117,8 +124,6 @@ function renderOutline(body) {
         answered < asks.length
       )
     );
-  outlineRows = [...headRows, ...askRows].sort((a, b) => a.index - b.index);
-  trackOutline();
 }
 
 /** The panel tab the Tasks area shows while the reading view is open (js/lens.js renders it). */

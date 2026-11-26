@@ -198,3 +198,24 @@ test("the right panel stays as the user set it: the reading view neither closes 
     assert.equal(state.lensOpen, open, "and coming back");
   }
 });
+
+test("jump list: a rebuilt panel brings the place being read in already marked, so it never flickers", async () => {
+  // Daniel 26.11.2026: "the active dot flickers now and then, all others stay". The panel rebuilds this
+  // tab whenever the Tasks area redraws (polling); a row marked only after it entered the page started
+  // unmarked there, and its background faded in again (css: .tk-toc__j transition).
+  const { v, knobs } = await view();
+  knobs.toc = outline(false);
+  await v.openReports();
+  for (let round = 0; round < 3; round++) {
+    const body = h("div", null);
+    const atEntry: boolean[][] = [];
+    const append = body.append.bind(body);
+    body.append = (...nodes: Array<Node_ | string>) => {
+      const rows = nodes.flatMap((n) => (typeof n === "string" ? [] : [n, ...n.all()]));
+      atEntry.push(rows.filter((n) => n.classList.contains("tk-toc__j")).map((n) => n.classList.contains("is-here")));
+      append(...nodes);
+    };
+    v.outlineTab.render(body);
+    assert.deepEqual(atEntry.flat(), [true, false, false, false], `round ${round}: marked when it enters`);
+  }
+});

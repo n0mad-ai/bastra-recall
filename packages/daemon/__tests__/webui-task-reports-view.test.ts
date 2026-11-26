@@ -14,8 +14,14 @@ test("the reader's head holds title, meta line, open notes and the actions; none
   const { v, host, calls } = await view();
   await v.openReport(ID(1));
   const article = one(host, "mb-rd");
-  const head = article.children[0];
-  assert.ok(head.classList.contains("tk-rep__head"), "the head comes first in the reader");
+  // Daniel 26.11.2026: the head stands above the scrolling text, so its line spans the scrollbar too
+  const pane = one(host, "tk-rv__pane");
+  assert.deepEqual(
+    pane.children.map((n) => n.className),
+    ["tk-rv__lid", "mb__reader"]
+  );
+  const head = one(pane.children[0], "tk-rep__head");
+  assert.equal(byClass(one(host, "mb__reader"), "tk-rep__head").length, 0, "the head does not scroll away");
   const title = one(head, "tk-rep__title");
   assert.equal(title.textContent, "Überblick: Förderung");
   assert.equal(title.attrs.title, "Überblick: Förderung", "the full title on hover, the line itself is cut");
@@ -31,7 +37,7 @@ test("the reader's head holds title, meta line, open notes and the actions; none
     acts.children.map((b) => b.textContent),
     ["tk.rep.markRead", "tk.rep.markOutdated", "tk.rep.delete"]
   );
-  const outside = article.children.slice(1).flatMap((n) => [n, ...n.all()]);
+  const outside = article.children.flatMap((n) => [n, ...n.all()]);
   assert.equal(outside.filter((n) => n.classList.contains("mb-btn")).length, 0, "no actions below the report");
   assert.equal(outside.filter((n) => n.classList.contains("mb-rd__facts")).length, 0, "an unread report has no facts");
   assert.equal(byClass(article, "mb-rd__top").length + byClass(article, "mb-rd__h").length, 0, "nothing twice");
@@ -40,6 +46,9 @@ test("the reader's head holds title, meta line, open notes and the actions; none
   await acts.children[0].click();
   assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["report_mark", { id: ID(1), read: true }]);
 });
+
+/** Switches every state of the status filter on (by default read, done and outdated are hidden). */
+const showAll = (v: { R: { states: Set<string> } }) => ["read", "done", "outdated"].forEach((s) => v.R.states.add(s));
 
 const NOTE = (n: number, over: Record<string, unknown> = {}) => ({
   id: ID(n),
@@ -581,6 +590,7 @@ test("N6/N29: picking an answer option saves it at once as an ordinary note at t
 
 test("N4: a report with open notes reads 'In progress' instead of 'New', in the notes' amber", async () => {
   const { v, host, context } = await view();
+  showAll(v);
   (context.data as { reports: unknown }).reports = v.reportRows({
     reports: [{ ...REPORTS[0], notes_open: 1, notes_draft: 1 }, REPORTS[1], { ...REPORTS[2], notes_open: 0 }],
   });
@@ -596,6 +606,7 @@ test("N4: a report with open notes reads 'In progress' instead of 'New', in the 
 
 test("state: 'Question' in the list opens the follow-up; its head leads back; 'Done' is calm", async () => {
   const { v, host, context } = await view();
+  showAll(v);
   (context.data as { reports: unknown }).reports = v.reportRows({
     reports: [
       { ...REPORTS[0], status: "question", follow_up: { id: ID(2), title: REPORTS[1].title } },
@@ -619,6 +630,7 @@ test("state: 'Question' in the list opens the follow-up; its head leads back; 'D
 
 test("#1678: an outdated report reads 'Outdated' muted in list and head; the head sets and clears it", async () => {
   const { v, host, context, calls } = await view();
+  showAll(v);
   (context.data as { reports: unknown }).reports = v.reportRows({
     reports: [REPORTS[0], REPORTS[1], { ...REPORTS[2], status: "outdated", outdated_at: 50, notes_open: 0 }],
   });
@@ -648,6 +660,7 @@ test("#1678: an outdated report reads 'Outdated' muted in list and head; the hea
 
 test("#1678: an unread outdated report is not offered as the first to read and leaves rail and ticker", async () => {
   const { v, host, context } = await view();
+  showAll(v);
   (context.data as { reports: unknown }).reports = v.reportRows({
     reports: [{ ...REPORTS[0], status: "outdated", outdated_at: 50 }, REPORTS[1]],
   });
@@ -670,6 +683,7 @@ test("#1678: an unread outdated report is not offered as the first to read and l
 
 test("#1678: a report marked outdated while the list is open goes behind the current ones at once", async () => {
   const { v, host, context } = await view();
+  showAll(v);
   await v.openReports();
   const ids = () => listRows(host).map((row) => one(row, "mb-row__t").textContent);
   const before = ids();
@@ -678,9 +692,13 @@ test("#1678: a report marked outdated while the list is open goes behind the cur
   });
   (context.emit as () => void)();
   assert.deepEqual(ids(), [before[1], before[2], before[0]], "the outdated report left its place from the opening");
-  // a plain read change keeps the place the list opened with
+  // a change of state inside the open group keeps the place the list opened with
   (context.data as { reports: unknown }).reports = v.reportRows({
-    reports: [REPORTS[2], { ...REPORTS[1], read_at: 60 }, { ...REPORTS[0], status: "outdated", outdated_at: 50 }],
+    reports: [
+      REPORTS[2],
+      { ...REPORTS[1], status: "question" },
+      { ...REPORTS[0], status: "outdated", outdated_at: 50 },
+    ],
   });
   (context.emit as () => void)();
   assert.deepEqual(ids(), [before[1], before[2], before[0]]);
