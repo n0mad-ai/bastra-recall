@@ -31,8 +31,7 @@ import {
 } from "../src/draft-store.js";
 import { reviewDraftHandler } from "../src/draft-review-handler.js";
 import { saveMemoryHandler } from "../src/save-memory-handler.js";
-import { runSessionLane } from "../src/session-lane.js";
-import { writePendingSuggestion, PENDING_BLOCK_CHAR_BUDGET } from "../src/pending-suggestions.js";
+import { writePendingSuggestion } from "../src/pending-suggestions.js";
 import { formatHarvestBlock } from "../src/session-harvest.js";
 import { prepareDraftSearch } from "../src/draft-search.js";
 import { pendingRelayBlocks } from "../src/session-lane-blocks.js";
@@ -199,14 +198,17 @@ test("automatic draft delivery redacts credentials while the local switch preser
       const current = rows.find(({ id }) => id === d.id)!;
       current.review_candidate = { ...(current.review_candidate as object), reason: credential };
     }, now);
-    await writePendingSuggestion(`<save-eval>Earlier database credential: ${credential}</save-eval>`);
+    await writePendingSuggestion(
+      `<consolidation-candidate>Earlier database credential: ${credential}</consolidation-candidate>`
+    );
     assert.equal((await listDrafts(now))[0].quote, d.quote);
     assert.ok(readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!).includes(secret));
 
-    const relay = await pendingRelayBlocks("later-review", "startup", undefined, () => takeDraftReview(id, "en", now));
-    assert.ok(relay.reviewBlock.includes(first));
+    const review = await takeDraftReview(id, "en", now);
+    const relay = await pendingRelayBlocks("later-review", "startup");
+    assert.ok(review.block.includes(first));
     assert.ok(relay.pendingBlock.includes("Earlier database credential"));
-    assert.ok(!relay.reviewBlock.includes(secret), "review quote, project and verdict must be safe");
+    assert.ok(!review.block.includes(secret), "review quote, project and verdict must be safe");
     assert.ok(!relay.pendingBlock.includes(secret), "the pending relay must be safe");
     assert.equal((await listDrafts(now))[0].quote, d.quote);
 
@@ -332,7 +334,7 @@ test("agent save_memory does not close the draft in the default dry run, even af
     assert.equal(vault.size(), 1);
   }));
 for (const language of ["en", "de"])
-  test(`${language}: real SessionStart route and MCP forwarder expose and answer review_draft`, () =>
+  test(`${language}: SessionStart skips review, previously shown drafts can still be answered`, () =>
     fixture(async (vault, id, _dir, deps) => {
       const d = row(id);
       await candidate(d);
@@ -366,11 +368,12 @@ for (const language of ["en", "de"])
         });
         const envelope = (await response.json()) as { hookSpecificOutput: { additionalContext: string } };
         const out = envelope.hookSpecificOutput.additionalContext;
-        const old = /<session-harvest\b[^>]*>[\s\S]*?<\/session-harvest>/.exec(out)?.[0];
-        assert.ok(old?.includes("Fixture backups"));
-        assert.ok(!old?.includes(first));
-        assert.match(out, /<draft-review>/);
-        assert.match(out, language === "de" ? /Stimmt das/ : /Is this correct/);
+        assert.doesNotMatch(out, /<session-harvest|<draft-review>/);
+        assert.equal((await listDrafts(now))[0].review_shown_vaults, undefined);
+        // A draft delivered by a previous client is still answerable.
+        const earlier = await takeDraftReview(id, language, now);
+        assert.ok(earlier.block.includes(d.id));
+        await earlier.settle?.(true);
         client = new Client({ name: "review-fixture", version: "1" }, { capabilities: {} });
         const env = Object.fromEntries(
           Object.entries({
@@ -454,31 +457,6 @@ test("unknown verdict fields are never rendered as unscanned candidate content",
     const out = await takeDraftReview(id);
     assert.equal(out.fingerprints.length, 1);
     assert.doesNotMatch(out.block, /unexpected|reveal the fixture secret/);
-  }));
-
-test("large review and old relay payloads share the existing SessionStart content budget", () =>
-  fixture(async (_vault, id) => {
-    for (let i = 0; i < 3; i++) await candidate(row(id, i, `Candidate ${i}: ${first}` + " calibration".repeat(60)));
-    await writePendingSuggestion("<save-eval>" + "old fixture ".repeat(700) + "</save-eval>");
-    const envelope = JSON.parse(
-      await runSessionLane(
-        { hook_event_name: "SessionStart", source: "startup", session_id: "budget-fixture", cwd: "/tmp" },
-        "http://127.0.0.1:1",
-        undefined,
-        undefined,
-        () => takeDraftReview(id, "en")
-      )
-    );
-    const text = envelope.hookSpecificOutput.additionalContext;
-    const review = /<draft-review>[\s\S]*?<\/draft-review>/.exec(text)?.[0] ?? "";
-    const old = /<pending-save-suggestions[^>]*>[\s\S]*?<\/pending-save-suggestions>/.exec(text)?.[0] ?? "";
-    const shown = review.split("\n").filter((line) => line.startsWith("d-")).length;
-    assert.ok(shown >= 1 && shown <= 3);
-    assert.match(old, /clipped|suppressed/);
-    assert.ok(
-      review.length + old.length <= PENDING_BLOCK_CHAR_BUDGET + 600,
-      `shared content budget exceeded: ${review.length + old.length}`
-    );
   }));
 
 test("latest completed pass removes a candidate that lost its qualifying evidence", () =>
@@ -579,21 +557,11 @@ test("one canonical decision rule reaches runtime, packaged JSON, skill projecti
     "false",
     "outdated",
     "one-off request",
-    "one sentence including the quote",
-    "based on their answer",
-    "Do not guess or repeat the question",
-    "busy with another task",
-    "does not answer",
+    "decide from the evidence available",
+    "unresolved draft unanswered",
     "expire normally",
   ])
     assert.ok(reviewRule.en.includes(clause), clause);
-  for (const clause of [
-    "in einem Satz mit dem Zitat",
-    "nach seiner Antwort confirm oder reject",
-    "Nicht raten oder die Frage wiederholen",
-    "anderen Aufgabe",
-    "antwortet er nicht",
-    "verfällt regulär",
-  ])
+  for (const clause of ["Entscheide bei Unsicherheit selbst", "ungeklärten Entwurf unbeantwortet", "regulär verfällt"])
     assert.ok(reviewRule.de.includes(clause), clause);
 });

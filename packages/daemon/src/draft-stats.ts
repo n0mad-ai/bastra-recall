@@ -5,6 +5,8 @@ export interface DraftStats {
   expired: number;
   evicted: number;
   shown: number;
+  tracked: number;
+  used: number;
   promoted: number;
   wouldPromote: number;
   duplicateBlocked: number;
@@ -15,6 +17,11 @@ export interface DraftStats {
   announced: number;
   undone: number;
 }
+const HINT_COUNTS = new Map<unknown, { field: "shown" | "tracked" | "used"; source: string }>([
+  ["draft_hint", { field: "shown", source: "draft_count" }],
+  ["draft_hint_registered", { field: "tracked", source: "count" }],
+  ["draft_hint_used", { field: "used", source: "count" }],
+]);
 export function aggregateDrafts(events: Record<string, unknown>[]): DraftStats | null {
   const stats: DraftStats = {
     captured: 0,
@@ -22,6 +29,8 @@ export function aggregateDrafts(events: Record<string, unknown>[]): DraftStats |
     expired: 0,
     evicted: 0,
     shown: 0,
+    tracked: 0,
+    used: 0,
     promoted: 0,
     wouldPromote: 0,
     duplicateBlocked: 0,
@@ -36,6 +45,7 @@ export function aggregateDrafts(events: Record<string, unknown>[]): DraftStats |
   const count = (value: unknown): number =>
     typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
   for (const event of events) {
+    const hint = HINT_COUNTS.get(event.kind);
     if (event.kind === "session_harvest" && typeof event.draft_count === "number") {
       observed = true;
       stats.captured += count(event.draft_count);
@@ -45,9 +55,9 @@ export function aggregateDrafts(events: Record<string, unknown>[]): DraftStats |
     } else if (event.kind === "draft_expired") {
       observed = true;
       stats.expired += count(event.count);
-    } else if (event.kind === "draft_hint") {
+    } else if (hint) {
       observed = true;
-      stats.shown += count(event.draft_count);
+      stats[hint.field] += count(event[hint.source]);
     } else if (event.kind === "draft_notice") {
       observed = true;
       stats.announced += count(event.count);
@@ -79,7 +89,7 @@ export function renderDrafts(stats: DraftStats | null): string[] {
   return [
     "  drafts (recorded in this window):",
     `    captured ${stats.captured}, additional evidence ${stats.evidenceAdded}; expired ${stats.expired}, evicted ${stats.evicted}`,
-    `    shown ${stats.shown} hook deliveries; promoted ${stats.promoted}, would promote ${stats.wouldPromote}; announced ${stats.announced}; undone ${stats.undone}`,
+    `    shown ${stats.shown} inline hook deliveries; tracked ${stats.tracked} hints, ${stats.used} subsequent successful tool uses; promoted ${stats.promoted}, would promote ${stats.wouldPromote}; announced ${stats.announced}; undone ${stats.undone}`,
     `    duplicate blocked ${stats.duplicateBlocked}, would block ${stats.wouldDuplicateBlock}; other block decisions ${stats.otherBlocked + stats.wouldOtherBlock}; capture errors ${stats.captureErrors}`,
   ];
 }

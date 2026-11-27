@@ -170,7 +170,7 @@ test("SessionStart (#510): der AUSGELIEFERTE pending-Block ist auf das Budget ra
   process.env.BASTRA_TELEMETRY = "off";
   try {
     const runaway = "x".repeat(PENDING_BLOCK_CHAR_BUDGET * 2);
-    await writePendingSuggestion(`<save-eval>${runaway}</save-eval>`);
+    await writePendingSuggestion(`<reflex-candidate>${runaway}</reflex-candidate>`);
 
     const out = await runSessionLane(
       { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "pending-budget-wiring" },

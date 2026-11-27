@@ -1,5 +1,6 @@
 /** Causal local draft usage (#1084, E), separate from the note usage sidecar. */
 import { envOff } from "./env.js";
+import { writeDraftEvent } from "./draft-events.js";
 import { ACTED_ON_WINDOW_MS } from "./telemetry-join-state.js";
 import { transactDrafts } from "./draft-store.js";
 import { tokens } from "./save-similarity.js";
@@ -36,7 +37,7 @@ export async function recordDraftHints(
   try {
     const selected = new Set(ids.filter((id) => /^d-[a-f0-9]{12}$/.test(id)).slice(0, 2));
     if (!selected.size) return 0;
-    return (
+    const count =
       (await transactDrafts(
         async (rows) => {
           let count = 0;
@@ -54,8 +55,9 @@ export async function recordDraftHints(
         },
         now,
         true
-      )) ?? 0
-    );
+      )) ?? 0;
+    if (count > 0) void writeDraftEvent({ kind: "draft_hint_registered", count });
+    return count;
   } catch {
     return 0;
   } // local feedback never breaks a hook
@@ -80,7 +82,7 @@ export async function recordDraftUse(input: DraftUseInput): Promise<number> {
   const literalInput = new Set(literals(excerpt));
   const wordInput = new Set(tokens(excerpt));
   try {
-    return (
+    const count =
       (await transactDrafts(
         async (rows) => {
           let count = 0;
@@ -110,8 +112,9 @@ export async function recordDraftUse(input: DraftUseInput): Promise<number> {
         },
         now,
         true
-      )) ?? 0
-    );
+      )) ?? 0;
+    if (count > 0) void writeDraftEvent({ kind: "draft_hint_used", count });
+    return count;
   } catch {
     return 0;
   }

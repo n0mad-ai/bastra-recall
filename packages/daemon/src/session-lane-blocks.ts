@@ -9,16 +9,12 @@
  */
 import { homedir } from "node:os";
 import { redactSecrets } from "@bastra-recall/core/scrub";
-import { filterPendingSaveSuggestions } from "./save-suggestion-review.js";
-import { projectForFilter } from "./scope-filter.js";
-import { suppressReviewedHarvestQuotes, type DraftReviewDelivery } from "./draft-review.js";
 import { effectiveUpdateMode, getDocsLanguage, getDocsMode, getPrimaryLanguage } from "./settings.js";
 import { formatDokuBlock, isDokuProject } from "./doku-block.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import {
-  PENDING_BLOCK_CHAR_BUDGET,
   formatPendingRelay,
   isCountableSessionStart,
   settlePendingRelay,
@@ -197,13 +193,12 @@ export function patchBlock(): string {
 
 export interface PendingRelayBlocks {
   pendingBlock: string;
-  reviewBlock: string;
   pendingLanes: SessionHookTelemetry["pending_lanes"];
   /** #1743: the two lane blocks inside `pendingBlock`, each its own section for the cap. */
   recencyText: string;
   trendsText: string;
   /** #1743: books what reached the final context and returns what the cap
-   *  cut — suggestions stay pending, trend starts uncounted, drafts unshown. */
+   *  cut — pending rows stay pending and trend starts stay uncounted. */
   settle: (injected: string) => Promise<void>;
 }
 
@@ -216,13 +211,10 @@ const reached = (injected: string, part: string) => part.trim() !== "" && inject
  */
 export async function pendingRelayBlocks(
   sessionId: string | undefined,
-  source: string | undefined,
-  cwd: string | undefined,
-  draftReview?: () => Promise<DraftReviewDelivery>
+  source: string | undefined
 ): Promise<PendingRelayBlocks> {
   const result: PendingRelayBlocks = {
     pendingBlock: "",
-    reviewBlock: "",
     pendingLanes: { recency: 0, trends: 0, recency_chars: 0, trends_chars: 0 },
     recencyText: "",
     trendsText: "",
@@ -237,42 +229,25 @@ export async function pendingRelayBlocks(
       countable,
       deferTrendCount: true,
     });
-    for (const row of relay.recency)
-      row.blocks = await filterPendingSaveSuggestions(cwd ? projectForFilter(cwd) : null, row.blocks);
-    relay.recency = relay.recency.filter((row) => row.blocks.trim());
-    // #1743: what a cut start hands back — the row as stored, before this start's review suppression.
-    const taken = relay.recency.map((row) => ({ row, unreviewed: row.blocks }));
-    // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
-    // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
-    // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
-    const review = await draftReview?.().catch(() => undefined);
-    if (review?.block) {
-      result.reviewBlock = "\n" + review.block;
-      for (const row of relay.recency) row.blocks = suppressReviewedHarvestQuotes(row.blocks, review.fingerprints);
-      relay.recency = relay.recency.filter((row) => row.blocks.trim());
-    }
+    // Save advice belongs to the response that generated it. Older queues
+    // may still contain Stop or harvest output. Curator advice is independent.
+    relay.recency = relay.recency.filter(
+      (row) => !/^<(?:save-eval|session-harvest)(?:\s|>)/u.test(row.blocks.trimStart())
+    );
+    relay.trends = relay.trends.filter(
+      (row) => row.key !== "taxonomy-drift" && !/^<taxonomy-drift(?:\s|>)/u.test(row.blocks.trimStart())
+    );
     // Redact the automatic assistant context independently of the local copy.
     const home = homedir();
     const redact = (row: PendingSuggestion) => ({ ...row, blocks: redactSecrets(row.blocks, home).text });
-    const rendered = formatPendingRelay(
-      { recency: relay.recency.map(redact), trends: relay.trends.map(redact) },
-      Math.max(0, PENDING_BLOCK_CHAR_BUDGET - (review?.block.length ?? 0))
-    );
+    const rendered = formatPendingRelay({ recency: relay.recency.map(redact), trends: relay.trends.map(redact) });
     if (rendered.text) result.pendingBlock = `\n${rendered.text}`;
     result.recencyText = rendered.recencyText;
     result.trendsText = rendered.trendsText;
     result.settle = async (injected) => {
-      const reviewReached = reached(injected, review?.block ?? "");
-      const recencyReached = reached(injected, rendered.recencyText);
-      const trendsReached = reached(injected, rendered.trendsText);
-      const back = taken
-        .filter(({ row }) => !recencyReached || (!reviewReached && !row.blocks.trim()))
-        .map(({ row, unreviewed }) => ({ ...row, blocks: reviewReached ? row.blocks : unreviewed }))
-        .filter((row) => row.blocks.trim());
-      await Promise.all([
-        review?.settle?.(reviewReached),
-        settlePendingRelay(back, countable && trendsReached ? relay.trends : [], sessionId),
-      ]);
+      const back = reached(injected, rendered.recencyText) ? [] : relay.recency;
+      const shownTrends = countable && reached(injected, rendered.trendsText) ? relay.trends : [];
+      await settlePendingRelay(back, shownTrends, sessionId, relay.generation);
     };
     result.pendingLanes = {
       recency: relay.recency.length,

@@ -1,6 +1,7 @@
 import { readAppRecord, deleteAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, unlink, rm, stat, utimes } from "node:fs/promises";
@@ -8,7 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathLockFilePath } from "../src/path-lock.js";
-import { takePendingRelay, writePendingFromHook } from "../src/pending-suggestions.js";
+import { settlePendingRelay, takePendingRelay, writePendingFromHook } from "../src/pending-suggestions.js";
 import { purgeDrafts } from "../src/draft-store.js";
 import { cmdDrafts } from "../src/cli/drafts-cmd.js";
 import { parseArgs } from "../src/cli/commands.js";
@@ -102,6 +103,56 @@ test("busy hook writes return immediately and the deferred write persists after 
     );
     assert.equal(warnings, "");
   }));
+test(
+  "purge invalidates a queued writer in another process and a taken delivery",
+  { skip: process.platform === "win32" },
+  () =>
+    fixture(async (path) => {
+      await writePendingFromHook("fixture taken before purge");
+      const taken = await takePendingRelay();
+      assert.equal(taken.recency.length, 1);
+      await writeFile(pathLockFilePath(path), "held fixture lock");
+      const moduleUrl = new URL("../src/pending-suggestions.ts", import.meta.url).href;
+      const child = spawn(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "--eval",
+          `import { writePendingFromHook } from ${JSON.stringify(moduleUrl)};
+         await writePendingFromHook("fixture queued before purge");
+         process.stdout.write("queued");
+         process.kill(process.pid, "SIGSTOP");
+         await new Promise((resolve) => setTimeout(resolve, 150));`,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] }
+      );
+      const exited = once(child, "exit");
+      try {
+        const queued = await Promise.race([
+          once(child.stdout!, "data"),
+          exited.then(() => assert.fail("writer exited before queueing")),
+        ]);
+        assert.match(String(queued[0]), /queued/);
+        await unlink(pathLockFilePath(path));
+        await purgeDrafts();
+        await settlePendingRelay(taken.recency, [], undefined, taken.generation);
+        await writePendingFromHook("fixture queued after purge");
+        child.kill("SIGCONT");
+        assert.deepEqual(await exited, [0, null]);
+        assert.deepEqual(
+          (await takePendingRelay()).recency.map((row) => row.blocks),
+          ["fixture queued after purge"]
+        );
+      } finally {
+        child.kill("SIGCONT");
+        child.kill("SIGTERM");
+        await exited;
+      }
+    })
+);
+
 test("a deferred hook write does not keep a short-lived process open", () =>
   fixture(async (path) => {
     await writeFile(pathLockFilePath(path), "held fixture lock");

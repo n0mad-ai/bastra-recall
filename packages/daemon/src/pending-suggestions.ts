@@ -15,7 +15,8 @@ import { bastraDataDir } from "./platform-paths.js";
  * Der alte JSON-Pfad bleibt Migrationsidentität, das Original liegt als .pre-db.
  */
 import { access, mkdir } from "node:fs/promises";
-import { readAppRecord, writeAppRecord, deleteAppRecord } from "./app-record-store.js";
+import { readAppRecord, writeAppRecord, deleteAppRecord, peekAppRecord } from "./app-record-store.js";
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { homedir } from "node:os";
@@ -146,6 +147,27 @@ function pendingSuggestionsPath(): string {
   return process.env.BASTRA_PENDING_SUGGESTIONS_PATH ?? join(bastraDataDir(), "pending-suggestions.json");
 }
 
+function relayGenerationPath(path: string): string {
+  return path + ".purge-generation";
+}
+
+function relayGeneration(path: string): string | null {
+  try {
+    return peekAppRecord("pending-suggestions-generation", relayGenerationPath(path));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** A claim retained by a write's detached retry, across processes and a purge. */
+const acceptedGeneration = Symbol("acceptedGeneration");
+const invalidatedGeneration = Symbol("invalidatedGeneration");
+
+function requireRelayGeneration(path: string, expected: string | null): void {
+  if (relayGeneration(path) !== expected) throw invalidatedGeneration;
+}
+
 /** One gate for every relay producer, reader and settlement. Existing files stay untouched. */
 export function pendingRelayEnabled(): boolean {
   return !envOff("BASTRA_PENDING_RELAY");
@@ -181,6 +203,7 @@ export async function purgePendingSuggestions(clearDrafts: () => Promise<void> =
         throw error;
       }
       if (present) await writePendingRows(path, []);
+      writeAppRecord("pending-suggestions-generation", relayGenerationPath(path), randomUUID());
       return present;
     },
     { crossProcess: true, requireLock: true }
@@ -253,6 +276,7 @@ export async function writePendingSuggestion(
     provisional?: string;
     deferOnBusy?: boolean;
     [detachedRetry]?: true;
+    [acceptedGeneration]?: string | null;
     /** Called only after a successful atomic relay write (also for refreshes).
      *  Disabled relay, skipped writes and failures never acknowledge persistence. */
     onPersisted?: () => void;
@@ -270,6 +294,7 @@ export async function writePendingSuggestion(
     );
   }
   try {
+    const generation = opts[acceptedGeneration] === undefined ? relayGeneration(path) : opts[acceptedGeneration];
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     // Outlast the 10 s stale lease (and the 4 s synchronous guards), so
     // a crashed holder still lets this suggestion be retained on retry.
@@ -281,6 +306,7 @@ export async function writePendingSuggestion(
           path,
           async () => {
             ran = true;
+            requireRelayGeneration(path, generation);
             let entries: PendingSuggestion[] = [];
             try {
               const parsed = JSON.parse(
@@ -370,13 +396,14 @@ export async function writePendingSuggestion(
           { crossProcess: true, noQueue: true, takeOverStale: true }
         );
       } catch (error) {
+        if (error === invalidatedGeneration) return;
         if (!sqliteBusy(error)) throw error;
         ran = false; // SQLite contention follows the existing deferred/retry path.
       }
       if (ran) return;
       if (opts.deferOnBusy) {
         const { deferOnBusy: _defer, ...background } = opts;
-        void writePendingSuggestion(blocks, { ...background, [detachedRetry]: true });
+        void writePendingSuggestion(blocks, { ...background, [detachedRetry]: true, [acceptedGeneration]: generation });
         return;
       }
       if (Date.now() >= deadline) {
@@ -537,6 +564,7 @@ function renderLane(entries: PendingSuggestion[], lane: PendingLane, budget: num
 export interface PendingRelay {
   recency: PendingSuggestion[];
   trends: PendingSuggestion[];
+  generation?: string | null;
 }
 
 /**
@@ -603,8 +631,9 @@ export async function takePendingRelay(
               tombstones.push({ ...row, sessions: 0, retired: true });
             }
           }
+          const generation = relayGeneration(path);
           await storeRemainingTrends(path, [...tombstones, ...storedTrends], raw, opts.deferTrendCount);
-          return { recency, trends };
+          return { recency, trends, generation };
         },
         { crossProcess: true, noQueue: true, takeOverDead: true }
       )) ?? { recency: [], trends: [] }
@@ -624,16 +653,18 @@ async function storeRemainingTrends(path: string, rows: PendingSuggestion[], ori
 export async function settlePendingRelay(
   recency: readonly PendingSuggestion[],
   shownTrends: readonly PendingSuggestion[],
-  sessionId: string | undefined
+  sessionId: string | undefined,
+  generation: string | null | undefined
 ): Promise<void> {
-  if (!pendingRelayEnabled() || recency.length + shownTrends.length === 0) return;
+  if (!pendingRelayEnabled() || generation === undefined || recency.length + shownTrends.length === 0) return;
   const path = pendingSuggestionsPath();
   try {
     await retryRelaySettlement(() =>
       tryWithPathLock(
         path,
         async () => {
-          if (pendingRelayEnabled()) await persistRelaySettlement(path, recency, shownTrends, sessionId);
+          if (pendingRelayEnabled() && generation === relayGeneration(path))
+            await persistRelaySettlement(path, recency, shownTrends, sessionId);
           return true as const;
         },
         { crossProcess: true, noQueue: true, takeOverDead: true }

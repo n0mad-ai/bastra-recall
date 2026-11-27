@@ -394,17 +394,7 @@ describe("#1305 rule kernel: re-delivery by the gate lane", () => {
         res.once("finish", () => {
           if (res.statusCode === 200) finished++;
         });
-        dispatchLaneRoutes(
-          req,
-          res,
-          "POST",
-          "/hook/gate",
-          undefined,
-          undefined,
-          undefined,
-          fixture.reflexPool,
-          fixture.kernel
-        );
+        dispatchLaneRoutes(req, res, "POST", "/hook/gate", undefined, undefined, fixture.reflexPool, fixture.kernel);
       });
       t.after(async () => {
         server.closeAllConnections();

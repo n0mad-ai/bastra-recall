@@ -6,6 +6,8 @@ import { logDirFor } from "./telemetry.js";
 import { evalRunMark } from "./training-signal.js"; // #1128-capture
 export async function writeDraftEvent(event: {
   kind:
+    | "draft_hint_registered"
+    | "draft_hint_used"
     | "draft_expired"
     | "draft_notice"
     | "draft_undone"

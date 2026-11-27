@@ -78,9 +78,8 @@ sub-project `topic_path` segment — **unless** a convention already covers that
 key (mentioned in a convention's tags, topic_path or title). Scope names and
 memory types never count (structural, not drift).
 
-The **stop hook** surfaces at most two clusters as a `<taxonomy-drift>`
-suggestion. Suggestion only: the agent weighs it next turn, asks the user if
-unsure, and never bulk-moves silently.
+The Stop hook still measures recurring clusters. Session starts skip these
+notices.
 
 ### Worked example — `person` (#68)
 
@@ -178,9 +177,8 @@ Tag oder ein Unterprojekt-Segment in `topic_path` teilen — **es sei denn**, ei
 Konvention deckt diesen Schlüssel bereits ab (erwähnt in Tags, topic_path oder Titel
 einer Konvention). Scope-Namen und Erinnerungstypen zählen nie (strukturell, keine Drift).
 
-Der **Stop-Hook** zeigt höchstens zwei Cluster als `<taxonomy-drift>`-Vorschlag an.
-Nur ein Vorschlag: Der Agent wägt ihn im nächsten Zug ab, fragt im Zweifel nach und
-verschiebt nie still in großem Stil.
+Der Stop-Hook misst wiederkehrende Themengruppen weiterhin. Beim Sitzungsstart
+erscheinen diese Hinweise nicht.
 
 ### Durchgerechnetes Beispiel — `person` (#68)
 

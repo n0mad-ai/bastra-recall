@@ -78,7 +78,6 @@ test("#1623: HTTP repeats the full kernel for a worker after each cadence", asyn
       "/hook/gate",
       undefined,
       undefined,
-      undefined,
       () => [],
       async () => catalog
     );

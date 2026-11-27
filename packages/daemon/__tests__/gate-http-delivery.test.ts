@@ -86,7 +86,6 @@ test(
           "/hook/gate",
           undefined,
           undefined,
-          undefined,
           () => [reflex],
           async () => catalog
         )

@@ -1000,9 +1000,7 @@ Each heuristic is handed over once per session (the session state remembers
 it); a later Stop that fires the same heuristic stays silent. A Stop raised by
 a Stop hook (`stop_hook_active`) is never evaluated, so the hand-over cannot
 loop. Codex, a payload without a session id, and `BASTRA_STOP_SAME_TURN=0`
-keep the older route: the `<save-eval>` blocks go to
-`~/.bastra/pending-suggestions.json` and the next session start shows them
-(#48, #513).
+have no same-turn delivery. Session starts skip delayed `<save-eval>` blocks.
 
 On that supported same-turn path, a repeated correction in the latest user
 turn also gets the reason `correction-without-save` (#1307), once per session.
@@ -1068,36 +1066,8 @@ agent and is kept minimal: one instruction, then one line per suggestion. The
 agent then either saves or ends the turn without comment. It happens at most
 once per heuristic per session; `BASTRA_STOP_SAME_TURN=0` turns it off.
 
-Additionally the stop hook asks the daemon's drift detector (`GET /hook/drift`,
-budget 250 ms, fail-silent) whether recent memories form a recurring cluster
-with no taxonomy convention covering it, and surfaces at most two clusters as a
-`<taxonomy-drift>` suggestion — see [taxonomy.md](taxonomy.md). Same contract:
-suggestion only, the agent decides.
-
-**How long a trend is shown (#513, #771, #997).** The drift block does not go back in
-the same turn. It sits in the pending relay's `trends` lane: every session
-start shows it in a `<pending-trends>` block, and reading does not consume it.
-Its lifetime is counted in real session starts, not in days. After N starts
-(default 6, `BASTRA_PENDING_TRENDS_SESSIONS`) it is gone, even while the
-condition lasts and the Stop hook keeps writing it. The drift block is
-identified by its cluster keys (the tags and topics it names), not by its
-text: counts and example ids change with every save, and a changed number
-alone neither restarts the N starts nor brings a retired block back. It comes
-back, with N fresh starts, only when a new cluster key appears or a cluster
-has grown to at least twice the size it had when the block retired; a cluster
-shrinking, dropping out or swapping places is not news. While the block is
-shown it carries the current numbers. A marker written before #997 has no
-keys: it is compared by text once, so a changed text brings the block back one
-more time, and from then on the keys decide. Other trends keep the text rule:
-they come back only when their text changes, and changed text gets its N
-starts again, whether the previous text was still being shown or was already
-gone. Resumed,
-compacted and cleared sessions, a repeated session id and ids with an
-eval/test prefix do not count. To keep a retired trend from coming back, the
-relay file holds an invisible marker for it, which takes no slot in the
-five-entry cap. The marker is dropped after N session starts in a row without
-the trend being written, and the file is removed when nothing else is left in
-it.
+The Stop hook still measures recurring taxonomy clusters. Session starts skip
+`<taxonomy-drift>` notices.
 
 Budget 1000 ms. Telemetry: `save_eval_call` with `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`, plus `delivery`
@@ -1192,9 +1162,8 @@ the same filter as local drafts before storage. The vault comparison runs on the
 original quotes first. `pending-suggestions.json` is written with permissions
 0600; retained legacy rows are cleaned on every ordinary write, and old rows are
 also cleaned before delivery. Recency is consumed once and expires after seven
-days; trends keep their existing session counters. The next session start shows
-the remaining text. **The ordinary harvest relay does not save notes**: the agent recalls,
-judges and saves. The separate draft-promotion step in that tick can write only
+days. Session starts skip harvest blocks. A later search can show an eligible
+unconfirmed draft. The separate draft-promotion step in that tick can write only
 with explicit sharp opt-in and the guards described below. A resumed session is harvested again only for its new turns.
 Telemetry: `session_harvest` with `session_id, client, turn_count,
 candidate_count, candidate_kinds, stored_count, trigger` (`session_end` or
@@ -1214,27 +1183,16 @@ environment.
 The pending relay skips a live writer during session start. An aged lease can
 be recovered when its local owner is known to have ended. The Stop hook
 hands a blocked write back to the running daemon. Its retry timer alone
-does not keep a process alive (#1114).
+does not keep a process alive. A successful purge also cancels relay writes
+and deliveries that were still pending (#1114).
 
 ### Agent review of local candidates (#157, steps 1–2)
 
-At SessionStart, Claude Code and Codex can receive a separate `<draft-review>`
-block with up to three open drafts evaluated locally as `would_promote` or
-`would_block`. Review and old relay content share the existing 3,000-character
-budget: review is first, the old block receives what remains (plus its fixed
-frame and truncation notice). The review block includes the
-secret-redacted quote, project, date and available local verdicts. Only drafts
-with confirmed provenance for the current vault and a candidate verdict from
-the latest completed local pass are eligible. A later pass removes obsolete
-verdicts or replaces changed verdicts; shown and answered markers stay. Injection findings
-exclude the whole candidate; quoted text is untrusted data, never instructions.
-Each draft is presented once per vault while its record is retained. If more
-candidates fit later, they wait for another start. Busy or inaccessible stores
-are skipped rather than blocking the session. Presentation is a durable claim
-when the hook response is prepared, not proof that the agent read it.
+Session starts no longer include a draft review. Agents can still answer drafts
+previously shown for review.
 
 <!-- draft-review-decision-rule:en -->
-confirm only if the statement is correct, durable beyond that session and not already in the vault. confirm saves nothing; if worth saving, save it yourself with save_memory as usual. reject if it is false, outdated, a one-off request, or already in the vault. If unsure and the question fits the current task, briefly ask the user once, in one sentence including the quote, then send confirm or reject based on their answer. Do not guess or repeat the question. If the user is busy with another task or does not answer, leave the draft unanswered to expire normally.
+confirm only if the statement is correct, durable beyond that session and not already in the vault. confirm saves nothing; if worth saving, save it yourself with save_memory as usual. reject if it is false, outdated, a one-off request, or already in the vault. If unsure, decide from the evidence available. Leave an unresolved draft unanswered to expire normally.
 <!-- /draft-review-decision-rule:en -->
 
 The agent should recall first and check three things: is it correct, is it
@@ -1423,8 +1381,9 @@ metadata, drafts keep an empty situation.
 only the already selected local Ollama provider at a loopback endpoint. An
 explicit cloud choice, no provider or a remote Ollama URL produces no draft
 embedding request. The disposable `<draft-store-name>.vectors.json` sidecar is
-private (0600), model-bound, and pruned when drafts expire or disappear;
-`bastra drafts purge` removes it too. A failing local model leaves capture intact.
+private (0600) and model-bound. When the expiry pass removes drafts, it prunes
+their vectors even without a local provider. `bastra drafts purge` clears the
+cache too. A failing local model leaves capture intact.
 
 For drafts from different sessions, `draft_repeat_shadow` logs both character
 bigram Dice and cosine when either is at least its logging threshold: Dice 0.6,
@@ -1467,6 +1426,9 @@ process the lock is attempted once, without waiting or orphan takeover. Normal n
 and tripwire output is already final before the band is appended. An advisory 50 ms
 ceiling, unmeasured on real data, is bounded by the normal lane deadline. Separate
 `draft_hint` telemetry records IDs, count, estimated tokens and band latency, no text.
+`draft_hint_registered` counts each tracked draft and session once.
+`draft_hint_used` counts subsequent successful tool calls that used novel evidence
+from a tracked draft. Both events contain a count without draft text.
 
 **Assumption, not confirmed by the owner:** retrieval never deletes or closes
 drafts. A covering returned note suppresses only query-matching drafts in that
@@ -3022,9 +2984,8 @@ Gespräch noch in seinem Kontext ist. Jede Heuristik wird pro Session einmal
 Heuristik auslöst, bleibt still. Ein Stop, den ein Stop-Hook ausgelöst hat
 (`stop_hook_active`), wird nie ausgewertet, die Übergabe kann also nicht
 kreisen. Codex, ein Payload ohne Session-ID und `BASTRA_STOP_SAME_TURN=0`
-behalten den alten Weg: Die `<save-eval>`-Blöcke landen in
-`~/.bastra/pending-suggestions.json`, und der nächste Session-Start zeigt sie
-(#48, #513).
+haben keine Übergabe in derselben Antwort. Beim Sitzungsstart überspringt
+Recall verspätete `<save-eval>`-Blöcke.
 
 Auf diesem unterstützten Übergabeweg im selben Turn erhält eine wiederholte
 Korrektur im neuesten Nutzer-Turn außerdem den Grund `correction-without-save`
@@ -3096,39 +3057,8 @@ Zeile pro Vorschlag. Der Agent speichert danach oder beendet den Turn ohne
 Kommentar. Das passiert höchstens einmal pro Heuristik und Session;
 `BASTRA_STOP_SAME_TURN=0` schaltet es ab.
 
-Zusätzlich fragt der Stop-Hook den Drift-Detektor des Daemons
-(`GET /hook/drift`, Budget 250 ms, fail-silent), ob neuere Erinnerungen einen
-wiederkehrenden Cluster bilden, den keine Taxonomie-Konvention abdeckt, und
-zeigt höchstens zwei Cluster als `<taxonomy-drift>`-Vorschlag an — siehe
-[taxonomy.md](taxonomy.md). Gleicher Vertrag: nur ein Vorschlag, der Agent
-entscheidet.
-
-**Wie lange ein Trend gezeigt wird (#513, #771, #997).** Der Drift-Block geht nicht
-im selben Turn zurück. Er liegt in der `trends`-Spur des Pending-Relays: Jeder
-Session-Start zeigt ihn in einem `<pending-trends>`-Block, und das Lesen
-verbraucht ihn nicht. Seine Lebensdauer wird in echten Session-Starts gezählt,
-nicht in Tagen. Nach N Starts (Standard 6, `BASTRA_PENDING_TRENDS_SESSIONS`)
-ist er weg, auch wenn der Zustand anhält und der Stop-Hook ihn weiter
-schreibt. Der Drift-Block wird an seinen Cluster-Schlüsseln erkannt (den Tags
-und Topics, die er nennt), nicht an seinem Text: Zählwerte und Beispiel-IDs
-ändern sich mit jedem Speichern, und eine geänderte Zahl allein startet die N
-Starts weder neu noch holt sie einen ausgelaufenen Block zurück. Er kommt mit
-N frischen Starts nur zurück, wenn ein neuer Cluster-Schlüssel auftaucht oder
-ein Cluster auf mindestens das Doppelte der Größe gewachsen ist, die er beim
-Auslaufen hatte; ein Cluster, der schrumpft, herausfällt oder den Platz
-tauscht, ist keine Neuigkeit. Solange der Block gezeigt wird, trägt er die
-aktuellen Zahlen. Ein Merker von vor #997 hat keine Schlüssel: Er wird einmal
-am Text verglichen, ein geänderter Text holt den Block also noch ein Mal
-zurück, danach entscheiden die Schlüssel. Andere Trends behalten die
-Text-Regel: Sie kommen nur zurück, wenn sich ihr Text ändert, und geänderter
-Text bekommt immer wieder seine N Starts, egal ob der vorherige Text noch
-gezeigt wurde oder schon weg war. Fortgesetzte, kompaktierte und
-geleerte Sessions, eine wiederholte Session-ID und IDs mit einem
-Eval-/Test-Präfix zählen nicht. Damit ein ausgelaufener Trend nicht
-zurückkommt, hält die Relay-Datei einen unsichtbaren Merker für ihn, der
-keinen Platz in der Fünf-Einträge-Grenze belegt. Der Merker fällt weg, wenn N
-Session-Starts in Folge vergangen sind, ohne dass der Trend geschrieben wurde,
-und die Datei wird entfernt, wenn sonst nichts mehr in ihr steht.
+Der Stop-Hook misst weiter wiederkehrende Themengruppen. Sitzungsstarts
+überspringen Hinweise vom Typ `<taxonomy-drift>`.
 
 Budget 1000 ms. Telemetrie: `save_eval_call` mit `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`, dazu `delivery`
@@ -3232,12 +3162,10 @@ demselben Filter wie bei lokalen Entwürfen entfernt; der Vault-Abgleich läuft
 zuvor auf den ursprünglichen Zitaten. `pending-suggestions.json` wird mit Rechten
 0600 geschrieben. Verbliebene alte Zeilen werden bei jedem normalen Schreiben
 und vor der Auslieferung geschwärzt. Recency wird einmal konsumiert und verfällt
-nach sieben Tagen; Trends behalten ihre bestehenden Sitzungszähler. Der nächste
-Session-Start zeigt den verbliebenen Text.
-**Der normale Relay-Weg legt keine Notizen an; die getrennte Draft-Beförderung
-kann im selben Tick nur nach ausdrücklichem Scharf-Opt-in und den unten genannten
-Prüfungen schreiben.** Beim Relay sucht der Agent per recall, prüft
-und speichert. Eine fortgesetzte Session wird nur für ihre neuen Turns erneut
+nach sieben Tagen. Sitzungsstarts überspringen Harvest-Blöcke. Ein geeigneter
+unbestätigter Entwurf kann bei einer späteren Suche erscheinen. Die getrennte
+Draft-Beförderung kann im selben Tick nur nach ausdrücklichem Scharf-Opt-in
+und den unten genannten Prüfungen schreiben. Eine fortgesetzte Session wird nur für ihre neuen Turns erneut
 ausgewertet. Telemetrie: `session_harvest` mit `session_id, client,
 turn_count, candidate_count, candidate_kinds, stored_count, trigger`
 (`session_end` oder `idle`); der Session-Start, der einen Harvest-Block
@@ -3258,28 +3186,17 @@ Beim Sitzungsstart überspringt das Relay eine belegte Sperre eines lebenden
 Schreibers. Eine alte Sperre kann es übernehmen, wenn ihr lokaler Besitzer
 nachweislich beendet ist. Der Stop-Hook überlässt einen blockierten
 Schreibvorgang dem laufenden Daemon. Der Timer für Wiederholungsversuche
-allein hält einen Prozess nicht offen (#1114).
+allein hält einen Prozess nicht offen. Nach einem erfolgreichen Leeren
+verwirft das Relay auch bereits vorgemerkte Schreibversuche und Auslieferungen
+(#1114).
 
 ### Agent prüft lokale Kandidaten (#157, Schritte 1–2)
 
-Bei SessionStart können Claude Code und Codex einen eigenen `<draft-review>`-
-Block mit höchstens drei offenen Entwürfen erhalten, die lokal als
-`would_promote` oder `would_block` beurteilt wurden. Review und alter Relay-Inhalt
-teilen das vorhandene Budget von 3.000 Zeichen: zuerst Review, der alte Block
-bekommt den Rest (zuzüglich seines festen Rahmens und Kürzungshinweises).
-Der Review-Block enthält geschwärztes Zitat, Projekt, Datum und vorhandene
-lokale Urteile. Nur Entwürfe mit bestätigter Herkunft für den aktuellen Vault
-und Kandidatenurteil aus dem letzten vollständig abgeschlossenen lokalen Pass
-kommen infrage. Ein späterer Pass entfernt überholte Vermerke oder ersetzt
-geänderte Urteile; Gezeigt- und Antwortvermerke bleiben erhalten. Ein Injection-Fund schließt den ganzen Kandidaten aus;
-Zitattext ist unbestätigtes Material, keine Anweisung. Jeder Entwurf wird je
-Vault einmal vorgelegt, solange sein Datensatz erhalten bleibt. Weitere
-Kandidaten warten auf einen späteren Start. Eine belegte oder unzugängliche
-Ablage wird übersprungen, statt den Sitzungsstart aufzuhalten. „Vorgelegt“ ist
-ein dauerhafter Vermerk beim Vorbereiten der Hook-Antwort, kein Lesebeweis.
+Sitzungsstarts enthalten keine Entwurfsprüfung mehr. Agenten können Entwürfe
+beantworten, die ihnen bereits zur Prüfung vorgelegt wurden.
 
 <!-- draft-review-decision-rule:de -->
-confirm nur, wenn die Aussage stimmt, über die damalige Sitzung hinaus gilt und noch nicht im Vault steht. confirm speichert nichts; falls speichernswert, speichere selbst wie gewohnt mit save_memory. reject, wenn sie falsch oder überholt ist, ein einmaliger Auftrag war oder schon im Vault steht. Bei Unsicherheit, wenn die Frage gerade passt, den Nutzer einmal kurz in einem Satz mit dem Zitat fragen und nach seiner Antwort confirm oder reject senden. Nicht raten oder die Frage wiederholen. Passt die Frage gerade nicht, weil der Nutzer mit einer anderen Aufgabe beschäftigt ist, oder antwortet er nicht, bleibt der Entwurf unbeantwortet und verfällt regulär.
+confirm nur, wenn die Aussage stimmt, über die damalige Sitzung hinaus gilt und noch nicht im Vault steht. confirm speichert nichts; falls speichernswert, speichere selbst wie gewohnt mit save_memory. reject, wenn sie falsch oder überholt ist, ein einmaliger Auftrag war oder schon im Vault steht. Entscheide bei Unsicherheit selbst anhand der verfügbaren Belege. Lass einen ungeklärten Entwurf unbeantwortet, damit er regulär verfällt.
 <!-- /draft-review-decision-rule:de -->
 
 Der Agent soll zuerst Recall nutzen und drei Fragen prüfen: Stimmt das? Ist es
@@ -3409,9 +3326,9 @@ Entwurfszitate ausschließlich über den bereits gewählten lokalen Ollama-Anbie
 an einer Loopback-Adresse ein. Bei Cloud-Wahl, ohne Anbieter oder mit entfernter
 Ollama-Adresse gibt es keinen Embedding-Aufruf für Entwürfe. Die löschbare Datei
 `<Name-der-Entwurfsablage>.vectors.json` ist privat (0600), an das Modell gebunden
-und wird beim Verfall oder Entfernen der Entwürfe bereinigt; `bastra drafts purge`
-entfernt sie ebenfalls. Ein ausgefallenes lokales Modell lässt die Erfassung
-weiterlaufen.
+und wird beim Verfall der Entwürfe bereinigt, auch wenn kein lokaler Anbieter
+läuft. `bastra drafts purge` leert den Cache ebenfalls. Ein ausgefallenes
+lokales Modell lässt die Erfassung weiterlaufen.
 
 Für Entwürfe verschiedener Sessions protokolliert `draft_repeat_shadow`
 Bigramm-Dice und Cosinus, wenn mindestens einer die Protokollschwelle erreicht:
@@ -3452,7 +3369,11 @@ Draft-Datei und warten auf keine Ablagesperre. Buchungen liegen hinter der Antwo
 im selben Prozess werden sie nacheinander ausgeführt; bei fremder Sperre nur ein
 Versuch ohne Warten oder Übernahme. Normale Notizen und Tripwire-Warnungen sind
 vorher fertig, die 50-ms-Grenze bleibt innerhalb der Lane-Deadline. Telemetrie zählt
-IDs, Anzahl, Tokens und Bandlatenz, keinen Text. Suche löscht oder schließt nie;
+IDs, Anzahl, Tokens und Bandlatenz, keinen Text. `draft_hint_registered` zählt
+jeden erfassten Entwurf je Sitzung einmal. `draft_hint_used` zählt nachfolgende
+erfolgreiche Werkzeugaufrufe, die neue Belege aus einem erfassten Entwurf
+nutzten. Beide Ereignisse enthalten nur eine Anzahl und keinen Entwurfstext.
+Suche löscht oder schließt nie;
 überdeckende Notizen unterdrücken nur passende Entwürfe dieser Antwort.
 
 Zwei gemeinsame Tokens sind nötig, davon zwei seltene Anker ab vier Zeichen oder

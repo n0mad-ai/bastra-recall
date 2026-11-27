@@ -19,8 +19,6 @@ import { createLaneDelivery } from "./lane-delivery.js";
 import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
 import { defaultTaskContext } from "./task-transport.js";
 import { reportNotesNotice } from "./task-report-notice.js";
-import { takeDraftReview } from "./draft-review.js";
-import { draftVaultId } from "./draft-promote.js";
 import { reflexPoolIds } from "./reflex.js";
 import { runPromptLane, type ClaudeHookPayload } from "./prompt-lane.js";
 import { vaultConventionOf } from "./convention-source.js";
@@ -239,7 +237,6 @@ export function dispatchHookLanes(
       if (due) res.once("finish", due.record);
       return JSON.stringify(parsed);
     },
-    async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"),
     () => cachedActionReflexPool(vault),
     (active, project, mode) => collectRuleKernel(vault, { project, active, mode }),
     vaultConventionOf(vault)

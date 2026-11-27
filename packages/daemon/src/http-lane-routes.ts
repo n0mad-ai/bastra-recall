@@ -18,7 +18,6 @@ import { confirmLaneDelivery, createLaneDelivery } from "./lane-delivery.js";
  * (/hook/recall, /hook/floors, /hook/drift, …) — read off the socket, not the
  * environment, so a daemon on a non-default port calls itself correctly.
  */
-import type { DraftReviewDelivery } from "./draft-review.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { runStopLane, type ClaudeStopPayload } from "./stop-lane.js";
@@ -68,7 +67,6 @@ export function dispatchLaneRoutes(
    *  as it did before #490. */
   warmupEmbedding?: WarmupCoordinator,
   notice?: (out: string, payload: SaveNoticePayload, isConnected: () => boolean) => Promise<string>,
-  draftReview?: () => Promise<DraftReviewDelivery>,
   /** #1303: the cached action-time reflex pool. Absent = no reflex denies,
    *  must-load still gates. */
   gateReflexPool?: () => readonly Memory[],
@@ -129,7 +127,7 @@ export function dispatchLaneRoutes(
       (payload, self) =>
         subagentStart(payload)
           ? runSubagentStartLane(payload, gateKernel)
-          : runSessionLane(payload, self, warmupEmbedding, undefined, draftReview, afterAnswer),
+          : runSessionLane(payload, self, warmupEmbedding, undefined, afterAnswer),
       notice &&
         ((out, payload, connected) =>
           subagentStart(payload as SessionPayload) ? Promise.resolve(out) : notice(out, payload, connected)),

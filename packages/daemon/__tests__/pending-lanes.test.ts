@@ -424,12 +424,12 @@ test("#513: the lanes render as two labelled blocks that share the #510 budget",
   );
 });
 
-test("#513: SessionStart delivers both lanes and keeps delivering the trend", async () => {
+test("#513: SessionStart retains other curator notices and generic trends", async () => {
   await withRelay(async () => {
-    await writePendingSuggestion("<save-eval>hot one</save-eval>");
-    await writePendingSuggestion("<taxonomy-drift>recurring one</taxonomy-drift>", {
+    await writePendingSuggestion("<reflex-candidate>hot one</reflex-candidate>");
+    await writePendingSuggestion("<test-trend>recurring one</test-trend>", {
       lane: "trends",
-      key: "taxonomy-drift",
+      key: "test-trend",
     });
     const ctxOf = async (id: string) => {
       const out = await runSessionLane(

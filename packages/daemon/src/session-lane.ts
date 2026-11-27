@@ -35,7 +35,6 @@ import { buildSoulBlock, readSoulPreference } from "./soul.js";
  * Discipline unchanged: hard wall-clock budget, fail-silent on every error
  * path, telemetry best-effort.
  */
-import type { DraftReviewDelivery } from "./draft-review.js";
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
 import { detectProjectDetailed } from "@bastra-recall/core/topics";
@@ -202,7 +201,6 @@ export async function runSessionLane(
   warmup?: WarmupCoordinator,
   /** Tests inject an open model recommendation; the shipped one is the default. */
   modelNotice: () => Promise<ModelOffer | null> = pendingModelNotice,
-  draftReview?: () => Promise<DraftReviewDelivery>,
   /** #1743: runs the relay booking once the HTTP answer is out. Absent
    *  (in-process callers, tests): booked before the lane returns. */
   afterAnswer?: (booking: (delivered: boolean) => Promise<void>) => Promise<void>
@@ -232,7 +230,7 @@ export async function runSessionLane(
     kernelActive,
   });
   const ranked = rankSessionHits(fetched.responses, fetched.sideData, project);
-  const standing = await collectStandingBlocks(payload, fetched, project, projectConfidence, draftReview);
+  const standing = await collectStandingBlocks(payload, fetched, project, projectConfidence);
   // Register before further async work, with an empty context until rendering succeeds.
   let relayContext = "";
   if (afterAnswer) await afterAnswer((delivered) => standing.settleRelay(delivered ? relayContext : ""));
@@ -689,7 +687,6 @@ interface StandingBlocks {
   /** Mutable: the model notice joins it after assembly (#462 per-part tokens). */
   update: string;
   patch: string;
-  review: string;
   pending: string;
   doku: string;
   pendingLanes: SessionHookTelemetry["pending_lanes"];
@@ -711,8 +708,7 @@ async function collectStandingBlocks(
   payload: SessionPayload,
   fetched: FetchedContext,
   project: string | null,
-  projectConfidence: Parameters<typeof dokuBlockFor>[1],
-  draftReview?: () => Promise<DraftReviewDelivery>
+  projectConfidence: Parameters<typeof dokuBlockFor>[1]
 ): Promise<StandingBlocks> {
   const { sideData } = fetched;
   const reachable = fetched.responses.some((r) => r.resp !== null);
@@ -723,7 +719,7 @@ async function collectStandingBlocks(
   const conventions: ConventionLean[] = sideData?.conventions ?? [];
   const update = await updateBlockFor(health, payload.source);
   const patch = patchBlock();
-  const relay = await pendingRelayBlocks(payload.session_id, payload.source, payload.cwd, draftReview);
+  const relay = await pendingRelayBlocks(payload.session_id, payload.source);
   const blocks: StandingBlocks = {
     conventions,
     taxonomy: formatTaxonomyBlock(conventions),
@@ -737,7 +733,6 @@ async function collectStandingBlocks(
     onboarding: buildOnboardingBlock(sideData?.onboarding ?? false, sideData?.onboarding_line ?? false),
     update,
     patch,
-    review: relay.reviewBlock,
     pending: relay.pendingBlock,
     doku: await dokuBlockFor(project, projectConfidence),
     pendingLanes: relay.pendingLanes,
@@ -833,7 +828,6 @@ function assembleSessionContext(
     standing.onboarding +
     standing.update +
     standing.patch +
-    standing.review +
     standing.pending +
     standing.doku;
   const { top, pinnedBlock } = ranked;

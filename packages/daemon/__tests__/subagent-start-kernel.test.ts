@@ -73,7 +73,6 @@ async function sessionRoute(t: { after: (fn: () => Promise<void>) => void }) {
         JSON.stringify({
           hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: `${out} task-card` },
         }),
-      undefined,
       () => [],
       kernel
     )

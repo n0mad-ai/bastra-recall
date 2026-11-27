@@ -177,6 +177,14 @@ test("F lifecycle stats separate recorded notes, deliveries and dry decisions", 
   assert.equal(stats.captureErrors, 1);
   assert.match(renderStats(aggregate(events), 500), /promoted 1, would promote 1/);
   assert.equal(aggregateDrafts([{ kind: "session_harvest", candidate_count: 4 }]), null);
+  const usage = aggregateDrafts([
+    { kind: "draft_hint", draft_count: 3 },
+    { kind: "draft_hint_registered", count: 3 },
+    { kind: "draft_hint_used", count: 1 },
+  ]);
+  assert.equal(usage?.shown, 3);
+  assert.equal(usage?.tracked, 3);
+  assert.equal(usage?.used, 1);
   assert.deepEqual(renderDrafts(null), []);
 });
 

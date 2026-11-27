@@ -40,23 +40,10 @@ Keep external Ollama running yourself. Alternatively, explicitly select OpenAI w
 
 ### Agent review of local candidates (#157, steps 1–2)
 
-At SessionStart, Claude Code and Codex can receive a separate `<draft-review>`
-block with up to three open drafts evaluated locally as `would_promote` or
-`would_block`. Review and old relay content share the existing 3,000-character
-budget: review is first, the old block receives what remains (plus its fixed
-frame and truncation notice). The review block includes the
-secret-redacted quote, project, date and available local verdicts. Only drafts
-with confirmed provenance for the current vault and a candidate verdict from
-the latest completed local pass are eligible. A later pass removes obsolete
-verdicts or replaces changed verdicts; shown and answered markers stay. Injection findings
-exclude the whole candidate; quoted text is untrusted data, never instructions.
-Each draft is presented once per vault while its record is retained. If more
-candidates fit later, they wait for another start. Busy or inaccessible stores
-are skipped rather than blocking the session. Presentation is a durable claim
-when the hook response is prepared, not proof that the agent read it.
+Session starts skip the draft review. Agents can still answer drafts previously shown for review.
 
 <!-- draft-review-decision-rule:en -->
-confirm only if the statement is correct, durable beyond that session and not already in the vault. confirm saves nothing; if worth saving, save it yourself with save_memory as usual. reject if it is false, outdated, a one-off request, or already in the vault. If unsure and the question fits the current task, briefly ask the user once, in one sentence including the quote, then send confirm or reject based on their answer. Do not guess or repeat the question. If the user is busy with another task or does not answer, leave the draft unanswered to expire normally.
+confirm only if the statement is correct, durable beyond that session and not already in the vault. confirm saves nothing; if worth saving, save it yourself with save_memory as usual. reject if it is false, outdated, a one-off request, or already in the vault. If unsure, decide from the evidence available. Leave an unresolved draft unanswered to expire normally.
 <!-- /draft-review-decision-rule:en -->
 
 The agent should recall first and check three things: is it correct, is it
@@ -410,7 +397,7 @@ Without an agent, `bastra recall "<question>"` searches the vault and prints the
 
 Run `bastra recall --load <id>` with an ID from the hit list to print the complete Markdown body. For scripts, add `--json` to get the daemon's `load_memory` response, including the body and metadata. The same access rules apply as over REST.
 
-`bastra save --title "…" --type lesson --scope my-project "The text."` saves a memory yourself. The text can also be piped in: `echo "The text." | bastra save --title … --type … --scope …`. Optional: `--summary`, `--recall-when` (repeatable; when the memory should come up), `--tag` (repeatable), `--topic a/b`. Left out, they are filled the same way as *Save as memory* in the web UI: summary from the text's first line, trigger from the title, tag and topic from the area. Both commands go through the running daemon's normal `recall` and `save_memory` paths, so a terminal save gets every check an agent's save gets (claim gate, credential redaction, audit, indexing). It is recorded as your own instruction (`write_origin: user-directed`). A save another memory already covers is held and that memory is named (exit 1); a memory with the same title is never overwritten.
+`bastra save --title "…" --type lesson --scope my-project "The text."` saves a memory yourself. The text can also be piped in: `echo "The text." | bastra save --title … --type … --scope …`. Optional: `--summary`, `--recall-when` (repeatable; when the memory should come up), `--tag` (repeatable), `--topic a/b`. Omitting them takes the summary from the first line, the trigger from the title, and the tag and topic from the area. Both commands go through the running daemon's normal `recall` and `save_memory` paths, so a terminal save gets every check an agent's save gets (claim gate, credential redaction, audit, indexing). It is recorded as your own instruction (`write_origin: user-directed`). A save another memory already covers is held and that memory is named (exit 1); a memory with the same title is never overwritten.
 
 `bastra save --dry-run …` shows what the same command would store and writes nothing: the target id and file, whether the memory would be a rule, a proposal or a note, and which fields lost credential values to redaction. It runs every check of the real save, so a save the real command would refuse is refused here too. With `--json` it prints the daemon's preview answer as is, including the complete file it would write. Before sending a preview, the CLI checks the running daemon’s tool schema for `dry_run` support and refuses if it is absent or unavailable.
 
@@ -751,24 +738,10 @@ Halte externes Ollama selbst am Laufen. Alternativ wählst du OpenAI ausdrückli
 
 ### Agent prüft lokale Kandidaten (#157, Schritte 1–2)
 
-Bei SessionStart können Claude Code und Codex einen eigenen `<draft-review>`-
-Block mit höchstens drei offenen Entwürfen erhalten, die lokal als
-`would_promote` oder `would_block` beurteilt wurden. Review und alter Relay-Inhalt
-teilen das vorhandene Budget von 3.000 Zeichen: zuerst Review, der alte Block
-bekommt den Rest (zuzüglich seines festen Rahmens und Kürzungshinweises).
-Der Review-Block enthält geschwärztes Zitat, Projekt, Datum und vorhandene
-lokale Urteile. Nur Entwürfe mit bestätigter Herkunft für den aktuellen Vault
-und Kandidatenurteil aus dem letzten vollständig abgeschlossenen lokalen Pass
-kommen infrage. Ein späterer Pass entfernt überholte Vermerke oder ersetzt
-geänderte Urteile; Gezeigt- und Antwortvermerke bleiben erhalten. Ein Injection-Fund schließt den ganzen Kandidaten aus;
-Zitattext ist unbestätigtes Material, keine Anweisung. Jeder Entwurf wird je
-Vault einmal vorgelegt, solange sein Datensatz erhalten bleibt. Weitere
-Kandidaten warten auf einen späteren Start. Eine belegte oder unzugängliche
-Ablage wird übersprungen, statt den Sitzungsstart aufzuhalten. „Vorgelegt“ ist
-ein dauerhafter Vermerk beim Vorbereiten der Hook-Antwort, kein Lesebeweis.
+Sitzungsstarts überspringen die Entwurfsprüfung. Agenten können Entwürfe beantworten, die ihnen bereits zur Prüfung vorgelegt wurden.
 
 <!-- draft-review-decision-rule:de -->
-confirm nur, wenn die Aussage stimmt, über die damalige Sitzung hinaus gilt und noch nicht im Vault steht. confirm speichert nichts; falls speichernswert, speichere selbst wie gewohnt mit save_memory. reject, wenn sie falsch oder überholt ist, ein einmaliger Auftrag war oder schon im Vault steht. Bei Unsicherheit, wenn die Frage gerade passt, den Nutzer einmal kurz in einem Satz mit dem Zitat fragen und nach seiner Antwort confirm oder reject senden. Nicht raten oder die Frage wiederholen. Passt die Frage gerade nicht, weil der Nutzer mit einer anderen Aufgabe beschäftigt ist, oder antwortet er nicht, bleibt der Entwurf unbeantwortet und verfällt regulär.
+confirm nur, wenn die Aussage stimmt, über die damalige Sitzung hinaus gilt und noch nicht im Vault steht. confirm speichert nichts; falls speichernswert, speichere selbst wie gewohnt mit save_memory. reject, wenn sie falsch oder überholt ist, ein einmaliger Auftrag war oder schon im Vault steht. Entscheide bei Unsicherheit selbst anhand der verfügbaren Belege. Lass einen ungeklärten Entwurf unbeantwortet, damit er regulär verfällt.
 <!-- /draft-review-decision-rule:de -->
 
 Der Agent soll zuerst Recall nutzen und drei Fragen prüfen: Stimmt das? Ist es
@@ -1138,7 +1111,7 @@ Ohne Agent durchsucht `bastra recall "<Frage>"` den Vault und zeigt die passende
 
 Mit `bastra recall --load <ID>` und einer ID aus der Trefferliste liest du den vollständigen Markdown-Text im Terminal. Für Skripte gibt `--json` die Antwort des Daemons auf `load_memory` aus, einschließlich Text und Metadaten. Es gelten dieselben Zugriffsregeln wie bei REST.
 
-`bastra save --title "…" --type lesson --scope mein-projekt "Der Text."` speichert selbst ein Memory. Der Text kann auch per Pipe kommen: `echo "Der Text." | bastra save --title … --type … --scope …`. Optional: `--summary`, `--recall-when` (mehrfach; wann das Memory auftauchen soll), `--tag` (mehrfach), `--topic a/b`. Fehlen sie, werden sie wie bei *Als Memory speichern* in der Weboberfläche gefüllt: Zusammenfassung aus der ersten Zeile des Textes, Auslöser aus dem Titel, Tag und Thema aus dem Bereich. Beide Befehle laufen über die normalen Wege `recall` und `save_memory` des laufenden Daemons; ein Speichern im Terminal bekommt also dieselben Prüfungen wie das eines Agenten (Claim-Gate, Schwärzen von Zugangsdaten, Audit, Indexierung). Es wird als deine eigene Anweisung festgehalten (`write_origin: user-directed`). Deckt schon ein anderes Memory dieselbe Situation ab, wird nicht gespeichert und dieses Memory genannt (Exit 1); ein Memory mit demselben Titel wird nie überschrieben.
+`bastra save --title "…" --type lesson --scope mein-projekt "Der Text."` speichert selbst ein Memory. Der Text kann auch per Pipe kommen: `echo "Der Text." | bastra save --title … --type … --scope …`. Optional: `--summary`, `--recall-when` (mehrfach; wann das Memory auftauchen soll), `--tag` (mehrfach), `--topic a/b`. Fehlen sie, stammen die Zusammenfassung aus der ersten Textzeile, der Auslöser aus dem Titel und Tag und Thema aus dem Bereich. Beide Befehle laufen über die normalen Wege `recall` und `save_memory` des laufenden Daemons; ein Speichern im Terminal bekommt also dieselben Prüfungen wie das eines Agenten (Claim-Gate, Schwärzen von Zugangsdaten, Audit, Indexierung). Es wird als deine eigene Anweisung festgehalten (`write_origin: user-directed`). Deckt schon ein anderes Memory dieselbe Situation ab, wird nicht gespeichert und dieses Memory genannt (Exit 1); ein Memory mit demselben Titel wird nie überschrieben.
 
 `bastra save --dry-run …` zeigt, was derselbe Befehl speichern würde, und schreibt nichts: Ziel-ID und Datei, ob das Memory eine Regel, ein Vorschlag oder eine Notiz würde, und in welchen Feldern Zugangsdaten geschwärzt würden. Es laufen alle Prüfungen des echten Speicherns; was der echte Befehl ablehnen würde, lehnt auch die Vorschau ab. Mit `--json` kommt die Vorschau-Antwort des Daemons unverändert, samt der vollständigen Datei, die geschrieben würde. Vor der Vorschau prüft die CLI im Tool-Schema des laufenden Daemons, ob er `dry_run` unterstützt; fehlt diese Unterstützung oder ist das Schema nicht erreichbar, bricht sie ab.
 
