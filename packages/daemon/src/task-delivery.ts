@@ -49,7 +49,7 @@ export async function taskAttachment(
     if (passiveQuiet.size >= 5000) passiveQuiet.clear();
     for (const key of [...contactKeys, ...checkKeys]) passiveQuiet.set(key, now + 60000);
     return {
-      text: taskDueText(projection),
+      text: taskDueText(projection, language),
       due: { coverage: projection.coverage, cards: projection.cards, overflow: projection.overflow },
       record: () => {
         setImmediate(() => {

@@ -14,7 +14,7 @@ import { mintTaskCredential, authenticateTask } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
 import { readTaskStore } from "../src/task-store.js";
 import { reconcileTaskTime } from "../src/task-events.js";
-import { taskDueInput, taskDueProjection, recordTaskDelivery } from "../src/task-outbox.js";
+import { taskDueInput, taskDueProjection, taskDueText, recordTaskDelivery } from "../src/task-outbox.js";
 
 test("an unanswered overdue item outlives the delivery cap at session start only", async () => {
   const root = await mkdtemp(join(tmpdir(), "task-session-overdue-"));
@@ -50,6 +50,35 @@ test("an unanswered overdue item outlives the delivery cap at session start only
   assert.equal(compact?.compact, true);
   assert.equal(compact?.state, "overdue");
   assert.match(String(compact?.decision_hint), /Overdue.*please decide/);
+
+  const crowded = await readTaskStore(ctx.path);
+  const existingTask = crowded.tasks[0];
+  const existingOccurrence = crowded.occurrences[0];
+  for (let i = 1; i <= 4; i++) {
+    const id = `fixture-${i}`;
+    crowded.tasks.push({ ...existingTask, id });
+    crowded.occurrences.push({ ...existingOccurrence, id, task_id: id });
+  }
+  const capped = taskDueProjection(
+    crowded,
+    principal,
+    taskDueInput.parse({ session: "s", channel: "session", max_bytes: 8192 }),
+    3000,
+    true,
+    "de"
+  );
+  assert.equal(capped.cards.length, 3);
+  assert.equal(capped.overflow, 2);
+  assert.match(taskDueText(capped, "de"), /2 weitere Erinnerungen sind überfällig\./);
+  const tooSmall = taskDueProjection(
+    crowded,
+    principal,
+    taskDueInput.parse({ session: "s", channel: "session", max_bytes: 720 }),
+    3000,
+    true
+  );
+  assert.equal(tooSmall.overflow, 5 - tooSmall.occurrenceIds.length);
+  assert.match(taskDueText(tooSmall), new RegExp(`${tooSmall.overflow} more reminders are overdue`));
 
   // Two session starts deliver it and use up the cap of two attempts.
   let now = 3000;
