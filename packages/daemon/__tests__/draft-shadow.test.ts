@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, EmbeddingIndex, type EmbeddingProvider } from "@bastra-recall/core";
@@ -241,7 +242,7 @@ test("B3 effective cloud/none choices cannot send draft text or create vector fi
     }
   }));
 
-test("B3 refuses remote Ollama even with opt-in and prunes expired vectors on the next local pass", () =>
+test("B3 refuses remote Ollama even with opt-in and expiry prunes vectors without a provider pass", () =>
   isolated(async () => {
     const d = draft(firstQuote, "expiry");
     await upsertDraft(d, now);
@@ -261,12 +262,39 @@ test("B3 refuses remote Ollama even with opt-in and prunes expired vectors on th
     }
     await runDraftShadow({ provider, ollama: local, now });
     await expireDrafts({ now: now + 7 * 24 * 60 * 60 * 1000 });
-    await runDraftShadow({ provider, ollama: local, now: now + 7 * 24 * 60 * 60 * 1000 });
     await assert.rejects(
       Promise.resolve().then(() => readAppRecord("draft-vectors", draftVectorsPath())),
       { code: "ENOENT" }
     );
     assert.equal(provider.calls.length, 1);
+  }));
+
+test("#1698: a temporarily busy vector prune leaves expiry retryable", (t) =>
+  isolated(async () => {
+    const expiring = draft(firstQuote, "expiry-busy");
+    await upsertDraft(expiring, now);
+    await runDraftShadow({ provider: providerFor(() => new Float32Array([1, 0])), ollama: local, now });
+    const prepare = DatabaseSync.prototype.prepare;
+    t.mock.method(DatabaseSync.prototype, "prepare", function (this: DatabaseSync, sql: string) {
+      const statement = prepare.call(this, sql);
+      if (sql.startsWith("SELECT value FROM app_records")) {
+        const get = statement.get.bind(statement);
+        statement.get = ((...args: unknown[]) => {
+          if (args[0] === "draft-vectors") throw new Error("fixture vector store busy");
+          return Reflect.apply(get, statement, args);
+        }) as typeof statement.get;
+      }
+      return statement;
+    });
+    const expiry = now + 7 * 24 * 60 * 60 * 1000;
+    try {
+      await assert.rejects(expireDrafts({ now: expiry }), /vector store busy/);
+      assert.equal(JSON.parse(readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!)).rows.length, 1);
+    } finally {
+      t.mock.restoreAll();
+    }
+    assert.equal(await expireDrafts({ now: expiry }), 1);
+    assert.throws(() => readAppRecord("draft-vectors", draftVectorsPath()), { code: "ENOENT" });
   }));
 
 test("disabled draft shadow leaves existing legacy draft and vector files unopened", () =>

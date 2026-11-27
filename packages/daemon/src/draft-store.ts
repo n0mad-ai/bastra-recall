@@ -642,6 +642,27 @@ export async function captureDraft(input: Draft, now = Date.now()): Promise<Draf
   return structuredClone((await captureBatch([input], now)).matches[0]);
 }
 
+/** The vector writer checks the current drafts under this same lock before
+ * publishing, so a concurrent embedding pass cannot restore a pruned vector. */
+function pruneDraftVectors(retained: ReadonlySet<string>): void {
+  const path = draftVectorsPath();
+  try {
+    const data: { version?: unknown; rows?: unknown; decisions?: unknown } = JSON.parse(
+      readAppRecord("draft-vectors", path, JSON.parse)
+    );
+    if (data?.version !== 1 || !Array.isArray(data.rows)) return;
+    const rows = data.rows.filter((row) => retained.has(row?.id));
+    if (rows.length === data.rows.length) return;
+    if (!rows.length && !(Array.isArray(data.decisions) && data.decisions.length))
+      deleteAppRecord("draft-vectors", path);
+    else writeAppRecord("draft-vectors", path, JSON.stringify({ ...data, rows }), JSON.parse);
+  } catch (error) {
+    // An absent or unreadable format is not a usable vector cache. A transient
+    // store error instead defers draft removal, so a later tick can retry it.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+  }
+}
+
 /** Called from the harvest tick. A missing promoted note leaves a tombstone. */
 export async function expireDrafts(
   opts: { now?: number; memoryExists?: (id: string) => Promise<boolean> } = {}
@@ -665,9 +686,11 @@ export async function expireDrafts(
         }
       }
       const kept = bounded(rows, now, store.metadata);
+      const removed = rows.length - kept.length;
+      if (removed > 0) pruneDraftVectors(new Set(kept.map((row) => row.id)));
       if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0)
         await write(path, kept, store.metadata, now);
-      return rows.length - kept.length;
+      return removed;
     },
     DRAFT_STORE_LOCK
   );
