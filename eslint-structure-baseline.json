@@ -295,7 +295,6 @@
     "[\"packages/daemon/src/rulebook-catalog.ts\",\"[\\\"function:projectIndex\\\"]\",\"complexity\"]": 22,
     "[\"packages/daemon/src/rulebook-catalog.ts\",\"[\\\"function:rulebookPage\\\"]\",\"complexity\"]": 16,
     "[\"packages/daemon/src/rulebook-check.ts\",\"[\\\"function:beginRulebookRound\\\"]\",\"complexity\"]": 22,
-    "[\"packages/daemon/src/rulebook-check.ts\",\"[\\\"function:recordRulebookCheck\\\",\\\"variable:persisted\\\",\\\"call:mutateSessionState:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 17,
     "[\"packages/daemon/src/rulebook-check.ts\",\"[\\\"function:recordRulebookCheck\\\"]\",\"complexity\"]": 28,
     "[\"packages/daemon/src/rulebook-check.ts\",\"[\\\"function:recordRulebookLoad\\\",\\\"call:mutateSessionState:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 31,
     "[\"packages/daemon/src/rulebook-check.ts\",\"[\\\"function:rulebookBoundary\\\",\\\"variable:persisted\\\",\\\"call:mutateSessionState:#1\\\",\\\"function:argument:1#1\\\"]\",\"complexity\"]": 25,
