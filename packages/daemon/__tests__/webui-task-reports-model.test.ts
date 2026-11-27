@@ -45,6 +45,10 @@ test("rows: unread first, newest first, broken entries dropped", async () => {
     outdatedAt: null,
     notesOpen: 0,
     notesDraft: 0,
+    notesHanded: 0,
+    notesDone: 0,
+    noteProgress: "",
+    noteProgressRevision: "",
     status: null,
     followUp: null,
     followUpOf: null,
@@ -173,7 +177,9 @@ interface FilterModel {
   ATTENTION: string[];
   stateCounts(rows: FilterRow[]): Record<string, number>;
   inStates(rows: FilterRow[], on: Set<string>, keep?: (r: FilterRow) => boolean): FilterRow[];
-  grouped(rows: FilterRow[]): Array<{ group: string; rows: FilterRow[] }>;
+  grouped(
+    rows: FilterRow[]
+  ): Array<{ group: string; rows: Array<{ row: FilterRow; lineAbove?: boolean; lineBelow?: boolean }> }>;
 }
 const filterModel = async () => (await model()) as FilterModel;
 const STATE_ROWS = (m: FilterModel) =>
@@ -230,7 +236,7 @@ test("status filter: open reports first, then read, done and outdated as groups 
   const groups = m.grouped(rows);
   const openIds = rows.filter((r) => m.ATTENTION.includes(m.stateOf(r))).map((r) => r.id);
   assert.equal(openIds.length, 5);
-  assert.deepEqual(plain(groups.map((g) => [g.group, g.rows.map((r) => r.id)])), [
+  assert.deepEqual(plain(groups.map((g) => [g.group, g.rows.map(({ row }) => row.id)])), [
     ["open", openIds],
     ["read", ["r1"]],
     ["done", ["r3"]],
@@ -238,7 +244,7 @@ test("status filter: open reports first, then read, done and outdated as groups 
   ]);
   // the order inside a group is the order the rows came in
   assert.deepEqual(
-    plain(groups[0].rows.map((r) => r.id)),
+    plain(groups[0].rows.map(({ row }) => row.id)),
     plain(rows.map((r) => r.id).filter((id: string) => openIds.includes(id)))
   );
   assert.deepEqual(

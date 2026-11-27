@@ -845,3 +845,12 @@ test("#1717: a marker joined to the word before it is shown as written, without 
   assert.equal(out.toc.asks.length, 0, "no outline entry");
   assert.deepEqual(plain(m.askOf("Read the Matrix [?a|b]")).options, ["a", "b"], "with a space it asks");
 });
+
+test("an open handed-over note shows the agent’s intermediate update as text", async () => {
+  const m = await load();
+  const notes = m.noteRows({ notes: [stored({ handed_at: 15, progress: "wartet auf Messung" })] });
+  const { nodes } = m.annotateReport(rendered(), { notes });
+  const note = nodes[1].find("tk-an__note")[0];
+  assert.ok(note.classList.contains("is-open"));
+  assert.match(note.find("tk-an__reply")[0].textContent, /tk\.rep\.note\.progress.*wartet auf Messung/);
+});

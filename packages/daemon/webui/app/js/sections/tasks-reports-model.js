@@ -5,6 +5,7 @@
 import { codeLines } from "../views/code-lines.js";
 
 const str = (v) => typeof v === "string" && v.trim() !== "";
+const stringOrEmpty = (v) => (str(v) ? v : "");
 const num = (v) => Number.isFinite(v) && v >= 0;
 /** A positive whole count, else 0. */
 const count = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
@@ -26,6 +27,10 @@ function row(x) {
     notesOpen: open,
     // drafts: open notes not handed over to the agents yet (part of notesOpen)
     notesDraft: Math.min(count(x.notes_draft), open),
+    notesHanded: count(x.notes_handed),
+    notesDone: Math.min(count(x.notes_done), count(x.notes_handed)),
+    noteProgress: str(x.note_progress) ? x.note_progress : "",
+    noteProgressRevision: str(x.note_progress_revision) ? x.note_progress_revision : "",
     ...stateFields(x),
   };
 }
@@ -184,6 +189,7 @@ function note(x) {
     at: num(x.updated_at) ? x.updated_at : x.created_at,
     doneAt: num(x.done_at) ? x.done_at : null,
     reply: str(x.reply) ? x.reply : "",
+    progress: stringOrEmpty(x.progress),
   };
 }
 
@@ -275,7 +281,7 @@ function stateFields(x) {
   const status = STATES.includes(x.status) ? x.status : null;
   return {
     status,
-    followUp: status === "question" ? linkOf(x.follow_up) : null,
+    followUp: linkOf(x.follow_up),
     followUpOf: linkOf(x.follow_up_of),
   };
 }
@@ -311,8 +317,54 @@ export function stateCounts(rows) {
 /** The rows whose state is in `on`; a row `keep` names stays whatever its state (the open report). */
 export const inStates = (rows, on, keep = () => false) => rows.filter((r) => on.has(stateOf(r)) || keep(r));
 
-/** The rows by group, in REPORT_GROUPS order, each in the order it had; empty groups are left out. */
-export const grouped = (rows) =>
-  REPORT_GROUPS.map((group) => ({ group, rows: rows.filter((r) => groupOf(r) === group) })).filter(
-    (g) => g.rows.length
-  );
+function visibleQuestionParents(rows) {
+  const live = new Map(rows.filter((row) => row.until === undefined).map((row) => [row.id, row]));
+  const parents = new Map();
+  for (const row of live.values()) {
+    if (stateOf(row) !== "question") continue;
+    const path = new Set();
+    let child = row;
+    while (child && !path.has(child.id)) {
+      path.add(child.id);
+      const parent = live.get(child.followUpOf?.id);
+      if (!parent || parent.createdAt > child.createdAt || parents.has(child.id)) {
+        // The final visible ancestor has no line above, even if it links to a filtered report.
+        path.delete(child.id);
+        for (const childId of path) parents.set(childId, live.get(childId).followUpOf.id);
+        break;
+      }
+      child = parent;
+    }
+  }
+  return parents;
+}
+
+/** Visible chains of open questions join the open group, with the oldest report at the top.
+ * Unlinked rows keep their usual group and order. */
+export function grouped(rows) {
+  const parents = visibleQuestionParents(rows);
+  const children = new Map();
+  for (const row of rows) {
+    const parent = parents.get(row.id);
+    if (!parent) continue;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(row);
+  }
+  const groups = new Map(REPORT_GROUPS.map((group) => [group, []]));
+  for (const row of rows) {
+    if (parents.has(row.id)) continue;
+    if (!children.has(row.id)) {
+      groups.get(groupOf(row)).push({ row });
+      continue;
+    }
+    const chain = [];
+    const pending = [row];
+    while (pending.length) {
+      const next = pending.pop();
+      chain.push(next);
+      pending.push(...(children.get(next.id) ?? []).slice().reverse());
+    }
+    chain.forEach((row, i) => groups.get("open").push({ row, lineAbove: i > 0, lineBelow: i < chain.length - 1 }));
+  }
+  return [...groups].filter(([, rows]) => rows.length).map(([group, rows]) => ({ group, rows }));
+}

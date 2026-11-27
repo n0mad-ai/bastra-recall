@@ -30,29 +30,42 @@ test("status: every derivation rule", () => {
   const rows: [string, R, R[], ReturnType<typeof reportStatus>][] = [
     ["unread, no notes → new", base(), [], { status: "new" }],
     ["read, no notes → read", base({ read_at: 3 }), [], { status: "read" }],
+    ["standalone question, unread → new", base({ body: ASK }), [], { status: "new" }],
+    ["standalone question, read → question", base({ body: ASK, read_at: 3 }), [], { status: "question" }],
+    [
+      "standalone question with draft → in progress",
+      base({ body: ASK, read_at: 3, notes: [draft] }),
+      [],
+      { status: "in_progress" },
+    ],
+    [
+      "standalone question with handed note → handed",
+      base({ body: ASK, read_at: 3, notes: [handed] }),
+      [],
+      { status: "handed" },
+    ],
     ["a draft → in_progress", base({ notes: [draft, done] }), [], { status: "in_progress" }],
     ["a draft beside a handed note → in_progress", base({ notes: [draft, handed] }), [], { status: "in_progress" }],
     ["all handed, one open → handed", base({ notes: [handed, done] }), [], { status: "handed" }],
     ["all notes closed → done", base({ notes: [done] }), [], { status: "done" }],
     ["all closed, put back to unread → done", base({ notes: [done], read_at: undefined }), [], { status: "done" }],
     [
-      "follow-up with a question → question",
+      "parent of an open question retains its own state",
       base({ notes: [done], read_at: 3 }),
       [followUp()],
-      { status: "question", follow_up: { id: "f", title: "F" } },
+      { status: "done", follow_up: { id: "f", title: "F" } },
     ],
-    [
-      "question without any notes on the report",
-      base(),
-      [followUp()],
-      { status: "question", follow_up: { id: "f", title: "F" } },
-    ],
+    ["an unread parent retains New", base(), [followUp()], { status: "new", follow_up: { id: "f", title: "F" } }],
+    ["follow-up with open question → question", followUp(), [], { status: "question" }],
+    ["follow-up with draft → question", followUp({ notes: [draft] }), [], { status: "question" }],
+    ["follow-up with handed note → question", followUp({ notes: [handed] }), [], { status: "question" }],
+    ["follow-up with closed notes → done", followUp({ notes: [done] }), [], { status: "done" }],
     ["follow-up done → back to done", base({ notes: [done] }), [followUp({ notes: [done] })], { status: "done" }],
     [
       "follow-up handed over still asks",
       base({ notes: [done] }),
       [followUp({ notes: [handed] })],
-      { status: "question", follow_up: { id: "f", title: "F" } },
+      { status: "done", follow_up: { id: "f", title: "F" } },
     ],
     [
       "follow-up without answer options is no question",
@@ -66,13 +79,23 @@ test("status: every derivation rule", () => {
       [followUp({ follow_up_of: "x" })],
       { status: "done" },
     ],
-    ["own drafts come before a question", base({ notes: [draft] }), [followUp()], { status: "in_progress" }],
-    ["handed notes come before a question", base({ notes: [handed] }), [followUp()], { status: "handed" }],
+    [
+      "drafts keep the working state and the follow-up link",
+      base({ notes: [draft] }),
+      [followUp()],
+      { status: "in_progress", follow_up: { id: "f", title: "F" } },
+    ],
+    [
+      "handed notes keep the handed state and the follow-up link",
+      base({ notes: [handed] }),
+      [followUp()],
+      { status: "handed", follow_up: { id: "f", title: "F" } },
+    ],
     [
       "the newest open follow-up is named",
       base(),
       [followUp(), followUp({ id: "g", title: "G", created_at: 9 })],
-      { status: "question", follow_up: { id: "g", title: "G" } },
+      { status: "new", follow_up: { id: "g", title: "G" } },
     ],
   ];
   for (const [name, report, others, want] of rows)
@@ -83,29 +106,31 @@ test("status: every derivation rule", () => {
     );
 });
 
-test("#1657: a question stays until the whole chain of follow-ups is done", () => {
+test("#1657: ancestors link to the open question while retaining their own state", () => {
   // A ← B (asked, answered and signed off) ← C (asks, open): the issue's trace.
   const a = base({ notes: [done] });
   const b = followUp({ id: "b", title: "B", notes: [done] });
   const c = followUp({ id: "c", title: "C", created_at: 3, follow_up_of: "b" });
   const status = (r: R, all: R[]) => reportStatus(r, all, (x) => x.notes);
-  assert.deepEqual(status(a, [a, b, c]), { status: "question", follow_up: { id: "c", title: "C" } });
-  assert.deepEqual(status(b, [a, b, c]), { status: "question", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(a, [a, b, c]), { status: "done", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(b, [a, b, c]), { status: "done", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(c, [a, b, c]), { status: "question" });
   const cDone = { ...c, notes: [done] };
   assert.deepEqual(status(a, [a, b, cDone]), { status: "done" }, "the chain is done");
   // A link without a question still carries the chain: A ← B (info only) ← C (asks).
   const info = followUp({ id: "b", title: "B", body: "Just info." });
-  assert.deepEqual(status(a, [a, info, c]), { status: "question", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(a, [a, info, c]), { status: "done", follow_up: { id: "c", title: "C" } });
   // The outdated report's question is gone, but the active descendant still asks.
   const outdated = { ...b, outdated_at: 9 };
-  assert.deepEqual(status(a, [a, outdated, c]), { status: "question", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(a, [a, outdated, c]), { status: "done", follow_up: { id: "c", title: "C" } });
+  assert.deepEqual(status(outdated, [a, outdated, c]), { status: "outdated", follow_up: { id: "c", title: "C" } });
   assert.deepEqual(status(a, [a, outdated, cDone]), { status: "done" });
   // An open direct follow-up is named before one further down.
   const open = followUp({ id: "d", title: "D", created_at: 1 });
-  assert.deepEqual(status(a, [a, b, c, open]), { status: "question", follow_up: { id: "d", title: "D" } });
+  assert.deepEqual(status(a, [a, b, c, open]), { status: "done", follow_up: { id: "d", title: "D" } });
   // Three steps down.
   const e = followUp({ id: "e", title: "E", created_at: 4, follow_up_of: "c" });
-  assert.deepEqual(status(a, [a, b, cDone, e]), { status: "question", follow_up: { id: "e", title: "E" } });
+  assert.deepEqual(status(a, [a, b, cDone, e]), { status: "done", follow_up: { id: "e", title: "E" } });
 });
 
 test("#1657: a circle in a damaged store ends", () => {
@@ -130,14 +155,20 @@ test("#1678: outdated wins over every other state; an outdated follow-up asks no
     ["drafts → outdated", base({ ...old, notes: [draft] }), [], { status: "outdated" }],
     ["handed notes → outdated", base({ ...old, notes: [handed] }), [], { status: "outdated" }],
     ["all done → outdated", base({ ...old, notes: [done] }), [], { status: "outdated" }],
-    ["an open question → outdated", base(old), [followUp()], { status: "outdated" }],
+    ["outdated follow-up with its own question → outdated", followUp(old), [], { status: "outdated" }],
+    [
+      "outdated parent retains the link",
+      base(old),
+      [followUp()],
+      { status: "outdated", follow_up: { id: "f", title: "F" } },
+    ],
     ["the only asking follow-up outdated → no question", base({ read_at: 3 }), [followUp(old)], { status: "read" }],
     ["… and with closed notes → done", base({ notes: [done] }), [followUp(old)], { status: "done" }],
     [
       "an outdated newer follow-up leaves the older open one named",
       base(),
       [followUp(), followUp({ ...old, id: "g", title: "G", created_at: 9 })],
-      { status: "question", follow_up: { id: "f", title: "F" } },
+      { status: "new", follow_up: { id: "f", title: "F" } },
     ],
   ];
   for (const [name, report, others, want] of rows)
@@ -148,7 +179,7 @@ test("#1678: outdated wins over every other state; an outdated follow-up asks no
     );
 });
 
-test("#1678: through the store, outdating the follow-up takes its parent out of question", async () => {
+test("#1678: outdating the follow-up clears its question and the parent's link", async () => {
   const root = await mkdtemp(join(tmpdir(), "task-report-outdated-"));
   const ctx = { path: join(root, "tasks.json"), authPath: join(root, "auth.json"), now: () => 5 };
   const agent = await mintTaskCredential(ctx.authPath, { actor_id: "claude", domains: ["personal"], role: "agent" });
@@ -156,13 +187,17 @@ test("#1678: through the store, outdating the follow-up takes its parent out of 
   const origin = { client: "codex" };
   const parent = await call("task_report_save", { title: "A", body: "text", origin });
   const asking = await call("task_report_save", { title: "F", body: ASK, origin, follow_up_of: parent.id });
-  const status = async (id: string) => (await call("task_report_read", { id })).status;
-  assert.equal(await status(parent.id), "question");
+  const read = (id: string) => call("task_report_read", { id });
+  assert.equal((await read(parent.id)).status, "new");
+  assert.equal((await read(parent.id)).follow_up.id, asking.id);
+  assert.equal((await read(asking.id)).status, "question");
   await call("task_report_mark", { id: asking.id, outdated: true });
-  assert.equal(await status(parent.id), "new");
-  assert.equal(await status(asking.id), "outdated");
+  assert.equal((await read(parent.id)).status, "new");
+  assert.equal((await read(parent.id)).follow_up, undefined);
+  assert.equal((await read(asking.id)).status, "outdated");
   await call("task_report_mark", { id: asking.id, outdated: false });
-  assert.equal(await status(parent.id), "question", "cleared, it asks again");
+  assert.equal((await read(parent.id)).follow_up.id, asking.id);
+  assert.equal((await read(asking.id)).status, "question", "cleared, it asks again");
 });
 
 test("status: questions are recognised by the fixed syntax, never by words", () => {
@@ -193,7 +228,8 @@ test("#1656: an option longer than the reader's 120 characters asks nothing, as 
     { status: "done" }
   );
   const fits = followUp({ body: `Frage? [? ${"x".repeat(120)} | Nein]` });
-  assert.equal(reportStatus(a, [a, fits], (r) => r.notes).status, "question", "120 characters still ask");
+  assert.equal(reportStatus(a, [a, fits], (r) => r.notes).follow_up?.id, fits.id, "120 characters still ask");
+  assert.equal(reportStatus(fits, [a, fits], (r) => r.notes).status, "question");
 });
 
 test("Daniel 25.11.2026: questionCheck counts the questions and names every marker read as text", () => {
@@ -391,16 +427,17 @@ test("follow-up: the link must name a report the agent sees; it is kept and show
   const ask = await f.save({ title: "Rückfrage", body: `Kurz erklärt.\n\n${ASK}\n`, follow_up_of: original.id });
   const listed = await f.list();
   assert.deepEqual(listed.byId(original.id).follow_up, { id: ask.id, title: "Rückfrage" });
-  assert.equal(listed.byId(original.id).status, "question");
+  assert.equal(listed.byId(original.id).status, "new");
   assert.deepEqual(listed.byId(ask.id).follow_up_of, { id: original.id, title: "Bericht" });
-  assert.equal(listed.byId(ask.id).status, "new", "the follow-up shows its own state");
+  assert.equal(listed.byId(ask.id).status, "question", "the follow-up itself asks");
+  assert.equal(listed.unread, 2, "both reports count as unread independently of the badge");
   assert.deepEqual((await f.owner("task_report_read", { id: ask.id })).follow_up_of, {
     id: original.id,
     title: "Bericht",
   });
 });
 
-test("follow-up: answered and signed off, the original falls back to done", async () => {
+test("follow-up: sign-off closes the question and clears the old report's link", async () => {
   const f = await fixture();
   const original = await f.save();
   const n = (await f.note(original.id)).note;
@@ -409,7 +446,9 @@ test("follow-up: answered and signed off, the original falls back to done", asyn
   assert.equal((await f.list()).byId(original.id).status, "done");
 
   const ask = await f.save({ title: "Rückfrage", body: `${ASK}\n`, follow_up_of: original.id });
-  assert.equal((await f.list()).byId(original.id).status, "question");
+  assert.equal((await f.list()).byId(original.id).status, "done");
+  assert.equal((await f.list()).byId(original.id).follow_up.id, ask.id);
+  assert.equal((await f.list()).byId(ask.id).status, "question");
   // The owner answers on the follow-up's question and hands it over; the agent signs off.
   const answer = (
     await f.owner("task_report_note_add", {
@@ -419,7 +458,7 @@ test("follow-up: answered and signed off, the original falls back to done", asyn
     })
   ).note;
   await f.owner("task_report_notes_hand", { id: ask.id });
-  assert.equal((await f.list()).byId(original.id).status, "question", "handed over, not signed off yet");
+  assert.equal((await f.list()).byId(ask.id).status, "question", "handed over, not signed off yet");
   await f.agentCall("task_report_note_done", { id: ask.id, note_id: answer.id });
   const listed = await f.list();
   assert.equal(listed.byId(original.id).status, "done");
@@ -436,11 +475,25 @@ test("follow-up: a chain never loops, and a deleted original only drops the link
   let listed = await f.list();
   assert.equal(listed.byId(a.id).follow_up.id, b.id);
   assert.equal(listed.byId(b.id).follow_up.id, c.id);
-  assert.equal(listed.byId(c.id).status, "new");
+  assert.equal(listed.byId(c.id).status, "question");
   await f.owner("task_report_delete", { id: a.id });
   listed = await f.list();
   assert.equal(listed.byId(b.id).follow_up_of, undefined, "the gone report is not named");
   assert.equal(listed.byId(b.id).status, "question");
+});
+
+test("a standalone question stays New until the owner marks it read", async () => {
+  const f = await fixture();
+  const ask = await f.save({ body: ASK });
+  let listed = await f.list();
+  assert.equal(listed.byId(ask.id).status, "new");
+  assert.equal(listed.unread, 1);
+  await f.owner("task_report_mark", { id: ask.id, read: true });
+  listed = await f.list();
+  assert.equal(listed.byId(ask.id).status, "question");
+  assert.equal(listed.unread, 0);
+  await f.owner("task_report_mark", { id: ask.id, read: false });
+  assert.equal((await f.list()).byId(ask.id).status, "new");
 });
 
 test("Daniel 25.11.2026: task_report_save hints at unread markers and more than 20 questions, and stores anyway", async () => {

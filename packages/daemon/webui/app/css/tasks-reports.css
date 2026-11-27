@@ -959,7 +959,7 @@ li.tk-an__card.is-done > .tk-an__subj::before {
 }
 
 /* The report's state (Daniel 18.11.2026; js/sections/tasks-reports-status.js). "Done" is calm: the
-   "ok" green, no fill. "Question" is amber and jumps to the follow-up. The state labels carry the
+   "ok" green, no fill. "Question" is amber. The state labels carry the
    memory browser's .mb-row__ai, which css/membrowser.css (loaded after this file) paints cyan; the
    ".tk-rv" in front keeps each state's own colour (before 26.11.2026 "Done" and "Outdated" showed cyan). */
 .tk-rv .tk-rv__done {
@@ -972,11 +972,6 @@ li.tk-an__card.is-done > .tk-an__subj::before {
 }
 .tk-rv .mb-row.is-old .mb-row__t {
   color: var(--muted);
-}
-.tk-rv__ask {
-  cursor: pointer;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
 }
 .tk-rep__state {
   padding: 2px 7px 1px;

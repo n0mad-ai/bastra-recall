@@ -11,6 +11,10 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Added
 
+- Reports with handed-over notes show how many the agent completed. The agent can
+  leave a short progress update on an open note via `task_report_note_progress`.
+  The list shows one update, and the reader shows it underneath its note.
+
 - Reports view: a status filter in the head, between the project pick list
   and the search field. New, Question, In progress and Handed over are
   switches with their colour and count, on by default; Read, Done and
@@ -59,7 +63,7 @@ until a new design replaces it; this name is independent of the product version.
   longer counts as unwritten. An already requested ghost opens as requested.
   The engine views' card now labels a ghost "unwritten" instead of "note".
 - Daemon background jobs log their name and wall-clock duration when a run takes at least one second. Draft shadow skips opening drafts or its vector cache when no eligible local embedding provider is configured. Thanks @zzallirog for the report and measurements (#1683).
-- Reports can be marked outdated (`task_report_mark` `outdated`, a switch in the Reports reader): an outdated report shows a muted Outdated tag, leaves the unread count, sorts last and no longer puts its parent into Question (#1678).
+- Reports can be marked outdated (`task_report_mark` `outdated`, a switch in the Reports reader): an outdated report shows a muted Outdated tag, leaves the unread count, sorts last and leaves the open-question list (#1678).
 - Add a mandatory post-build Knip check with a frozen per-finding budget; new or increased unused-code findings fail CI (#1534).
 - The Knip workflow check rejects job-level conditions even when they follow
   the steps. The settings deadline regression runs with a FIFO in place of
@@ -452,6 +456,9 @@ until a new design replaces it; this name is independent of the product version.
 - Removed the README banner (#1565).
 
 ### Fixed
+
+- The Question badge appears on the report that asks. Visible follow-ups with
+  open questions sit below the original report, connected by their status dots.
 
 - An edit can retain allowed changes when another note already claims a new
   trigger. The result lists the blocked triggers and their owners (#1660).

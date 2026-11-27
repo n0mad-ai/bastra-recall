@@ -59,6 +59,7 @@ const sameAnchor = (edit, kind, index) => edit && edit.anchor.kind === kind && e
 /** One saved note: state badge, time, quiet text actions; the agent's reply under it once done. */
 function savedNote(n, ui) {
   const state = n.done ? "done" : n.draft ? "draft" : "open";
+  const agentText = n.done ? n.reply : n.draft ? "" : n.progress;
   return h(
     "div.tk-an__note",
     { cls: `is-${state}` },
@@ -75,12 +76,12 @@ function savedNote(n, ui) {
       )
     ),
     h("div.tk-an__text", { text: n.text }),
-    n.done && n.reply
+    agentText
       ? h(
           "div.tk-an__reply",
           null,
-          h("div.tk-an__rk", { text: t("tk.rep.note.reply") }),
-          h("div.tk-an__rtext", { text: n.reply })
+          h("div.tk-an__rk", { text: t(n.done ? "tk.rep.note.reply" : "tk.rep.note.progress") }),
+          h("div.tk-an__rtext", { text: agentText })
         )
       : null
   );

@@ -61,7 +61,7 @@ import {
   grouped,
   ATTENTION,
 } from "./tasks-reports-model.js";
-import { stateMark, askedAbout } from "./tasks-reports-status.js";
+import { stateMark, reportLinks } from "./tasks-reports-status.js";
 import { annotateReport } from "./tasks-report-notes.js";
 import { R, write } from "./tasks-reports-state.js";
 import { behind, listed, hitsNow, shown, keepRow, searchText, setQuery } from "./tasks-reports-search.js";
@@ -80,12 +80,18 @@ const TIGHT = 1000;
 
 const dataKey = () => JSON.stringify([data.reports, data.deletedReports]);
 let lastKey = dataKey();
+let selectedProgress = "";
+const progressRevision = (id) => data.reports.find((r) => r.id === id)?.noteProgressRevision ?? "";
 onData(() => {
   const key = dataKey();
   if (key === lastKey) return;
   lastKey = key;
   if (R.q.trim()) searchText(); // new or changed reports: the text search runs again
   if (R.sel && !data.reports.some((r) => r.id === R.sel)) R.sel = null; // deleted elsewhere
+  if (R.open && R.sel && R.body !== null) {
+    const revision = progressRevision(R.sel);
+    if (revision !== selectedProgress) void refreshProgress(R.sel, revision);
+  }
   if (R.open && !R.sel && !R.undo) openFirstVisible("reports");
   else emit("reports");
 });
@@ -173,11 +179,27 @@ export const reportsArea = {
   onAction: () => (R.open ? undefined : openReports()),
 };
 
+/** Refresh agent notes in the open reader without resetting scroll or the user's note editor. */
+async function refreshProgress(id, revision) {
+  const notes = R.notes;
+  try {
+    const report = await api("report_read", { id });
+    if (R.sel === id && R.notes === notes && progressRevision(id) === revision) {
+      R.notes = noteRows(report);
+      selectedProgress = revision;
+      emit("reports");
+    }
+  } catch {
+    // The reader keeps its last notes while the report is temporarily unavailable.
+  }
+}
+
 /** Shows a report in the reading view (list row, header ticker); reading leaves its read state alone. */
 export async function openReport(id) {
   enter();
   if (R.undo && R.undo.next !== id) R.undo = null; // moved on: the delete stays
   R.sel = id;
+  selectedProgress = progressRevision(id);
   R.body = null;
   R.notes = [];
   R.edit = null;
@@ -188,6 +210,8 @@ export async function openReport(id) {
     if (R.sel === id) {
       R.body = typeof r?.body === "string" ? r.body : "";
       R.notes = noteRows(r);
+      const revision = progressRevision(id);
+      if (revision !== selectedProgress) void refreshProgress(id, revision);
     }
   } catch (e) {
     if (R.sel === id) R.sel = null;
@@ -322,7 +346,7 @@ function noteMarks(c, tag) {
 // reports to look like it. Only the frame and the deltas live in css/tasks-reports.css.
 // The row's state class (st-…) gives its dot, stripe and tint their colour (Daniel 26.11.2026).
 // An outdated report (#1678) steps back: muted row, no unread look.
-function listRow(r) {
+function listRow(r, lineAbove, lineBelow) {
   const on = R.sel === r.id,
     fresh = isUnread(r),
     work = inWork(r),
@@ -330,7 +354,15 @@ function listRow(r) {
   return h(
     "button.mb-row",
     {
-      cls: [`st-${stateOf(r)}`, fresh ? "is-new" : "", work ? "is-work" : "", old ? "is-old" : "", on ? "is-sel" : ""]
+      cls: [
+        `st-${stateOf(r)}`,
+        fresh ? "is-new" : "",
+        work ? "is-work" : "",
+        old ? "is-old" : "",
+        on ? "is-sel" : "",
+        lineAbove ? "has-line-above" : "",
+        lineBelow ? "has-line-below" : "",
+      ]
         .filter(Boolean)
         .join(" "),
       "aria-current": on ? "true" : null,
@@ -344,12 +376,23 @@ function listRow(r) {
     h(
       "span.mb-row__meta",
       null,
-      stateMark(r, false, openReport),
-      noteMarks({ drafts: r.notesDraft, handed: r.notesOpen - r.notesDraft }, "span.tk-an__count"),
+      stateMark(r, false),
+      noteMarks({ drafts: r.notesDraft, handed: r.notesHanded ? 0 : r.notesOpen - r.notesDraft }, "span.tk-an__count"),
       r.project ? h("span", { text: r.project }) : null,
       h("span", { text: r.client || t("tk.rep.unknown") })
-    )
+    ),
+    r.notesHanded > 0 && r.notesDone < r.notesHanded ? progressLine(r) : null,
+    r.followUpOf ? listDetail("relation", t("tk.rep.askedAbout", { t: r.followUpOf.title })) : null
   );
+}
+
+function listDetail(kind, text) {
+  return h(`span.tk-rv__detail.is-${kind}`, { text, title: text });
+}
+
+function progressLine(r) {
+  const count = t("tk.rep.progress", { n: r.notesDone, total: r.notesHanded });
+  return listDetail("progress", r.noteProgress ? `${count} · ${r.noteProgress}` : count);
 }
 
 function table(b) {
@@ -398,9 +441,10 @@ function readerHead(r, narrow, asks) {
     unread = r.readAt === null,
     old = r.outdatedAt !== null,
     answered = asks.filter((a) => a.answered).length;
+  const links = reportLinks(r, openReport);
   return h(
     "header.tk-rep__head",
-    null,
+    { cls: links ? "has-links" : "" },
     narrow
       ? h("button.mb-rd__back", {
           text: t("tk.rep.toList"),
@@ -428,8 +472,7 @@ function readerHead(r, narrow, asks) {
             })
           : null,
         noteMarks(c, "span.tk-rep__open"),
-        stateMark(r, true, openReport),
-        askedAbout(r, openReport),
+        stateMark(r, true),
         r.project ? h("span.tk-rep__proj", { text: r.project, title: t("tk.rep.project") }) : null,
         h("span", { text: fmtAt(r.createdAt), title: t("tk.rep.filed") }),
         // last and the one that gives way: agent and session id are long and matter least
@@ -437,7 +480,8 @@ function readerHead(r, narrow, asks) {
           text: originText(r) || t("tk.rep.unknown"),
           title: `${t("tk.rep.origin")}: ${originText(r) || t("tk.rep.unknown")}`,
         })
-      )
+      ),
+      links
     ),
     sizeSwitch(() => emit("reports")),
     h(
@@ -553,7 +597,7 @@ function listNodes(rows, rowEl) {
   const groups = grouped(rows);
   return groups.flatMap((g) => [
     ...(groups.length > 1 ? [groupHead(g.group, g.rows.length)] : []),
-    ...g.rows.map(rowEl),
+    ...g.rows.map(({ row, lineAbove, lineBelow }) => rowEl(row, lineAbove, lineBelow)),
   ]);
 }
 
@@ -595,7 +639,7 @@ export function reportsRenderer(host) {
               },
             })
           );
-  const rowEl = (r) => (r.until === undefined ? listRow(r) : deletedRow(r, openReport));
+  const rowEl = (r, above, below) => (r.until === undefined ? listRow(r, above, below) : deletedRow(r, openReport));
   let listKey = "";
   // what the reader shows now (paintReader rebuilds it only on a real change)
   const seen = { key: "", body: undefined, edit: null, sel: null };

@@ -604,28 +604,76 @@ test("N4: a report with open notes reads 'In progress' instead of 'New', in the 
   assert.equal(byClass(read, "mb-row__ai").length, 0);
 });
 
-test("state: 'Question' in the list opens the follow-up; its head leads back; 'Done' is calm", async () => {
-  const { v, host, context } = await view();
-  showAll(v);
+test("open follow-ups share a line with visible ancestors and keep the reading links", async () => {
+  const { v, host, context, draw } = await view();
+  const [first, second, original] = REPORTS;
+  const next = { id: first.id, title: first.title };
+  const parent = { id: original.id, title: original.title };
   (context.data as { reports: unknown }).reports = v.reportRows({
     reports: [
-      { ...REPORTS[0], status: "question", follow_up: { id: ID(2), title: REPORTS[1].title } },
-      { ...REPORTS[1], status: "new", follow_up_of: { id: ID(1), title: REPORTS[0].title } },
-      { ...REPORTS[2], status: "done" },
+      { ...first, status: "question", follow_up_of: parent },
+      { ...second, status: "question", follow_up_of: parent },
+      { ...original, status: "done", follow_up: next },
+      { id: ID(4), title: "Vertiefung", created_at: 40, status: "question", follow_up_of: next },
+      { id: ID(5), title: "Alte Rückfrage", created_at: 50, status: "outdated", follow_up_of: parent },
     ],
   });
   await v.openReports();
-  const [asked, , done] = listRows(host);
-  assert.ok(asked.classList.contains("is-work"), "a question is amber");
-  assert.ok(!done.classList.contains("is-work"));
-  assert.equal(one(done, "mb-row__ai").textContent, "tk.rep.doneState");
-  await one(asked, "tk-rv__ask").click();
-  assert.equal(v.R.sel, ID(2), "the follow-up is open");
+  assert.ok(listRows(host).every((row) => row.attrs["data-report-id"] !== original.id));
+
+  showAll(v);
+  draw();
+  const chain = listRows(host).slice(0, 4);
+  assert.deepEqual(
+    chain.map((row) => row.attrs["data-report-id"]),
+    [original.id, first.id, ID(4), second.id]
+  );
+  assert.deepEqual(
+    chain.map((row) => [row.classList.contains("has-line-above"), row.classList.contains("has-line-below")]),
+    [
+      [false, true],
+      [true, true],
+      [true, true],
+      [true, false],
+    ]
+  );
+  assert.ok(!listRows(host)[4].classList.contains("has-line-above"));
+  assert.equal(one(chain[0], "mb-row__ai").textContent, "tk.rep.doneState");
+  assert.equal(one(chain[1], "mb-row__ai").textContent, "tk.rep.question");
+  await chain[1].click();
   const back = one(one(host, "tk-rep__head"), "tk-rep__about");
-  assert.equal(back.textContent, `tk.rep.askedAbout {"t":"${REPORTS[0].title}"}`);
+  assert.equal(back.textContent, `tk.rep.askedAbout {"t":"${original.title}"}`);
   await back.click();
-  assert.equal(v.R.sel, ID(1));
-  assert.equal(one(one(host, "tk-rep__head"), "tk-rep__state").textContent, "tk.rep.question");
+  assert.equal(v.R.sel, original.id);
+  await one(one(host, "tk-rep__head"), "tk-rep__about").click();
+  assert.equal(v.R.sel, first.id);
+
+  v.R.states = new Set(["question"]);
+  draw();
+  const visible = listRows(host);
+  assert.ok(visible.every((row) => row.attrs["data-report-id"] !== original.id));
+  assert.ok(!visible.find((row) => row.attrs["data-report-id"] === second.id)?.classList.contains("has-line-above"));
+});
+
+test("a row measures completed handed-over notes and shows the current progress line", async () => {
+  const { v, host, context } = await view();
+  (context.data as { reports: unknown }).reports = v.reportRows({
+    reports: [
+      {
+        ...REPORTS[0],
+        status: "handed",
+        notes_open: 2,
+        notes_draft: 1,
+        notes_handed: 12,
+        notes_done: 11,
+        note_progress: "wartet auf Messung",
+      },
+    ],
+  });
+  await v.openReports();
+  const row = listRows(host)[0];
+  assert.equal(one(row, "tk-rv__detail").textContent, 'tk.rep.progress {"n":11,"total":12} · wartet auf Messung');
+  assert.equal(one(row, "tk-an__count").textContent, 'tk.rep.note.drafts {"n":1}');
 });
 
 test("#1678: an outdated report reads 'Outdated' muted in list and head; the head sets and clears it", async () => {

@@ -1,0 +1,64 @@
+/* Extra detail lines need their own space. Keep the dot's height fixed within each row
+ * so connections cross row boundaries without moving the selection and status stripes. */
+.tk-rv .mb-row:is(.has-line-above, .has-line-below, :has(.tk-rv__detail)) {
+  --report-row-padding: 8px;
+  --report-dot-y: calc(var(--report-row-padding) + 9px);
+  height: auto;
+  min-height: var(--rv-row);
+  padding-block: var(--report-row-padding);
+  align-content: start;
+}
+
+.tk-rv .mb-row.has-line-above,
+.tk-rv .mb-row.has-line-below {
+  position: relative;
+}
+.tk-rv .has-line-above::before,
+.tk-rv .has-line-below::after {
+  content: "";
+  position: absolute;
+  /* Row padding (16px) plus the center of the 6px dot. */
+  left: 18px;
+  width: 2px;
+  background: var(--line-45);
+  pointer-events: none;
+}
+.tk-rv .has-line-above::before {
+  top: 0;
+  height: var(--report-dot-y);
+}
+.tk-rv .has-line-below::after {
+  top: var(--report-dot-y);
+  bottom: -1px;
+}
+.tk-rv .has-line-above .mb-row__sq,
+.tk-rv .has-line-below .mb-row__sq {
+  position: relative;
+  z-index: 1;
+}
+
+.tk-rv__detail {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font: 10px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tk-rv__detail.is-progress {
+  color: var(--ink-soft);
+}
+
+/* Keep related-report links visible next to the reader's actions at narrower widths. */
+.tk-rep__head.has-links {
+  height: auto;
+  min-height: var(--rv-row);
+  padding-block: 8px;
+}
+.tk-rep__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  margin-top: 3px;
+  font: 10.5px var(--mono);
+}

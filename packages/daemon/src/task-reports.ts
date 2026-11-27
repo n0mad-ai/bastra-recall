@@ -17,7 +17,7 @@
  * run (executor reports are, see task-app-api.ts) and no action authority.
  * One app record next to the task snapshot; visibility follows the task
  * domain rule (every owner domain must belong to the caller). */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -58,6 +58,7 @@ const markInput = z
 /** A note is the owner's own text (external input): bounded, never shortened. */
 export const NOTE_MAX_CHARS = 4000;
 const REPLY_MAX_CHARS = 1000;
+const PROGRESS_MAX_CHARS = 200;
 /** The block kinds the reading view lets the owner annotate. */
 const NOTE_KINDS = ["heading", "paragraph", "item", "row"] as const;
 /** Where a note sits: the block's kind, its running number among the annotatable
@@ -73,6 +74,7 @@ const noteAddInput = z.strictObject({ id: z.string().uuid(), anchor: anchorInput
 const noteEditInput = z.strictObject({ ...noteRef, text: line(NOTE_MAX_CHARS) });
 const noteDeleteInput = z.strictObject(noteRef);
 const noteDoneInput = z.strictObject({ ...noteRef, reply: line(REPLY_MAX_CHARS).optional() });
+const noteProgressInput = z.strictObject({ ...noteRef, progress: line(PROGRESS_MAX_CHARS).nullable() });
 export const TASK_REPORT_INPUTS = {
   task_report_save: taskReportSaveInput,
   task_report_list: listInput,
@@ -84,6 +86,7 @@ export const TASK_REPORT_INPUTS = {
   task_report_note_edit: noteEditInput,
   task_report_note_delete: noteDeleteInput,
   task_report_note_done: noteDoneInput,
+  task_report_note_progress: noteProgressInput,
   task_report_notes_hand: idInput,
 };
 export type TaskReportOperation = keyof typeof TASK_REPORT_INPUTS;
@@ -104,6 +107,8 @@ const noteShape = {
   handed_at: z.number().int().nonnegative().optional(),
   done_at: z.number().int().nonnegative().optional(),
   reply: z.string().optional(),
+  /** An agent's interim update for the owner while the handed-over note remains open. */
+  progress: z.string().optional(),
   done_by: z.string().optional(),
 };
 const noteSchema = z.looseObject({ ...noteShape, anchor: z.looseObject(anchorShape) });
@@ -146,7 +151,7 @@ export interface ReportContext {
 /** Note texts reach later sessions as the user's own instructions, so only the
  * owner's UI writes them and hands them over. The UI holds the same agent credential
  * an agent has; the route, not the credential, is the proof. Agents read handed-over
- * notes and mark them done. */
+ * notes, add interim progress and mark them done. */
 export const OWNER_UI_REPORT_OPERATIONS: readonly TaskReportOperation[] = [
   "task_report_note_add",
   "task_report_note_edit",
@@ -318,11 +323,14 @@ const notesFor = (r: TaskReport, owner: boolean) => (r.notes ?? []).filter((n) =
 const handedOpen = (r: TaskReport) => (r.notes ?? []).filter((n) => n.state === "open" && !isDraft(n));
 const isOwner = (ctx: ReportContext) => ctx.ownerUi === true;
 
-/** notes_open: open notes the caller sees; notes_draft (owner's UI only): those not handed over yet. */
+/** Counts cover open notes the caller sees, the owner's drafts, and the handed-over subset. */
 function meta(r: TaskReport, owner: boolean) {
   const notes = notesFor(r, owner);
   const open = notes.filter((n) => n.state === "open").length;
   const drafts = notes.filter(isDraft).length;
+  const handed = notes.filter((n) => n.handed_at !== undefined);
+  const done = handed.filter((n) => n.state === "done").length;
+  const updates = handed.filter((n) => n.state === "open" && n.progress);
   return {
     id: r.id,
     title: r.title,
@@ -338,6 +346,16 @@ function meta(r: TaskReport, owner: boolean) {
     bytes: Buffer.byteLength(r.body),
     ...(open === 0 ? {} : { notes_open: open }),
     ...(drafts === 0 ? {} : { notes_draft: drafts }),
+    ...(handed.length === 0 ? {} : { notes_handed: handed.length, notes_done: done }),
+    ...(updates.length === 0
+      ? {}
+      : {
+          note_progress: updates[0]!.progress,
+          // The reader can refresh when even an update omitted from the row changes.
+          note_progress_revision: createHash("sha256")
+            .update(JSON.stringify(updates.map((n) => [n.id, n.progress])))
+            .digest("hex"),
+        }),
   };
 }
 
@@ -509,6 +527,7 @@ function editNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
     delete note.handed_at;
     delete note.done_at;
     delete note.reply;
+    delete note.progress;
     delete note.done_by;
   });
 }
@@ -522,10 +541,22 @@ function finishNote(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) 
     note.state = "done";
     note.done_at = (ctx.now ?? Date.now)();
     note.done_by = principal.actor_id;
+    delete note.progress;
     if (input.reply === undefined) delete note.reply;
     else note.reply = cleanBody(input.reply);
     // The agent's sign-off on the last handed-over note: the report counts as read (Daniel 18.11.2026).
     if (handedOpen(report).length === 0) report.read_at ??= note.done_at;
+  });
+}
+
+/** An agent update leaves the hand-over, the owner's text, and the report's read state alone. */
+function setNoteProgress(ctx: ReportContext, principal: TaskPrincipal, raw: unknown) {
+  const input = noteProgressInput.parse(raw);
+  return changeNote(ctx, principal, input, (note) => {
+    if (note.state !== "open" || isDraft(note)) throw noteNotFound();
+    const progress = input.progress === null ? "" : cleanBody(input.progress).replace(/\s+/g, " ").trim();
+    if (progress) note.progress = progress;
+    else delete note.progress;
   });
 }
 
@@ -644,6 +675,7 @@ const HANDLERS: Record<TaskReportOperation, (ctx: ReportContext, principal: Task
   task_report_note_edit: editNote,
   task_report_note_delete: deleteNote,
   task_report_note_done: finishNote,
+  task_report_note_progress: setNoteProgress,
   task_report_notes_hand: handNotes,
 };
 

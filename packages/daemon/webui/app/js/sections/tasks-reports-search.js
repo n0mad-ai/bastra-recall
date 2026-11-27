@@ -22,7 +22,7 @@ export const keepRow = (r) => r.id === R.sel;
 /** Live reports that match the filters, in the same group order as the rendered list. */
 export function shown() {
   const matched = inProject(matchReports(listed(), R.q, hitsNow()), R.project);
-  return grouped(inStates(matched, R.states, keepRow)).flatMap((g) => g.rows);
+  return grouped(inStates(matched, R.states, keepRow)).flatMap((g) => g.rows.map(({ row }) => row));
 }
 
 /** The daemon searches the report text too (#1597); a short pause after typing, the latest search wins.

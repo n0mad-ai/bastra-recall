@@ -140,6 +140,7 @@ export const TASK_CRUD_OPERATIONS = [
   "task_report_note_edit",
   "task_report_note_delete",
   "task_report_note_done",
+  "task_report_note_progress",
   "task_report_notes_hand",
 ] as const;
 export type TaskCrudOperation = (typeof TASK_CRUD_OPERATIONS)[number];
