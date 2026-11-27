@@ -12,6 +12,7 @@ import {
   draftFingerprint,
   draftId,
   upsertDraft,
+  captureDraft,
   listDrafts,
   expireDrafts,
   purgeDrafts,
@@ -267,6 +268,26 @@ test("B3 refuses remote Ollama even with opt-in and expiry prunes vectors withou
       { code: "ENOENT" }
     );
     assert.equal(provider.calls.length, 1);
+  }));
+
+test("#1698: capture prunes an expired draft's vectors before the expiry tick runs", () =>
+  isolated(async () => {
+    const old = draft(firstQuote, "before-expiry");
+    await captureDraft(old, now);
+    const provider = providerFor(() => new Float32Array([1, 0]));
+    await runDraftShadow({ provider, ollama: local, now });
+    assert.equal(JSON.parse(readAppRecord("draft-vectors", draftVectorsPath())).rows[0].id, old.id);
+
+    const expiry = now + 7 * 24 * 60 * 60 * 1000;
+    const fresh = draft("Routine updates keep production tenants on a stable configuration.", "after-expiry");
+    fresh.created = fresh.last_touched = fresh.evidence[0].ts = expiry;
+    assert.equal((await captureDraft(fresh, expiry))?.id, fresh.id);
+    assert.equal(await expireDrafts({ now: expiry }), 0);
+    assert.deepEqual(
+      JSON.parse(readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!)).rows.map((row: Draft) => row.id),
+      [fresh.id]
+    );
+    assert.throws(() => readAppRecord("draft-vectors", draftVectorsPath()), { code: "ENOENT" });
   }));
 
 test("#1698: a temporarily busy vector prune leaves expiry retryable", (t) =>

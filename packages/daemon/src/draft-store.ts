@@ -406,15 +406,19 @@ function assertWritable(store: StoreSnapshot): void {
 async function write(
   path: string,
   rows: Draft[],
-  metadata: Record<string, unknown>,
-  now = Date.now(),
+  previous: StoreSnapshot,
+  now: number,
   busyTimeoutMs?: number
 ): Promise<void> {
+  const { metadata } = previous;
   const retained = new Set(rows.map((row) => row.id));
-  const expiredCount =
-    cache?.path === path ? cache.store.rows.filter((row) => !retained.has(row.id) && expired(row, now)).length : 0;
+  const removed = previous.rows.filter((row) => !retained.has(row.id));
+  const expiredCount = removed.filter((row) => expired(row, now)).length;
   const payload = JSON.stringify(documentOf(rows, metadata));
   if (Buffer.byteLength(payload) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
+  // All bounded writes can evict existing drafts. Prune before committing the
+  // new set so a transient vector-store error leaves the removal retryable.
+  if (removed.length) pruneDraftVectors(retained, busyTimeoutMs);
   writeAppRecord("drafts", path, payload, validateLegacyDraftDocument, { busyTimeoutMs });
   const info = await fileInfo(path, busyTimeoutMs);
   if (expiredCount) void writeDraftEvent({ kind: "draft_expired", count: expiredCount });
@@ -467,7 +471,7 @@ export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft
       const rows = store.rows.filter((row) => row.id !== draft.id);
       rows.push(draft);
       const kept = bounded(rows, now, store.metadata);
-      await write(path, kept, store.metadata, now);
+      await write(path, kept, store, now);
       return structuredClone(kept.find((row) => row.id === draft.id) ?? null);
     },
     DRAFT_STORE_LOCK
@@ -619,7 +623,7 @@ async function captureBatch(
         updatedIds.push(row.id);
       }
       const kept = bounded(rows, now, store.metadata, capturedAt);
-      if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata, now);
+      if (JSON.stringify(kept) !== before) await write(path, kept, store, now);
       const byId = new Map(kept.map((row) => [row.id, row]));
       const result = summarizeCapture(original, byId, capturedAt, [...matchedIds, ...updatedIds]);
       return { ...result, matches: matchedIds.map((id) => (id === null ? null : (byId.get(id) ?? null))) };
@@ -644,18 +648,18 @@ export async function captureDraft(input: Draft, now = Date.now()): Promise<Draf
 
 /** The vector writer checks the current drafts under this same lock before
  * publishing, so a concurrent embedding pass cannot restore a pruned vector. */
-function pruneDraftVectors(retained: ReadonlySet<string>): void {
+function pruneDraftVectors(retained: ReadonlySet<string>, busyTimeoutMs?: number): void {
   const path = draftVectorsPath();
   try {
     const data: { version?: unknown; rows?: unknown; decisions?: unknown } = JSON.parse(
-      readAppRecord("draft-vectors", path, JSON.parse)
+      readAppRecord("draft-vectors", path, JSON.parse, { busyTimeoutMs })
     );
     if (data?.version !== 1 || !Array.isArray(data.rows)) return;
     const rows = data.rows.filter((row) => retained.has(row?.id));
     if (rows.length === data.rows.length) return;
     if (!rows.length && !(Array.isArray(data.decisions) && data.decisions.length))
-      deleteAppRecord("draft-vectors", path);
-    else writeAppRecord("draft-vectors", path, JSON.stringify({ ...data, rows }), JSON.parse);
+      deleteAppRecord("draft-vectors", path, undefined, { busyTimeoutMs });
+    else writeAppRecord("draft-vectors", path, JSON.stringify({ ...data, rows }), JSON.parse, { busyTimeoutMs });
   } catch (error) {
     // An absent or unreadable format is not a usable vector cache. A transient
     // store error instead defers draft removal, so a later tick can retry it.
@@ -687,9 +691,7 @@ export async function expireDrafts(
       }
       const kept = bounded(rows, now, store.metadata);
       const removed = rows.length - kept.length;
-      if (removed > 0) pruneDraftVectors(new Set(kept.map((row) => row.id)));
-      if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0)
-        await write(path, kept, store.metadata, now);
+      if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0) await write(path, kept, store, now);
       return removed;
     },
     DRAFT_STORE_LOCK
@@ -742,8 +744,7 @@ export async function updateRetrievedDrafts(
           row.last_touched = now;
           changed = true;
         }
-        if (changed)
-          await write(path, bounded(rows, now, store.metadata), store.metadata, now, tryOnly ? 0 : undefined);
+        if (changed) await write(path, bounded(rows, now, store.metadata), store, now, tryOnly ? 0 : undefined);
       },
       DRAFT_STORE_LOCK
     );
@@ -779,7 +780,7 @@ export async function transactDrafts<T>(
         const before = JSON.stringify(rows);
         const result = await mutate(rows);
         if (JSON.stringify(rows) !== before)
-          await write(path, bounded(rows, now, store.metadata), store.metadata, now, tryOnly ? 0 : undefined);
+          await write(path, bounded(rows, now, store.metadata), store, now, tryOnly ? 0 : undefined);
         return result;
       },
       { ...DRAFT_STORE_LOCK, noQueue }
@@ -890,7 +891,7 @@ export async function rejectInjectedDrafts(now = Date.now()): Promise<number> {
         row.rejection_reason = "non-owner-origin-1338";
         count++;
       }
-      if (count) await write(path, store.rows, store.metadata, now);
+      if (count) await write(path, store.rows, store, now);
       return count;
     },
     DRAFT_STORE_LOCK
