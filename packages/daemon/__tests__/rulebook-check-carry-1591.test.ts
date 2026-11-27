@@ -114,7 +114,7 @@ test("a check receipt applies to the catalog it read, even if a newer catalog wa
 test("#1697: a check started before a context reset cannot bind to the next context", async () => {
   const sid = "carry-reset-in-flight";
   await checks.beginRulebookRound(payload(sid), catalog);
-  const beforeReset = rulebookReceiptScope(await loadSessionState(sid));
+  const beforeReset = await loadSessionState(sid);
   await checks.resetRulebookContext(sid);
   const result = await checks.recordRulebookCheck(sid, { applicable: ["fixture-rule"] }, catalog, beforeReset);
   assert.equal(result.ok, false);
@@ -124,10 +124,77 @@ test("#1697: a check started before a context reset cannot bind to the next cont
 test("#1697: an older in-flight check cannot replace the newer confirmed catalog", async () => {
   const sid = "carry-older-finishes-last";
   await checks.beginRulebookRound(payload(sid), catalog);
-  const bothStarted = rulebookReceiptScope(await loadSessionState(sid));
+  const bothStarted = await loadSessionState(sid);
   assert.equal((await checks.recordRulebookCheck(sid, { applicable: [] }, edited, bothStarted)).ok, true);
   assert.equal((await checks.recordRulebookCheck(sid, { applicable: [] }, catalog, bothStarted)).ok, false);
   assert.doesNotMatch(await checks.beginRulebookRound(payload(sid), edited), asksForCheck);
+});
+
+test("#1697: an overlapping declaration cannot replace a newer task on the same catalog", async () => {
+  const sid = "carry-newer-task-in-flight";
+  await checks.beginRulebookRound(payload(sid), catalog);
+  const bothStarted = await loadSessionState(sid);
+  const newer = { task: "draft-for-review", applicable: ["fixture-rule"] } as const;
+  const declaration = { ...newer, applicable: [...newer.applicable] };
+  assert.equal((await checks.recordRulebookCheck(sid, declaration, catalog, bothStarted)).ok, true);
+  const accepted = await loadSessionState(sid);
+
+  const older = { task: "translate-only" as const, applicable: [] };
+  assert.equal((await checks.recordRulebookCheck(sid, older, catalog, bothStarted)).ok, false);
+  const after = await loadSessionState(sid);
+  assert.deepEqual(after.activeTask, accepted.activeTask);
+  assert.deepEqual(rulebookReceiptScope(after)?.actors.find((actor) => actor.key === "main")?.ids, ["fixture-rule"]);
+
+  assert.equal((await checks.recordRulebookCheck(sid, declaration, catalog, bothStarted)).ok, true);
+  const repeated = await loadSessionState(sid);
+  assert.deepEqual(repeated.activeTask, accepted.activeTask);
+  assert.deepEqual(repeated.activeConventions, accepted.activeConventions);
+});
+
+test("#1697: a task change conflicts even if the rule declaration stayed the same", async () => {
+  const sid = "carry-newer-task-same-rules";
+  await checks.beginRulebookRound(payload(sid), catalog);
+  await checks.recordRulebookCheck(sid, { applicable: [] }, catalog);
+  const bothStarted = await loadSessionState(sid);
+  const newer = { task: "draft-for-review" as const, applicable: [] };
+  const older = { task: "translate-only" as const, applicable: [] };
+  assert.equal((await checks.recordRulebookCheck(sid, newer, catalog, bothStarted)).ok, true);
+  assert.equal((await checks.recordRulebookCheck(sid, older, catalog, bothStarted)).ok, false);
+  assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
+});
+
+test("#1697: concurrent checks of different actors can both record their rules", async () => {
+  const sid = "carry-concurrent-actors";
+  await checks.beginRulebookRound(payload(sid), catalog);
+  const bothStarted = await loadSessionState(sid);
+  assert.equal(
+    (
+      await checks.recordRulebookCheck(
+        sid,
+        { task: "draft-for-review", applicable: ["fixture-rule"] },
+        catalog,
+        bothStarted
+      )
+    ).ok,
+    true
+  );
+  assert.equal(
+    (await checks.recordRulebookCheck(sid, { agent_id: "worker", applicable: [] }, catalog, bothStarted)).ok,
+    true
+  );
+  assert.equal(
+    (await checks.recordRulebookCheck(sid, { agent_id: "worker", applicable: ["fixture-rule"] }, catalog, bothStarted))
+      .ok,
+    false
+  );
+  const state = await loadSessionState(sid);
+  assert.equal(state.activeTask?.kind, "draft-for-review");
+  assert.deepEqual(
+    rulebookReceiptScope(state)
+      ?.actors.filter((actor) => actor.checked)
+      .map((actor) => actor.key),
+    ["main", "agent:worker"]
+  );
 });
 
 test("partial declarations do not carry an unconfirmed check", async () => {

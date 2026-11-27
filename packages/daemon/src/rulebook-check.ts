@@ -3,6 +3,7 @@ import { expireReceipts } from "./receipt-store.js";
 import { getPrimaryLanguage } from "./settings.js";
 import { recordRulebookEvent } from "./rulebook-events.js";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { compactContextNotice, resetContextNotices } from "./context-notice.js";
 import { z } from "zod";
 import {
@@ -21,6 +22,7 @@ import {
 import {
   loadSessionState,
   mutateSessionState,
+  type ReadonlySessionState,
   type SessionState,
   ACTIVE_CONVENTIONS_CAP,
   recordActiveConventions,
@@ -295,11 +297,50 @@ function canRecordCheck(
   return checked(current) === checked(observed) || checked(current) === reviewedCatalog;
 }
 
+function actorDeclaration(state: CheckState | null, key: string) {
+  const {
+    checked = false,
+    checkedCatalog,
+    roundCheckedCatalog,
+    ids = [],
+    roundApplied = [],
+    roundDismissed = [],
+    required = [],
+    dismissed = [],
+  } = state?.actors.find((entry) => entry.key === key) ?? {};
+  return [checked, checkedCatalog, roundCheckedCatalog, ids, roundApplied, roundDismissed, required, dismissed];
+}
+
+function taskDeclaration(state: ReadonlySessionState) {
+  return [
+    state.activeTask,
+    state.activeConventions?.map(({ setAt: _setAt, ...convention }) => convention) ?? [],
+    state.userValidatorChannel,
+    state.correspondenceContext,
+    state.receipts ?? [],
+    state.repairAttempts,
+  ];
+}
+
+function checkOverlaps(
+  observed: ReadonlySessionState,
+  state: SessionState,
+  rulebook: CheckState | null,
+  current: CheckState | null,
+  key: string,
+  reportsTask: boolean
+): boolean {
+  return (
+    !isDeepStrictEqual(actorDeclaration(rulebook, key), actorDeclaration(current, key)) ||
+    (reportsTask && !isDeepStrictEqual(taskDeclaration(observed), taskDeclaration(state)))
+  );
+}
+
 export async function recordRulebookCheck(
   sessionId: string | null | undefined,
   input: z.infer<typeof RulebookCheckArgs>,
   catalog: KernelCandidates,
-  observed?: CheckState | null
+  observed?: ReadonlySessionState
 ) {
   if (input.not_applicable?.some((e) => !ExceptionReason.safeParse(e.reason).success))
     return { ok: false, reason: "Non-applicability requires at least 10 characters of substantive explanation." };
@@ -355,12 +396,7 @@ export async function recordRulebookCheck(
       acceptedTask = { kind: task, generation: taskGeneration };
     }
   };
-  const persisted = await mutateSessionState(sessionId, (s) => {
-    const current = rulebookReceiptScope(s);
-    if (observed !== undefined && !canRecordCheck(observed, current, key, reviewedCatalog)) {
-      superseded = true;
-      return;
-    }
+  const applyCheck = (s: SessionState, current: CheckState | null) => {
     applyCheckTask(s);
     const state = current ?? readCheckState(s),
       a = actor(state, key);
@@ -430,6 +466,25 @@ export async function recordRulebookCheck(
     context = state.context;
     round = state.round;
     put(s, state);
+  };
+  const persisted = await mutateSessionState(sessionId, (s) => {
+    const current = rulebookReceiptScope(s);
+    const previous = rulebookReceiptScope(observed);
+    if (observed && !canRecordCheck(previous, current, key, reviewedCatalog)) {
+      superseded = true;
+      return;
+    }
+    if (observed && checkOverlaps(observed, s, previous, current, key, task !== undefined)) {
+      // Test an overlapping declaration on a copy. An identical retry can
+      // acknowledge the existing receipt without rewriting newer task state.
+      const candidate = structuredClone(s);
+      applyCheck(candidate, rulebookReceiptScope(candidate));
+      superseded =
+        !isDeepStrictEqual(current, rulebookReceiptScope(candidate)) ||
+        !isDeepStrictEqual(taskDeclaration(s), taskDeclaration(candidate));
+      return;
+    }
+    applyCheck(s, current);
   });
   if (superseded)
     return { ok: false, reason: "Rulebook state changed while this check was running. Check the current round again." };
@@ -525,7 +580,7 @@ export async function rulebookCheckHandler(
       deadline
     ).catch(() => catalog);
   }
-  const result = await recordRulebookCheck(sid, input, catalog, rulebookReceiptScope(snapshot));
+  const result = await recordRulebookCheck(sid, input, catalog, snapshot);
   const unknown = "unknown_ids" in result ? (result.unknown_ids ?? []) : [];
   if (!unknown.length) return result;
   // Name the reason: scoped to another project than the index, or not a current rulebook entry.
