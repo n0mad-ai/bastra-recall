@@ -160,6 +160,9 @@ export default {
   "st.k.battery.saver": "Battery saver",
   "st.k.battery.saver.d":
     "Saves power: on battery, Recall postpones heavy work with the local models until later. Useful on laptops, pointless on a desktop. Restart required.",
+  "st.k.vault.reconcile": "Periodic vault sync",
+  "st.k.vault.reconcile.d":
+    "Checks once a minute for file changes the watcher missed. Especially helpful for cloud folders.",
   "st.k.ui.enabled": "Vault map",
   "st.k.ui.enabled.d":
     "Turns this web interface on. It is reachable from this computer only, not from the network. Applies at once, no restart. If you turn it off you can no longer open this page.",

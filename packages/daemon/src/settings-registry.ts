@@ -354,6 +354,14 @@ export const SETTINGS_REGISTRY = {
       }
     ),
   },
+  vault: {
+    reconcile: setting(bool, {
+      area: "general",
+      label: "Regelmäßiger Vault-Abgleich",
+      default: true,
+      restartRequired: true,
+    }),
+  },
   battery: {
     saver: setting(bool, {
       area: "general",

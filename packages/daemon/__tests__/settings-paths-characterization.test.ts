@@ -263,6 +263,15 @@ const ROWS: Row[] = [
     unset: undefined,
   },
   {
+    key: "vault.reconcile",
+    def: true,
+    valid: false,
+    stored: false,
+    invalid: "x",
+    getter: getters.getVaultReconcileEnabled,
+    unset: true,
+  },
+  {
     key: "battery.saver",
     def: false,
     valid: true,
@@ -327,9 +336,9 @@ async function isolated<T>(fn: (dir: string, path: string) => Promise<T>): Promi
 
 const entryOf = (key: string): SettingEntry => settingEntries().find((e) => e.key === key)!;
 
-test("#1510: the table names exactly the 50 registry keys", () => {
+test("#1510: the table names exactly the 51 registry keys", () => {
   const keys = settingEntries().map((e) => e.key);
-  assert.equal(ROWS.length, 50);
+  assert.equal(ROWS.length, 51);
   assert.deepEqual(
     ROWS.map((r) => r.key),
     keys

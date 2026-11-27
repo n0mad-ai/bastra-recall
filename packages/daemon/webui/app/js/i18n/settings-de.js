@@ -161,6 +161,9 @@ export default {
   "st.k.battery.saver": "Akkumodus",
   "st.k.battery.saver.d":
     "Spart Strom: Läuft dein Mac im Akkubetrieb, schiebt Recall rechenintensive Arbeit mit den lokalen Modellen auf später. Sinnvoll für Laptops, an einem Desktop-Rechner unnötig. Neustart nötig.",
+  "st.k.vault.reconcile": "Regelmäßiger Vault-Abgleich",
+  "st.k.vault.reconcile.d":
+    "Sucht einmal pro Minute nach Dateien, deren Änderung die laufende Überwachung verpasst hat. Hilft vor allem bei Cloud-Ordnern.",
   "st.k.ui.enabled": "Vault-Karte",
   "st.k.ui.enabled.d":
     "Schaltet diese Weboberfläche ein. Sie ist nur auf diesem Rechner erreichbar, nicht aus dem Netzwerk. Wirkt sofort ohne Neustart. Schaltest du sie aus, kommst du hier nicht mehr hin.",

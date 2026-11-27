@@ -21,6 +21,8 @@ import {
   readEventLog,
   reconstructReaches,
   bridgeTeachingEvents,
+  teachesBridges,
+  type TelemetryEvent,
   harvestBridges,
   writeBridges,
   pruneUnconfirmedBridges,
@@ -67,6 +69,38 @@ export function memoryTermsGetter(vault: Vault): (id: string) => string[] {
   };
 }
 
+/** #1683: keep only the fields the daily mint joins or uses for demotion. */
+function selectMintEvent(event: TelemetryEvent): TelemetryEvent | null {
+  const { kind, ts } = event;
+  if (kind === "recall" || kind === "hook_recall") {
+    if (typeof event.query !== "string" || (!event.bridge_expansion && !teachesBridges(event))) return null;
+    const dims = event.dimensions as Record<string, unknown> | null | undefined;
+    return {
+      kind,
+      ts,
+      query: event.query,
+      recall_id: event.recall_id,
+      bridge_expansion: event.bridge_expansion,
+      origin: event.origin,
+      query_origin: event.query_origin,
+      dimensions: { experiment_session: dims?.experiment_session, hook_source: dims?.hook_source },
+      tool_name: event.tool_name,
+    };
+  }
+  if (kind === "recall_episode" && event.acted_on === true)
+    return {
+      kind,
+      ts,
+      acted_on: true,
+      recall_id: event.recall_id,
+      memory_id: event.memory_id,
+      dimensions: event.dimensions,
+    };
+  if (kind === "load_memory" && event.found !== false && (event.follows_recall || event.from_hook_recall))
+    return { kind, ts, follows_recall: event.follows_recall, from_hook_recall: event.from_hook_recall };
+  return null;
+}
+
 /**
  * One in-band mint run: telemetry log → reaches → bridges on disk. Never
  * touches the reranker. Idempotent: bridge ids are deterministic, re-runs
@@ -83,7 +117,11 @@ export async function runInBandMint(opts: {
   /** Test override for the clock the TTL is measured against. */
   now?: Date;
 }): Promise<MintOutcome> {
-  const events = await readEventLog(opts.logDir, opts.days ?? null);
+  const events = await readEventLog(
+    opts.logDir,
+    opts.days ?? null,
+    opts.trigger === "daemon-interval" ? { select: selectMintEvent } : undefined
+  );
   // #704: only owner prompts and explicit MCP recalls teach bridges.
   const reaches = reconstructReaches(bridgeTeachingEvents(events));
   const now = opts.now ?? new Date();
@@ -168,7 +206,7 @@ async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
       kind: "bridges_mint",
       ts: record.ts,
       // #363: no Claude session touches this path (CLI subcommand or
-      // daemon boot/interval trigger) — null is the honest value, matching
+      // daily daemon trigger) — null is the honest value, matching
       // ollama_lifecycle, not a boot-id lie.
       session_id: null,
       host: record.host,

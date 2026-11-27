@@ -101,6 +101,12 @@ test("startVaultReconcile: BASTRA_VAULT_RECONCILE_MS=0 disables it, in the bridg
   }
 });
 
+test("startVaultReconcile: the user setting can disable a positive configured interval", () => {
+  const { vault } = fakeVault();
+  const timer = withReconcileMs("5", () => startVaultReconcile(vault, false));
+  assert.equal(timer, null);
+});
+
 test("bridge.ts wiring: starts the shared reconcile after startWatching() and clears it on shutdown (#368)", () => {
   const src = readFileSync(join(SRC, "bridge.ts"), "utf8");
   assert.match(
@@ -109,7 +115,7 @@ test("bridge.ts wiring: starts the shared reconcile after startWatching() and cl
     "must reuse the daemon's function, not a bridge-local copy"
   );
   const watchIdx = src.indexOf("vault.startWatching();");
-  const startIdx = src.indexOf("startVaultReconcile(vault)");
+  const startIdx = src.indexOf("startVaultReconcile(vault, await getVaultReconcileEnabled())");
   assert.ok(watchIdx >= 0, "vault.startWatching() must still be there");
   assert.ok(startIdx >= 0, "startVaultReconcile(vault) must be wired in");
   assert.ok(

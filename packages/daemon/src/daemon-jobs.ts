@@ -47,6 +47,7 @@ export interface BackgroundJobDeps {
   taskAccountAllowed: boolean;
   vault: Vault;
   vaultRoot: string;
+  vaultReconcileEnabled: boolean;
   search: SearchIndex;
   telemetry: Telemetry;
   toolDeps: ToolDeps;
@@ -92,7 +93,7 @@ function timedJob(name: string, run: () => void | Promise<unknown>): () => Promi
 
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
   if (tasksEnabled() && deps.taskAccountAllowed) startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
-  startVaultReconcile(deps.vault);
+  startVaultReconcile(deps.vault, deps.vaultReconcileEnabled);
   startForwarderSweep();
   startMintSchedule(deps);
   startIdleWatchdog(deps);
@@ -278,7 +279,8 @@ function startCodeGraph(deps: BackgroundJobDeps): void {
 // count — would otherwise drift whenever the Mac app or another process
 // touches the vault directly. reconcile() walks the disk itself (watcher-
 // independent) and emits add/remove events, which flow through the vault
-// listeners into the shared file. Set BASTRA_VAULT_RECONCILE_MS=0 to disable.
+// listeners into the shared file. Turn off vault.reconcile in Settings or
+// keep using BASTRA_VAULT_RECONCILE_MS=0 to disable the periodic fallback.
 //
 // #368: exported — the bridge (bridge.ts) is a long-lived process with the
 // same watcher-only blind spot and had no fallback at all. Same function,
@@ -286,9 +288,9 @@ function startCodeGraph(deps: BackgroundJobDeps): void {
 // everywhere instead of drifting between the two entry points. Returns the
 // interval handle (null when disabled) so a caller can clearInterval it on
 // its own shutdown; unref() already keeps it from blocking process exit.
-export function startVaultReconcile(vault: Vault): NodeJS.Timeout | null {
+export function startVaultReconcile(vault: Vault, enabled = true): NodeJS.Timeout | null {
   const reconcileMs = envInt("BASTRA_VAULT_RECONCILE_MS", 60_000);
-  if (reconcileMs <= 0) return null;
+  if (!enabled || reconcileMs <= 0) return null;
   const timer = setInterval(
     timedJob("vault reconcile", () => vault.reconcile().catch(() => {})),
     reconcileMs
@@ -311,14 +313,13 @@ function startForwarderSweep(): void {
   setInterval(sweep, 15 * 60_000).unref();
 }
 
-// #353: Teacher 1 (in-band mint) runs on its own trigger — it needs no
-// model and must never depend on the reranker. Once shortly after boot
-// (reaches accumulated while the daemon was down), then daily. After a
-// write the pool reloads in place, so new bridges serve without a restart.
-// Same opt-in gate as the pool itself: no shared recall, no background mint.
+// #353, #1683: the free mint runs daily, outside startup and without a
+// model. After a write the pool reloads in place. Its opt-in gate is the
+// same as the pool's: no shared recall, no scheduled mint.
 function startMintSchedule(deps: BackgroundJobDeps): void {
   if (!deps.bridgesEnabled) return;
-  const runScheduledMint = async (trigger: "daemon-boot" | "daemon-interval"): Promise<void> => {
+  const runScheduledMint = async (): Promise<void> => {
+    const trigger = "daemon-interval";
     try {
       const outcome = await runInBandMint({ vault: deps.vault, bridgesRoot: bridgesPath(), trigger });
       const retired = (outcome.archived ?? 0) + (outcome.demoted ?? 0) + (outcome.restored ?? 0);
@@ -334,14 +335,7 @@ function startMintSchedule(deps: BackgroundJobDeps): void {
       console.error(`[bastra-recall] in-band mint failed (non-fatal): ${err}`);
     }
   };
-  setTimeout(
-    timedJob("in-band mint (daemon-boot)", () => runScheduledMint("daemon-boot")),
-    2 * 60_000
-  ).unref();
-  setInterval(
-    timedJob("in-band mint (daemon-interval)", () => runScheduledMint("daemon-interval")),
-    24 * 60 * 60_000
-  ).unref();
+  setInterval(timedJob("in-band mint (daemon-interval)", runScheduledMint), 24 * 60 * 60_000).unref();
 }
 
 // Idle watchdog — terminate after BASTRA_DAEMON_IDLE_SHUTDOWN_MS without

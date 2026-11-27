@@ -14,7 +14,7 @@ import { bastraDataDir } from "../platform-paths.js";
  * #121 logs it; this harvester picks up everything that is observable today.
  */
 import { readdir, readFile, mkdir, writeFile, rename, unlink, appendFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { bridgeLanguage } from "./language.js";
@@ -76,13 +76,24 @@ export function defaultLogDir(): string {
   return process.env.BASTRA_LOG_PATH ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
 }
 
+/** Stream a line at a time without materializing a whole daily log. */
+async function* eventFileLines(path: string): AsyncGenerator<string> {
+  let remainder = "";
+  for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+    const lines = (remainder + chunk).split("\n");
+    remainder = lines.pop() ?? "";
+    yield* lines;
+  }
+  if (remainder) yield remainder;
+}
+
 /** Read events-*.jsonl, optionally limited to `days`. Strict readers distinguish
  * unavailable directories from empty logs. A missing directory is empty (fresh
  * installation); existing non-strict callers keep [] for other read errors. */
 export async function readEventLog(
   logDir: string = defaultLogDir(),
   days: number | null = null,
-  options: { strict?: boolean } = {}
+  options: { strict?: boolean; select?: (event: TelemetryEvent) => TelemetryEvent | null } = {}
 ): Promise<TelemetryEvent[]> {
   let files: string[];
   try {
@@ -94,17 +105,26 @@ export async function readEventLog(
   files.sort();
   const cutoff = days !== null ? Date.now() - days * 24 * 60 * 60 * 1000 : 0;
   const out: TelemetryEvent[] = [];
-  for (const f of files) {
-    const raw = await readFile(join(logDir, f), "utf8");
-    for (const line of raw.split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const e = JSON.parse(line) as TelemetryEvent;
-        if (cutoff && new Date(e.ts).getTime() < cutoff) continue;
-        out.push(e);
-      } catch {
-        /* skip malformed line */
+  const addLine = (line: string): void => {
+    if (!line.trim()) return;
+    try {
+      const event = JSON.parse(line) as TelemetryEvent;
+      if (cutoff && new Date(event.ts).getTime() < cutoff) return;
+      if (!options.select) out.push(event);
+      else {
+        const selected = event && options.select(event);
+        if (selected) out.push(selected);
       }
+    } catch {
+      /* skip malformed line */
+    }
+  };
+  for (const file of files) {
+    const path = join(logDir, file);
+    if (options.select) {
+      for await (const line of eventFileLines(path)) addLine(line);
+    } else {
+      for (const line of (await readFile(path, "utf8")).split("\n")) addLine(line);
     }
   }
   return out;

@@ -36,7 +36,15 @@ export const GROUPS = [
   { id: "appearance", keys: ["ui.footer", "ui.timeline", "ui.backdrop", "ui.backdropDim", "ui.backdropBlur"] },
   {
     id: "general",
-    keys: ["update.mode", "language.primary", "autostart", "battery.saver", "ui.enabled", "daemon.env"],
+    keys: [
+      "update.mode",
+      "language.primary",
+      "autostart",
+      "battery.saver",
+      "vault.reconcile",
+      "ui.enabled",
+      "daemon.env",
+    ],
   },
   // Shown as "Agent and personality": the agent's own settings join here.
   { id: "personality", keys: ["assistant.name", "soul.direction", "soul.text"] },

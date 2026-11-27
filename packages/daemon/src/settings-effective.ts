@@ -71,5 +71,17 @@ export function effectiveSetting(
     const parsed = entry.schema.safeParse(raw);
     if (parsed.success) value = parsed.data;
   }
-  return { value, envNames };
+  return applyVaultReconcileOverride(entry.key, { value, envNames }, env);
+}
+
+/** The legacy cadence can disable the fallback even when the switch is on. */
+function applyVaultReconcileOverride(
+  key: string,
+  setting: { value: unknown; envNames: string[] },
+  env: NodeJS.ProcessEnv
+): { value: unknown; envNames: string[] } {
+  if (key !== "vault.reconcile") return setting;
+  const reconcileMs = Number.parseInt(env.BASTRA_VAULT_RECONCILE_MS ?? "", 10);
+  if (reconcileMs <= 0) return { value: false, envNames: ["BASTRA_VAULT_RECONCILE_MS"] };
+  return setting;
 }

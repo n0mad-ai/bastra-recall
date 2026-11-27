@@ -31,6 +31,7 @@ import { startEmbeddings } from "./boot-embeddings.js";
 import { buildToolDeps } from "./boot-tool-deps.js";
 import { startHttp } from "./boot-http.js";
 import { warmSettingsReader } from "./settings-record-thread.js";
+import { getVaultReconcileEnabled } from "./settings.js";
 import { startStdioServer } from "./boot-stdio.js";
 import { registerShutdown } from "./boot-shutdown.js";
 import { daemonOrigin } from "./daemon-spawn-env.js";
@@ -264,6 +265,7 @@ async function main(): Promise<void> {
     telemetry,
     toolDeps,
     bridgesEnabled: learnedBridges !== null,
+    vaultReconcileEnabled: await getVaultReconcileEnabled(),
     launchAgentOwned: launchAgentOwnsDaemon(),
     getLastActivity: () => lastActivityMs,
     shutdown,

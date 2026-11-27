@@ -293,6 +293,11 @@ export async function setCommonsEnabled(on: boolean, path: string = settingsFile
 }
 
 /** Web UI (#207) enabled? A stored value wins; otherwise on where the account binding runs (macOS), off elsewhere. */
+/** The filesystem watcher's periodic fallback is on unless the user turns it off. */
+export async function getVaultReconcileEnabled(path?: string): Promise<boolean> {
+  return storedOrDefault("vault", "reconcile", path);
+}
+
 export async function getUiEnabled(path?: string): Promise<boolean> {
   return storedOrDefault("ui", "enabled", path);
 }

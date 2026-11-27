@@ -43,7 +43,12 @@ import { envFirst, envInt, envFloat, envBool } from "./env.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { embeddingStatusLine, cloudConsentNotice } from "./embedding-status.js";
 import { resolveEmbedding } from "./embedding-provider.js";
-import { getSharedRecallEnabled, getSharedRecallLanguage, getSharedRecallLive } from "./settings.js";
+import {
+  getSharedRecallEnabled,
+  getSharedRecallLanguage,
+  getSharedRecallLive,
+  getVaultReconcileEnabled,
+} from "./settings.js";
 import { BridgePool } from "./learned-recall/bridges.js";
 import { createBridgeMethods, type BridgeMethod } from "./bridge-methods.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
@@ -248,10 +253,9 @@ async function main(): Promise<void> {
   // backend) and, unlike the daemon, had only the watcher for ongoing sync —
   // no fallback for what fsevents misses on cloud mounts or after a watcher
   // error. Same job the daemon runs on its own boot (daemon-jobs.ts), reused
-  // rather than re-implemented: same env var and default, so
-  // BASTRA_VAULT_RECONCILE_MS=0 disables it in both places alike. unref()'d,
-  // so it never keeps this process alive; cleared below on stdin close.
-  const reconcileTimer = startVaultReconcile(vault);
+  // rather than re-implemented: the same setting and environment override
+  // apply to both, and the unref()'d timer is cleared below on stdin close.
+  const reconcileTimer = startVaultReconcile(vault, await getVaultReconcileEnabled());
   // Dedicated mapping is required even on this trusted legacy transport.
   passiveTaskContext = (await processOwnsVault(vault.root))
     ? defaultTaskContext({ vault, vaultPath: VAULT_PATH! })
