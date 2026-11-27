@@ -7,22 +7,32 @@
 import { z } from "zod";
 import type { ToolDeps } from "./tool-deps.js";
 import { markOnboardingDone } from "./onboarding.js";
-import { deferOnboarding, ONBOARDING_LATER_DEFAULT_DAYS, ONBOARDING_LATER_MAX_DAYS } from "./onboarding-offer.js";
+import {
+  claimOnboardingOffer,
+  deferOnboarding,
+  ONBOARDING_LATER_DEFAULT_DAYS,
+  ONBOARDING_LATER_MAX_DAYS,
+  recordOnboardingOffer,
+} from "./onboarding-offer.js";
 
 export const OnboardingAnswerArgs = z.strictObject({
-  answer: z.enum(["later", "skip", "done"]),
+  answer: z.enum(["later", "skip", "done", "offer_ready", "offer_shown"]),
   days: z.number().int().min(1).max(ONBOARDING_LATER_MAX_DAYS).optional(),
+  offer_id: z.uuid().optional(),
 });
 
 export const onboardingAnswerTools = [
   {
     name: "onboarding_answer",
     description:
-      "The user's answer to the <vault-onboarding> offer, never your own: later (stays open, asked again after days), skip (declined), done (interview finished).",
+      "Report the user's answer to onboarding: later (defer), skip (declined), done (interview finished). " +
+      "For delivery accounting, use offer_ready immediately before presenting any unsolicited offer if no user task is active. " +
+      "Present only the returned offer. Record it with offer_shown and offer_id after you actually offered it in your reply. Neither step asks the user for approval.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        answer: { type: "string", enum: ["later", "skip", "done"] },
+        answer: { type: "string", enum: ["later", "skip", "done", "offer_ready", "offer_shown"] },
+        offer_id: { type: "string", format: "uuid", description: "Only for offer_shown, from offer_ready" },
         days: {
           type: "integer",
           minimum: 1,
@@ -35,13 +45,25 @@ export const onboardingAnswerTools = [
   },
 ];
 
-export async function onboardingAnswerHandler(deps: Pick<ToolDeps, "vaultPath">, args: Record<string, unknown>) {
-  const { answer, days } = OnboardingAnswerArgs.parse(args);
+export async function onboardingAnswerHandler(
+  deps: Pick<ToolDeps, "vaultPath"> & { vault: Pick<ToolDeps["vault"], "size"> },
+  args: Record<string, unknown>
+) {
+  const { answer, days, offer_id: offerId } = OnboardingAnswerArgs.parse(args);
+  if (answer !== "later" && days !== undefined) throw new Error("days applies only to answer later");
+  if (answer === "offer_shown") {
+    if (!offerId) throw new Error("offer_id is required for offer_shown");
+    return { answer, recorded: await recordOnboardingOffer(deps.vaultPath, offerId) };
+  }
+  if (offerId) throw new Error("offer_id applies only to answer offer_shown");
+  if (answer === "offer_ready") {
+    const claim = await claimOnboardingOffer(deps.vaultPath, deps.vault.size());
+    return { answer, offer: claim?.offer ?? null, ...(claim && { offer_id: claim.id }) };
+  }
   if (answer === "later") {
     const { until } = await deferOnboarding(deps.vaultPath, days);
     return { answer, onboarding: "open", offered_again_after: until };
   }
-  if (days !== undefined) throw new Error("days applies only to answer later");
   await markOnboardingDone(deps.vaultPath, answer === "skip" ? "session (skipped)" : "session");
   return { answer, onboarding: answer === "skip" ? "skipped" : "done" };
 }

@@ -7,23 +7,26 @@
  * apart from what the user said and reports it as a field — nothing here
  * reads user text.
  *
- * The state sits beside the marker at the vault root. Every offer is counted
- * where the session block is assembled, so a session that receives no block
- * (the same day, or inside a deferral) costs nothing.
+ * Session context only previews eligibility. A session with no task waiting
+ * reserves an offer just before presenting it, then records its delivery.
+ * A missing response or a skipped offer spends no slot.
  */
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
-import { isOnboardingNeeded } from "./onboarding.js";
+import { isOnboardingDone, isOnboardingNeeded, ONBOARDING_OFFER_FILE } from "./onboarding.js";
 
-export const ONBOARDING_OFFER_FILE = ".onboarding-offers.json";
+export { ONBOARDING_OFFER_FILE } from "./onboarding.js";
 /** Full interview offers before only the one-line mention remains. */
 export const ONBOARDING_INTERVIEW_OFFERS = 3;
 /** Deferral after "later" when the user names no time. */
 export const ONBOARDING_LATER_DEFAULT_DAYS = 3;
 export const ONBOARDING_LATER_MAX_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Bound an interrupted presentation without spending its daily offer.
+const OFFER_CLAIM_MS = 2 * 60_000;
+const OFFER_LOCK = { crossProcess: true, requireLock: true } as const;
 
 /** What this session start gets: the interview, the one-line mention, or nothing. */
 export type OnboardingOffer = "interview" | "line" | null;
@@ -35,6 +38,7 @@ interface OfferState {
   last_day?: string;
   /** Epoch ms until which a "later" answer holds every offer back. */
   later_until?: number;
+  pending?: { id: string; until: number };
 }
 
 /** The user's day, not UTC: "once a day" ends at their midnight. */
@@ -53,8 +57,15 @@ async function readState(path: string): Promise<OfferState> {
   try {
     const raw = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
     const offers = Number.isSafeInteger(raw.offers) && (raw.offers as number) > 0 ? (raw.offers as number) : 0;
+    const pending = raw.pending as { id?: unknown; until?: unknown } | undefined;
     return {
       offers,
+      ...(pending &&
+      typeof pending.id === "string" &&
+      typeof pending.until === "number" &&
+      Number.isFinite(pending.until)
+        ? { pending: { id: pending.id, until: pending.until } }
+        : {}),
       ...(typeof raw.last_day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.last_day)
         ? { last_day: raw.last_day }
         : {}),
@@ -72,30 +83,52 @@ async function writeState(path: string, state: OfferState): Promise<void> {
   await rename(tmp, path);
 }
 
-/**
- * Decides this session start's offer and counts it in the same step. Two
- * session starts at once get one offer between them; the lock also covers an
- * answer recorded by a stdio MCP server, which is another process.
- */
-export async function takeOnboardingOffer(
+function eligibleOffer(state: OfferState, now: number): OnboardingOffer {
+  if ((state.later_until ?? 0) > now || state.last_day === localDay(now) || (state.pending?.until ?? 0) > now)
+    return null;
+  return state.offers < ONBOARDING_INTERVIEW_OFFERS ? "interview" : "line";
+}
+
+/** Preparing a context has no effect on the offer counter. */
+export async function previewOnboardingOffer(
   vaultPath: string,
-  vaultSize: number,
+  size: number,
   now = Date.now()
 ): Promise<OnboardingOffer> {
-  if (!(await isOnboardingNeeded(vaultPath, vaultSize))) return null;
+  if (!(await isOnboardingNeeded(vaultPath, size))) return null;
+  return eligibleOffer(await readState(statePath(vaultPath)), now);
+}
+
+export async function claimOnboardingOffer(vaultPath: string, size: number, now = Date.now()) {
   const path = statePath(vaultPath);
   return withPathLock(
     path,
     async () => {
+      if (!(await isOnboardingNeeded(vaultPath, size))) return null;
       const state = await readState(path);
-      const today = localDay(now);
-      if (state.later_until !== undefined && now < state.later_until) return null;
-      if (state.last_day === today) return null;
-      const offer: OnboardingOffer = state.offers < ONBOARDING_INTERVIEW_OFFERS ? "interview" : "line";
-      await writeState(path, { offers: state.offers + 1, last_day: today });
-      return offer;
+      const offer = eligibleOffer(state, now);
+      if (offer === null) return null;
+      const id = randomUUID();
+      await writeState(path, { ...state, pending: { id, until: now + OFFER_CLAIM_MS } });
+      return { offer, id };
     },
-    { crossProcess: true }
+    OFFER_LOCK
+  );
+}
+
+/** A repeated, expired or superseded receipt cannot spend a slot. */
+export async function recordOnboardingOffer(vaultPath: string, id: string, now = Date.now()): Promise<boolean> {
+  const path = statePath(vaultPath);
+  return withPathLock(
+    path,
+    async () => {
+      if (await isOnboardingDone(vaultPath)) return false;
+      const { pending, ...state } = await readState(path);
+      if (pending?.id !== id || pending.until <= now || state.last_day === localDay(now)) return false;
+      await writeState(path, { ...state, offers: state.offers + 1, last_day: localDay(now) });
+      return true;
+    },
+    OFFER_LOCK
   );
 }
 
@@ -110,8 +143,14 @@ export async function deferOnboarding(
     throw new Error(`days must be a whole number from 1 to ${ONBOARDING_LATER_MAX_DAYS}`);
   const path = statePath(vaultPath);
   const until = now + days * DAY_MS;
-  await withPathLock(path, async () => writeState(path, { ...(await readState(path)), later_until: until }), {
-    crossProcess: true,
-  });
+  await withPathLock(
+    path,
+    async () => {
+      const state = await readState(path);
+      delete state.pending;
+      await writeState(path, { ...state, later_until: until });
+    },
+    OFFER_LOCK
+  );
   return { until: new Date(until).toISOString() };
 }

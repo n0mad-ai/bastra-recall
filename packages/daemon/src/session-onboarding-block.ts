@@ -16,11 +16,17 @@
  *  and the tests, so a rename cannot silently drift apart from them. */
 export const ONBOARDING_BLOCK_TAG = "vault-onboarding";
 
+/** #1690: an offer only counts once presented to the user. */
+export const ONBOARDING_DELIVERY_TEXT =
+  `If no concrete user task is active, first call onboarding_answer(answer:"offer_ready"). ` +
+  `If it returns no offer or a different kind, do not present this unsolicited offer. ` +
+  `After you actually present it in your reply, call onboarding_answer(answer:"offer_shown", offer_id:"<returned id>").`;
+
 /** #1603: what remains after three interview offers — no question, one line. */
 export const ONBOARDING_LINE_TEXT =
   `This vault is new and its setup interview is still open; it has been offered three times. ` +
   `Do not ask about it or start it yourself. At most once, add one short line to your first ` +
-  `response that a ~5-minute setup is available whenever the user wants it. If the user asks ` +
+  `response that a ~5-minute setup is available whenever the user wants it. ${ONBOARDING_DELIVERY_TEXT} If the user asks ` +
   `for it, interview them one question at a time (what the memory will hold, how to address ` +
   `them, hard always/never rules, follow-ups), save each answer via save_memory with ` +
   `write_origin "user-directed", then call onboarding_answer(answer:"done"); if they decline ` +
@@ -45,7 +51,7 @@ export function buildOnboardingBlock(onboardingNeeded: boolean, line = false): s
     `When there is no active task, RUN THE ONBOARDING INTERVIEW NOW in your first response: ` +
     `open with one sentence saying the memory is new and that ~5 minutes of questions ` +
     `will seed it, then ask question (1) in the same response — do not ask for permission ` +
-    `first and do not wait for a better moment. ` +
+    `first and do not wait for a better moment. ${ONBOARDING_DELIVERY_TEXT} ` +
     `Start it at most once per session: if the user does not take it up, do not ask, offer ` +
     `or remind again in this session unless the user raises it. ` +
     `If the user declines or wants to do it later, accept that immediately and carry on with ` +

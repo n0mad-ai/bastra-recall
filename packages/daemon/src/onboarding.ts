@@ -16,6 +16,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { withPathLock } from "./path-lock.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SaveMemoryInput } from "@bastra-recall/core";
 import { sendJsonPlain } from "./webui.js";
@@ -25,6 +26,7 @@ import { detectLanguage } from "./learned-recall/language.js";
 import { saveMemoryWithAuditTrail } from "./audit-trail.js";
 
 export const ONBOARD_MARKER = ".onboarding-done";
+export const ONBOARDING_OFFER_FILE = ".onboarding-offers.json";
 /** Below this vault size a vault counts as fresh (an interview writes ~8). */
 export const FRESH_VAULT_MAX = 8;
 
@@ -537,10 +539,15 @@ export async function isOnboardingDone(vaultPath: string): Promise<boolean> {
 }
 
 export async function markOnboardingDone(vaultPath: string, via: string): Promise<void> {
-  await writeFile(
-    join(vaultPath, ONBOARD_MARKER),
-    `onboarded ${new Date().toISOString().slice(0, 10)} via ${via}\n`,
-    "utf8"
+  await withPathLock(
+    join(vaultPath, ONBOARDING_OFFER_FILE),
+    () =>
+      writeFile(
+        join(vaultPath, ONBOARD_MARKER),
+        `onboarded ${new Date().toISOString().slice(0, 10)} via ${via}\n`,
+        "utf8"
+      ),
+    { crossProcess: true, requireLock: true }
   );
 }
 

@@ -1277,7 +1277,7 @@
       "post": {
         "operationId": "onboarding_answer",
         "summary": "onboarding answer",
-        "description": "The user's answer to the <vault-onboarding> offer, never your own: later (stays open, asked again after days), skip (declined), done (interview finished).",
+        "description": "Report the user's answer to onboarding: later (defer), skip (declined), done (interview finished). For delivery accounting, use offer_ready immediately before presenting any unsolicited offer if no user task is active. Present only the returned offer. Record it with offer_shown and offe...",
         "requestBody": {
           "required": true,
           "content": {
@@ -1290,13 +1290,20 @@
                     "enum": [
                       "later",
                       "skip",
-                      "done"
+                      "done",
+                      "offer_ready",
+                      "offer_shown"
                     ]
                   },
                   "days": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 90
+                  },
+                  "offer_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
                 "required": [

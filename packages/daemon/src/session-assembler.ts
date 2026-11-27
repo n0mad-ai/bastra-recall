@@ -49,8 +49,8 @@ import { listConventions } from "./taxonomy.js";
 import { parseCareFile, CARE_FILE } from "./webui.js";
 import { countOpenImports, IMPORT_FILE } from "./import-review.js";
 import { queueStatus } from "./import-mining.js";
-import { takeOnboardingOffer } from "./onboarding-offer.js";
-import { ONBOARDING_LINE_TEXT } from "./session-onboarding-block.js";
+import { previewOnboardingOffer } from "./onboarding-offer.js";
+import { ONBOARDING_DELIVERY_TEXT, ONBOARDING_LINE_TEXT } from "./session-onboarding-block.js";
 import { dimensionHints, type DimensionHints } from "./telemetry-dimensions.js";
 
 const MAX_PINNED = 5;
@@ -547,16 +547,15 @@ export async function assembleSessionSections(
     },
     {
       kind: "onboarding",
-      // #1603: at most once a day, three interviews in all, then one line;
-      // taking the offer also counts it.
+      // #1690: a start only previews; the agent records an actual offer.
       run: async () => {
-        const offer = await takeOnboardingOffer(toolDeps.vaultPath, vault.size());
+        const offer = await previewOnboardingOffer(toolDeps.vaultPath, vault.size());
         rawOnboarding = offer === "interview";
         rawOnboardingLine = offer === "line";
         if (offer === "line") return [`- Onboarding: ${ONBOARDING_LINE_TEXT}`];
         return offer === "interview"
           ? [
-              `- Onboarding: this vault is fresh — offer ONCE a ~5-minute interview (persona, address/tone, hard rules, persona follow-ups), save each answer via save_memory with write_origin "user-directed"; when finished call onboarding_answer(answer:"done"); if the user wants it later call onboarding_answer(answer:"later"), if they decline call onboarding_answer(answer:"skip").`,
+              `- Onboarding: this vault is fresh — offer ONCE a ~5-minute interview (persona, address/tone, hard rules, persona follow-ups) when no task is active. ${ONBOARDING_DELIVERY_TEXT} Save each answer via save_memory with write_origin "user-directed"; when finished call onboarding_answer(answer:"done"); if the user wants it later call onboarding_answer(answer:"later"), if they decline call onboarding_answer(answer:"skip").`,
             ]
           : [];
       },
