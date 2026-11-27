@@ -1,8 +1,1 @@
-[
-  ["packages/daemon/webui/app/js/agent.js", "packages/daemon/webui/app/js/views/chrome.js"],
-  ["packages/daemon/webui/app/js/agent.js", "packages/daemon/webui/app/js/views/memory-browser.js"],
-  ["packages/daemon/webui/app/js/views/chrome.js", "packages/daemon/webui/app/js/agent.js"],
-  ["packages/daemon/webui/app/js/views/chrome.js", "packages/daemon/webui/app/js/views/memory-browser.js"],
-  ["packages/daemon/webui/app/js/views/memory-browser.js", "packages/daemon/webui/app/js/agent.js"],
-  ["packages/daemon/webui/app/js/views/memory-browser.js", "packages/daemon/webui/app/js/views/chrome.js"]
-]
+[]

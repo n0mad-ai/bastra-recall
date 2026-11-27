@@ -10,7 +10,7 @@ import { mountJarvis } from "../../vendor/jarvis-v13.js";
 import { vault, areaCol as col, timeWindow, inWindow, windowKey } from "./vault-data.js";
 import { buildRing, SMALL_KEY, TAU } from "./ring-layout.js";
 import { zoomBar, overlay, areaCard, memoryCard, dock, park, dateStr, TC, INK, ACC } from "./chrome.js";
-import { mountMemoryBrowser } from "./memory-browser.js";
+import { mountMemoryBrowser, openMemoryBrowser } from "./memory-browser.js";
 import { mountLinks, nodeTier, GHOST } from "./ring-links.js";
 
 // Upper bound for the label scale (SVG units per screen pixel). The bands keep
@@ -35,7 +35,8 @@ const arc = (r, a0, a1, rev) => {
   return rev ? `M${P(r, a1)}A${r} ${r} 0 ${L} 0 ${P(r, a0)}` : `M${P(r, a0)}A${r} ${r} 0 ${L} 1 ${P(r, a1)}`;
 };
 
-export function mountRing(stage) {
+export function mountRing(stage, ask) {
+  const cardActions = { ask, openMemoryBrowser };
   const inner = h("div.rg__in");
   const wrap = h("div.rg", { on: { pointerdown: onPD, dblclick: onDbl } }, inner);
   // Capture: a finished pan swallows its click; a click on a memory dot opens
@@ -76,6 +77,7 @@ export function mountRing(stage) {
   const links = mountLinks();
   stage.append(cardHost, tip, links.legend);
   const unMb = mountMemoryBrowser(stage, {
+    ask,
     showMemory: (id, done) => {
       const p = ring?.dotOf.get(id);
       return !!p && openDot(p, done);
@@ -756,8 +758,8 @@ export function mountRing(stage) {
       card = null;
       if (state.focus && vault()) {
         card = selMem
-          ? memoryCard(selMem, { onClose: closeMem, onMemory: openMem })
-          : areaCard(state.focus, { compact: H < 420, onMemory: openMem });
+          ? memoryCard(selMem, { ...cardActions, onClose: closeMem, onMemory: openMem })
+          : areaCard(state.focus, { ...cardActions, compact: H < 420, onMemory: openMem });
         cardHost.append(card.el);
         if (swapCard) card.el.classList.add("is-swap");
       }

@@ -14,7 +14,7 @@ registerArea({
   order: 1,
   labelKey: "view.ring",
   icon: ICON.ring,
-  mount: (stage) => mountRing(stage),
+  mount: (stage, { ask }) => mountRing(stage, ask),
 });
 ["chronos", "radiant", "spiral", "halflife", "weave"].forEach((id, i) =>
   registerArea({
@@ -23,7 +23,7 @@ registerArea({
     order: 2 + i,
     labelKey: `view.${id}`,
     icon: ICON[id],
-    mount: (stage) => mountLensView(id, stage),
+    mount: (stage, { ask }) => mountLensView(id, stage, ask),
   })
 );
 [
@@ -39,6 +39,6 @@ registerArea({
     icon: ICON[id],
     viewTab: viewTab(id),
     signalFilter: true,
-    mount: (stage) => mountEngineView(id, stage),
+    mount: (stage, { ask }) => mountEngineView(id, stage, ask),
   })
 );

@@ -384,7 +384,6 @@ export function setState(patch) { globalThis.__mb.log.push("setState " + JSON.st
   "data.js": `export const data = globalThis.__mb.data;
 export function onData(fn) { globalThis.__mb.dataListeners.push(fn); return () => {}; }
 export function loadGraph() { globalThis.__mb.log.push("loadGraph"); return Promise.resolve(); }`,
-  "agent.js": `export function ask(q) { globalThis.__mb.log.push("ask " + q); }`,
   "cover.js": `export function cover(key, on) { globalThis.__mb.log.push("cover " + key + " " + on); }`,
   "views/pro-views.js": `export const viewLocked = () => false;
 export const lastVaultView = () => globalThis.__mb.lastView ?? "ring";`,
@@ -503,7 +502,11 @@ type Browser = {
   closeMemoryBrowser: (after?: () => void) => boolean;
   mountMemoryBrowser: (
     stage: FakeEl,
-    opts: { showMemory: (id: string, done?: () => void) => unknown; ready?: (cb: () => void) => void }
+    opts: {
+      ask?: (q: string) => void;
+      showMemory: (id: string, done?: () => void) => unknown;
+      ready?: (cb: () => void) => void;
+    }
   ) => () => void;
 };
 
@@ -540,7 +543,10 @@ async function walk(mb: Browser, env: Env): Promise<string[]> {
   const acts = () => reader().querySelector(".mb-rd__acts")!.children;
 
   // the vault view stands, then its card opens the browser
-  const unmount = mb.mountMemoryBrowser(stage, { showMemory: (id: string) => env.log.push(`showMemory ${id}`) });
+  const unmount = mb.mountMemoryBrowser(stage, {
+    ask: (q: string) => env.log.push(`ask ${q}`),
+    showMemory: (id: string) => env.log.push(`showMemory ${id}`),
+  });
   mb.openMemoryBrowser("all", null, null);
   const root = stage.children[0];
   root.clientWidth = 1200;

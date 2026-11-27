@@ -13,6 +13,7 @@ import * as lens from "./lens.js";
 import * as stage from "./stage.js";
 import { assistantName, load as loadSettings, onStore } from "./sections/settings-model.js";
 import { mountBackdrop } from "./backdrop.js";
+import { showInView, openMemoryBrowser } from "./views/memory-browser.js";
 import "./views/index.js";
 import "./sections/index.js";
 
@@ -49,7 +50,7 @@ app.append(h("div.glow"), h("div.frame", null, h("span.frame__marks")));
 mountBackdrop(app);
 mountNav(app, ctx);
 stage.mountStage(app);
-agent.mountAgent(app);
+agent.mountAgent(app, { showInView, openMemoryBrowser });
 footer.mountFooter(app);
 lens.mountLens(app, ctx);
 mountHeader(app, ctx);

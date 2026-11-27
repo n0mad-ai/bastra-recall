@@ -3,9 +3,7 @@
 import { h, s, clear, setVars } from "../dom.js";
 import { t, numberFmt } from "../i18n.js";
 import { setState } from "../state.js";
-import { ask } from "../agent.js";
 import { vault, areaCol, recentIn, ago } from "./vault-data.js";
-import { openMemoryBrowser } from "./memory-browser.js";
 import { dockGeometry, ZB_W, ZB_H } from "./dock-geometry.js";
 import { ghostActions } from "./ghost-actions.js";
 
@@ -136,7 +134,7 @@ const memRow = (m, onMemory) =>
   );
 
 /** Area card (prototype `insp`): rank, name, three stats, recent memories, actions. */
-export function areaCard(key, { compact, onMemory }) {
+export function areaCard(key, { compact, onMemory, ask, openMemoryBrowser }) {
   const v = vault(),
     color = areaCol(key);
   const idx = v.areas.findIndex((a) => a.key === key),
@@ -181,7 +179,7 @@ export function areaCard(key, { compact, onMemory }) {
  * `onMemory`, lists the memories that link to it; its own action row queues
  * it for writing or marks it as a skill (ghost-actions.js).
  */
-export function memoryCard(m, { onClose, onMemory }) {
+export function memoryCard(m, { onClose, onMemory, ask, openMemoryBrowser }) {
   const c = TC[m.cls] || INK;
   const { el, side } = shell(c, onClose, h("span.vcard__chip", { text: t(`vv.cls.${m.cls}`), vars: { "--tc": c } }));
   el.querySelector(".vcard__head").insertBefore(

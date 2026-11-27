@@ -30,6 +30,8 @@ async function browserProbe(quick = false) {
   const { vault, inWindow, timeWindow } = await import("/ui/js/views/vault-data.js");
   const { openMemoryBrowser } = await import("/ui/js/views/memory-browser.js");
   const { memoryCard, areaCard } = await import("/ui/js/views/chrome.js");
+  const { ask } = await import("/ui/js/agent.js");
+  const cardActions = { ask, openMemoryBrowser };
   for (let i = 0; i < 100 && !data.graph; i++) await sleep(100);
   const v = vault();
   if (!v?.total) throw new Error("No graph available");
@@ -178,7 +180,7 @@ async function browserProbe(quick = false) {
     await sleep(510);
     setState({ view, focus: largest });
     await sleep(100);
-    const { el } = memoryCard(older, { onClose() {} });
+    const { el } = memoryCard(older, { ...cardActions, onClose() {} });
     document.querySelector(".stage").append(el);
     el.querySelector(".vcard__open").click();
     el.remove();
@@ -193,7 +195,7 @@ async function browserProbe(quick = false) {
   // beyond page one must render both the linked row and the reader.
   document.querySelector(".mb__esc").click();
   await sleep(510);
-  const area = areaCard(largest, { onMemory() {} });
+  const area = areaCard(largest, { ...cardActions, onMemory() {} });
   document.querySelector(".stage").append(area.el);
   area.el.querySelector(".vcard__open").click();
   area.el.remove();
@@ -222,7 +224,6 @@ async function browserProbe(quick = false) {
   // Exercise the real agent-source button with a mocked chat response,
   // without persisting a conversation or calling an LLM.
   const originalFetch = window.fetch;
-  const { ask } = await import("/ui/js/agent.js");
   try {
     window.fetch = (url, init) =>
       String(url).includes("/ui/chat")

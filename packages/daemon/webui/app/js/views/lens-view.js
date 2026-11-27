@@ -6,9 +6,10 @@ import { onData } from "../data.js";
 import { vault, timeWindow, inWindow, windowKey, areaCol } from "./vault-data.js";
 import { mountLens } from "./lens-canvas.js";
 import { zoomBar, overlay, memoryCard, dock, TC, INK } from "./chrome.js";
-import { mountMemoryBrowser } from "./memory-browser.js";
+import { mountMemoryBrowser, openMemoryBrowser } from "./memory-browser.js";
 
-export function mountLensView(kind, stage) {
+export function mountLensView(kind, stage, ask) {
+  const cardActions = { ask, openMemoryBrowser };
   const canvas = h("canvas.lv__cv");
   const box = h("div.lv", null, canvas);
   const zb = zoomBar({ onIn: () => lens.zoomBy(1.4), onOut: () => lens.zoomBy(1 / 1.4), onFit: () => lens.reset() });
@@ -17,6 +18,7 @@ export function mountLensView(kind, stage) {
   const cardHost = h("div");
   stage.append(cardHost);
   const unMb = mountMemoryBrowser(stage, {
+    ask,
     showMemory: (id, done) => lens.open(id, done),
     ready: (cb) => lens.ready(cb),
   });
@@ -66,7 +68,7 @@ export function mountLensView(kind, stage) {
       ov.arm(null);
       return;
     }
-    card = memoryCard(selMem, { onClose: closeCard });
+    card = memoryCard(selMem, { ...cardActions, onClose: closeCard });
     cardHost.append(card.el);
   }
   // closing glides back to the fit (as the zoom bar's fit button)

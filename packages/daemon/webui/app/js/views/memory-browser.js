@@ -30,7 +30,6 @@ import { h, clear, setVars, searchIcon } from "../dom.js";
 import { t, addStrings, numberFmt } from "../i18n.js";
 import { state, setState } from "../state.js";
 import { data, onData } from "../data.js";
-import { ask } from "../agent.js";
 import { cover } from "../cover.js";
 import { vault, areaCol, ago, inWindow, timeWindow } from "./vault-data.js";
 import { TC, INK, ACC, MUT, dateStr, lastPress } from "./chrome.js";
@@ -38,7 +37,6 @@ import { lastVaultView } from "./pro-views.js";
 import { detailCache } from "./membrowser-detail.js";
 import { memoryReader } from "./membrowser-reader.js";
 import { extras, heat, daysAgo, NO_DAYS } from "./membrowser-heat.js";
-import { markdown } from "./markdown.js";
 import en from "../i18n/membrowser-en.js";
 import de from "../i18n/membrowser-de.js";
 
@@ -175,16 +173,12 @@ async function loadCare() {
 
 const byRecent = (a, b) => (Number.isFinite(b.at) ? b.at : -Infinity) - (Number.isFinite(a.at) ? a.at : -Infinity);
 
-// The reader's mini Markdown lives in views/markdown.js; the task reports and the agent window
-// still take it from here.
-export { markdown };
-
 // ── mount ──────────────────────────────────────────────────────────────────
 /** Mount into a vault view's stage. `showMemory(id, done)` focuses a memory in
  *  that view (glide / fly + card): true when it can, then `done()` once the
  *  glide has ended. `ready(cb)` runs cb once the view stands (laid out, its
  *  entrance played); without it the view stands at once. */
-export function mountMemoryBrowser(stage, { showMemory, ready = (cb) => cb() } = {}) {
+export function mountMemoryBrowser(stage, { ask, showMemory, ready = (cb) => cb() } = {}) {
   const hostView = state.view;
   const input = h("input.mb__input", {
     type: "text",

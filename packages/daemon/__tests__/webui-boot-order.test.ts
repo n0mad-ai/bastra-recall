@@ -67,6 +67,8 @@ async function boot(hash: string, saved = "chronos") {
     loadSettings: async () => {},
     onStore: noop,
     mountBackdrop: noop,
+    showInView: noop,
+    openMemoryBrowser: noop,
     document: { getElementById: el, addEventListener: noop },
     window: { addEventListener: noop, innerWidth: 1368, innerHeight: 913 },
   });

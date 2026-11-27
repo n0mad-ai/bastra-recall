@@ -8,7 +8,7 @@ import { state, setState, subscribe } from "../state.js";
 import { data, onData } from "../data.js";
 import { vault, timeWindow, windowKey, areaCol, typeClass } from "./vault-data.js";
 import { zoomBar, overlay, areaCard, memoryCard, dock, park, TC, INK } from "./chrome.js";
-import { mountMemoryBrowser } from "./memory-browser.js";
+import { mountMemoryBrowser, openMemoryBrowser } from "./memory-browser.js";
 import { attach, engine } from "./engine-host.js";
 import { signalMatch } from "./signals.js";
 import { CORES } from "../../engines/managers/orbit-core.js";
@@ -44,7 +44,8 @@ function memOf(n) {
   };
 }
 
-export function mountEngineView(id, stage) {
+export function mountEngineView(id, stage, ask) {
+  const cardActions = { ask, openMemoryBrowser };
   const zb = zoomBar({
     onIn: () => engine.zoomBy(1.4),
     onOut: () => engine.zoomBy(1 / 1.4),
@@ -61,6 +62,7 @@ export function mountEngineView(id, stage) {
   stage.append(cardHost);
   // memory browser over this view; "show" flies to the memory (old select())
   const unMb = mountMemoryBrowser(stage, {
+    ask,
     showMemory: (mid, done) => {
       const n = engine.get()?.sim.byId.get(mid);
       if (!n || engine.view() !== ENGINE_VIEW[id]) return false; // not entered (layout unavailable)
@@ -261,9 +263,10 @@ export function mountEngineView(id, stage) {
       cardKey = key;
       clear(cardHost);
       card = null;
-      if (sel) card = memoryCard(selM, { onClose: () => closeMem() });
+      if (sel) card = memoryCard(selM, { ...cardActions, onClose: () => closeMem() });
       else if (state.focus && vault())
         card = areaCard(state.focus, {
+          ...cardActions,
           compact: H < 420,
           onMemory: (m) => {
             const n = e.sim.byId.get(m.id);

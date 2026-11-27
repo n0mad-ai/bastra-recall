@@ -11,7 +11,7 @@ import { vault, typeClass, inWindow, timeWindow } from "./views/vault-data.js";
 import { TC, INK } from "./views/chrome.js";
 import { assistantName } from "./sections/settings-model.js";
 import { loadingInline, setBusy } from "./sections/loading.js";
-import { showInView, openMemoryBrowser, markdown } from "./views/memory-browser.js";
+import { markdown } from "./views/markdown.js";
 
 const STATE_COLOR = {
   idle: "var(--muted)",
@@ -47,6 +47,7 @@ const chatState = { msgs: [], shown: null, typed: "", question: "", history: [],
 // List of stored conversations: null = closed, else { items, loading, error }.
 let convs = null;
 let typeTimer = 0;
+let showInView, openMemoryBrowser;
 
 // The name the user gave the assistant; the product name until one is set.
 export const agentName = () => assistantName() ?? t("agent.name");
@@ -58,7 +59,8 @@ function syncName() {
   faceCanvas.title = name;
 }
 
-export function mountAgent(app) {
+export function mountAgent(app, memoryNavigation) {
+  ({ showInView, openMemoryBrowser } = memoryNavigation);
   stateEl = h("span.agent__state", null, h("span.dot"), h("span"));
   faceCanvas = h("canvas", { title: agentName() });
   qBox = h("div.msg.msg--you");
@@ -255,7 +257,7 @@ function typeOut(p) {
   }, 56));
 }
 
-/** Answer text as safe DOM (memory-browser's mini markdown: code, bold, lists,
+/** Answer text as safe DOM (shared mini Markdown: code, bold, lists,
  *  http(s) links in a new tab, [[memory]] links open the memory). */
 function md(text, caret) {
   const nodes = markdown(String(text || ""), (id) => openSource(id, null));

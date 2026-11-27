@@ -1,6 +1,5 @@
 // Mini Markdown (old map inspector), built as DOM nodes, text only via textContent. One renderer
-// for every reader: the memory browser (views/memory-browser.js, which re-exports it), the task
-// reports (sections/tasks-reports.js) and the agent window's answers (agent.js). Headings become
+// for the memory reader, task reports and agent answers. Headings become
 // h3, list items one flat ul, fenced and indented code a pre (which lines are code: code-lines.js), a
 // free-standing ---/***/___ line a thin rule; inside a line: [[wiki links]] to memories, `code`,
 // **bold**, *emphasis*, [links](https://…) and bare web addresses. HTML comments (auto-related
