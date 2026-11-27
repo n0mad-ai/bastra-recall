@@ -89,7 +89,7 @@ slow answer.
 | `UserPromptSubmit` — retrieval / generic / none | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — assertion | **1000 ms** | 900 ms | 5 % |
 | `PreToolUse` plan | 600 ms | — | — |
-| `PreToolUse` / `PostToolUse` Bash | 500 ms | 200 ms | zero observed failures to evaluate |
+| `PreToolUse` / `PostToolUse` Bash | 600 ms (client), 500 ms (gate reference) | 200 ms | zero observed failures to evaluate |
 | `SessionStart` | 1500 ms | — | — |
 | `PreToolUse` gate (every tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
@@ -2089,7 +2089,7 @@ langsame Antwort.
 | `UserPromptSubmit` — Retrieval / generisch / keine | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — Assertion | **1000 ms** | 900 ms | 5 % |
 | `PreToolUse` Plan | 600 ms | — | — |
-| `PreToolUse` / `PostToolUse` Bash | 500 ms | 200 ms | Bewertung nur bei null beobachteten Fehlern |
+| `PreToolUse` / `PostToolUse` Bash | 600 ms (Client), 500 ms (Referenz der Freigabeprüfung) | 200 ms | Bewertung nur bei null beobachteten Fehlern |
 | `SessionStart` | 1500 ms | — | — |
 | `PreToolUse` Gate (jedes Tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
