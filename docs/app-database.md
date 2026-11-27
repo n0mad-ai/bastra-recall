@@ -111,17 +111,11 @@ like `/ui/chat`; DELETE needs a same-origin request with
 refuses this database; restore `before-v2-<UUID>.db` as described above to
 downgrade (stored conversations are then lost).
 
-**Save as memory (#1445).** Nothing from a conversation reaches the vault on
-its own. Under each answer, also a reopened one, **Save as memory** opens an
-editable preview: title (proposed from the answer's heading or the question),
-type, area and the full answer as Markdown. Only **Save** writes, through
-`POST /ui/save-memory`: the normal `save_memory` path with
-`write_origin: user-directed`, so validation, claim gate, audit and the index
-apply as for any save. A memory with the same title, or one that already
-declares the same situation, is named in the preview and nothing is written.
-If a source of the answer is private, the new memory is saved private too.
-The route is local-only like `/ui/chat` and needs
-`Content-Type: application/json`.
+**Local save route (#1445).** `POST /ui/save-memory` uses the regular
+`save_memory` path with `write_origin: user-directed`, including validation,
+claim checks, audit and indexing. The route takes a title, type, area, body
+and source IDs and inherits privacy from private sources. It requires a local
+request with `Content-Type: application/json`.
 
 **Deutsch:** Migration v2 (`agent-chat-history`) legt die Tabellen
 `chat_conversations` und `chat_messages` an. Darin speichert das
@@ -135,17 +129,12 @@ sind nur lokal erreichbar; DELETE verlangt eine Anfrage derselben Herkunft mit
 startet mit dieser Datenbank nicht; für den Rückweg `before-v2-<UUID>.db`
 wie oben beschrieben zurückspielen (die Gespräche gehen dabei verloren).
 
-**Als Memory speichern (#1445).** Von selbst gelangt aus Gesprächen nichts in
-den Vault. Unter jeder Antwort, auch einer wieder geöffneten, öffnet **Als
-Memory speichern** eine bearbeitbare Vorschau: Titel (vorgeschlagen aus der
-Überschrift der Antwort oder der Frage), Typ, Bereich und die vollständige
-Antwort als Markdown. Erst **Speichern** schreibt, über `POST /ui/save-memory`:
-den normalen `save_memory`-Weg mit `write_origin: user-directed`. Prüfung,
-Claim-Gate, Audit und Index gelten wie bei jedem Speichern. Gibt es schon ein
-Memory mit diesem Titel oder eines, das dieselbe Situation abdeckt, nennt die
-Vorschau es, und es wird nichts geschrieben. Ist eine Quelle der Antwort
-privat, wird auch das neue Memory privat gespeichert. Die Route ist wie
-`/ui/chat` nur lokal erreichbar und verlangt `Content-Type: application/json`.
+**Lokale Speicherroute (#1445).** `POST /ui/save-memory` verwendet den
+regulären Weg über `save_memory` mit `write_origin: user-directed`, einschließlich
+Validierung, Prüfung von Überschneidungen, Audit und Indexierung. Die Route
+nimmt Titel, Typ, Bereich, Text und Quell-IDs an. Ist eine Quelle privat, wird
+auch das neue Memory privat gespeichert. Die Route verlangt eine lokale
+Anfrage mit `Content-Type: application/json`.
 
 ### Telemetry days (schema v3)
 
