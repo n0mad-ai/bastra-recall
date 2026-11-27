@@ -19,11 +19,22 @@ try {
 }
 
 const anyBaseline = "eslint-any-baseline.json";
+const doubleCastBaseline = "eslint-double-cast-baseline.json";
 // Reviewed initial #1533 inventory. Until a trusted CI SHA contains the file,
 // the new gate must protect that exact inventory from first-push inflation.
 const initialAnyDigest = "1d13d0b2ec6c253e61ea0b917f7479c18c904e675d639f7244aa084e17bdbf3b";
 
-const files = ["eslint-structure-baseline.json", anyBaseline, ".lint-cycle-baseline.json", "clone-baseline.json"];
+const initialDoubleCastDigest = "ce75220f87d32d1d72c60894d356cb3115c984bfeb82acd714cf95c308b08ee9";
+const firstSnapshots = new Map([
+  [anyBaseline, { digest: initialAnyDigest, label: "explicit-any" }],
+  [doubleCastBaseline, { digest: initialDoubleCastDigest, label: "double-cast" }],
+]);
+const files = [
+  "eslint-structure-baseline.json",
+  ...firstSnapshots.keys(),
+  ".lint-cycle-baseline.json",
+  "clone-baseline.json",
+];
 
 // #1572 is a single mechanical tree rename, not transferable function debt.
 const oldUi = "packages/daemon/webui/v22/";
@@ -150,19 +161,20 @@ async function isVerifiedMigration(file, previous, candidate) {
   return true;
 }
 
-function initialAnyBaselineAllowed() {
-  if (!existsSync(anyBaseline)) return true;
-  const bytes = readFileSync(anyBaseline);
+function initialBaselineAllowed(file, digest) {
+  if (!existsSync(file)) return true;
+  const bytes = readFileSync(file);
   const snapshot = JSON.parse(bytes.toString());
   if (snapshot.schema === 1 && snapshot.files && Object.keys(snapshot.files).length === 0) return true;
-  return createHash("sha256").update(bytes).digest("hex") === initialAnyDigest;
+  return createHash("sha256").update(bytes).digest("hex") === digest;
 }
 
 for (const file of files) {
   const source = readBase(file);
   if (!source) {
-    if (file === anyBaseline && !initialAnyBaselineAllowed()) {
-      console.error(`${file}: the initial explicit-any baseline must match the reviewed inventory.`);
+    const initial = firstSnapshots.get(file);
+    if (initial && !initialBaselineAllowed(file, initial.digest)) {
+      console.error(`${file}: the initial ${initial.label} baseline must match the reviewed inventory.`);
       process.exitCode = 1;
     }
     continue;

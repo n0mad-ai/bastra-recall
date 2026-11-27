@@ -69,6 +69,7 @@ async function fixture(t) {
   assert.equal(execute(root, "git", ["init", "-q"]).status, 0);
   await put(root, "eslint-structure-baseline.json", { schema: 2, functions: {} });
   await put(root, "eslint-any-baseline.json", { schema: 1, files: {} });
+  await put(root, "eslint-double-cast-baseline.json", { schema: 1, files: {} });
   await put(root, ".lint-cycle-baseline.json", []);
   await put(root, "clone-baseline.json", {
     version: 1,
@@ -516,6 +517,29 @@ test("explicit any is frozen per file: new ones fail, the count only shrinks (#1
     files: { "src/legacy.ts": 1 },
   });
   assert.equal(tool(root, "lint-structure.mjs").status, 0);
+});
+
+test("double casts are frozen per file and ts-ignore is forbidden", async (t) => {
+  const root = await fixture(t);
+  const doubleCast = "export const a = 1 as unknown as string;\n";
+  await put(root, "src/cast.ts", doubleCast);
+  const fresh = tool(root, "lint-structure.mjs");
+  assert.equal(fresh.status, 1, fresh.output);
+  assert.match(fresh.output, /chaining two type assertions/);
+  await put(root, "eslint-double-cast-baseline.json", { schema: 1, files: { "src/cast.ts": 1 } });
+  assert.equal(tool(root, "lint-structure.mjs").status, 0);
+  await put(root, "src/cast.ts", `${doubleCast}export const b = <string>(1 as unknown);\n`);
+  assert.equal(tool(root, "lint-structure.mjs").status, 1);
+  await put(root, "src/cast.ts", `${doubleCast}// @ts-ignore\nexport const c = 3;\n`);
+  const ignored = tool(root, "lint-structure.mjs");
+  assert.equal(ignored.status, 1, ignored.output);
+  assert.match(ignored.output, /ban-ts-comment/);
+  await put(root, "src/cast.ts", "export const a = 1 as number;\n");
+  assert.equal(tool(root, "lint-structure.mjs", "--prune").status, 0);
+  assert.deepEqual(JSON.parse(await readFile(join(root, "eslint-double-cast-baseline.json"), "utf8")), {
+    schema: 1,
+    files: {},
+  });
 });
 
 test("the Git guard refuses a new or increased any count (#1533)", async (t) => {

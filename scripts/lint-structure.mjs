@@ -8,8 +8,26 @@ import { CODE_PATTERN, assertSingleRootConfig, listCodeFiles } from "./lint-scop
 const baselinePath = new URL("../eslint-structure-baseline.json", import.meta.url);
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const anyBaselinePath = new URL("../eslint-any-baseline.json", import.meta.url);
+const doubleCastBaselinePath = new URL("../eslint-double-cast-baseline.json", import.meta.url);
 const structuralRules = new Set(["complexity", "max-depth"]);
 const anyRule = "@typescript-eslint/no-explicit-any";
+const doubleCastRule = "no-restricted-syntax";
+const typeAssertion = ":matches(TSAsExpression, TSTypeAssertion)";
+const assertionRules = {
+  [anyRule]: "error",
+  [doubleCastRule]: [
+    "error",
+    {
+      selector: `${typeAssertion} > ${typeAssertion}.expression`,
+      message: "Avoid chaining two type assertions. Narrow the value or validate it before asserting its type.",
+    },
+  ],
+  "@typescript-eslint/ban-ts-comment": [
+    "error",
+    { "ts-ignore": true, "ts-check": false, "ts-nocheck": false, "ts-expect-error": false },
+  ],
+};
+
 function rejectUnconfiguredFiles(results) {
   for (const result of results) {
     for (const message of result.messages) {
@@ -21,10 +39,10 @@ function rejectUnconfiguredFiles(results) {
   }
 }
 
-function countAny(results) {
+function countRule(results, rule) {
   const counts = {};
   for (const result of results) {
-    const count = result.messages.filter((message) => message.ruleId === anyRule).length;
+    const count = result.messages.filter((message) => message.ruleId === rule).length;
     if (count) counts[relative(repositoryRoot, result.filePath).split("\\").join("/")] = count;
   }
   return Object.fromEntries(Object.entries(counts).sort());
@@ -38,8 +56,8 @@ export async function inspectStructure(paths = listCodeFiles(repositoryRoot), { 
     applySuppressions: false,
     allowInlineConfig: false,
     overrideConfigFile: fileURLToPath(new URL("../eslint.config.mjs", import.meta.url)),
-    // Frozen per file below (#1533); kept out of eslint.config.mjs, whose rule set the config ratchet pins.
-    overrideConfig: { files: [CODE_PATTERN], rules: { [anyRule]: "error" } },
+    // The existing assertion counts are frozen per file below.
+    overrideConfig: { files: [CODE_PATTERN], rules: assertionRules },
   });
   const results = await eslint.lintFiles(paths);
   rejectUnconfiguredFiles(results);
@@ -77,7 +95,8 @@ export async function inspectStructure(paths = listCodeFiles(repositoryRoot), { 
     eslint,
     results,
     findings: Object.fromEntries(Object.entries(findings).sort()),
-    anyCounts: countAny(results),
+    anyCounts: countRule(results, anyRule),
+    doubleCastCounts: countRule(results, doubleCastRule),
     ...(legacy ? { legacyFindings } : {}),
   };
 }
@@ -100,17 +119,20 @@ function explainExceeded(keys, baseline, findings) {
   }
 }
 
-function readAnyBaseline() {
-  const snapshot = JSON.parse(readFileSync(anyBaselinePath, "utf8"));
-  if (snapshot.schema !== 1) throw new Error("Any baseline requires schema 1 per-file counts.");
+function readPerFileBaseline(path) {
+  const snapshot = JSON.parse(readFileSync(path, "utf8"));
+  if (snapshot.schema !== 1) throw new Error(`${fileURLToPath(path)} requires schema 1 per-file counts.`);
   return snapshot.files;
 }
 
-function visibleResults(results, allowed, anyAdded) {
+function visibleResults(results, allowed, anyAdded, doubleCastAdded) {
   return results.map((result) => {
     const file = relative(repositoryRoot, result.filePath).split("\\").join("/");
     const messages = result.messages.filter(
-      (message) => !allowed.has(message.baselineKey) && !(message.ruleId === anyRule && !anyAdded.includes(file))
+      (message) =>
+        !allowed.has(message.baselineKey) &&
+        !(message.ruleId === anyRule && !anyAdded.includes(file)) &&
+        !(message.ruleId === doubleCastRule && !doubleCastAdded.includes(file))
     );
     return {
       ...result,
@@ -138,12 +160,16 @@ async function main() {
   const snapshot = JSON.parse(readFileSync(baselinePath, "utf8"));
   if (snapshot.schema !== 2) throw new Error("Structure baseline requires schema 2 function maxima.");
   const baseline = snapshot.functions;
-  const anyBaseline = readAnyBaseline();
-  const { eslint, results, findings, anyCounts } = await inspectStructure(paths.length ? paths : undefined);
+  const anyBaseline = readPerFileBaseline(anyBaselinePath);
+  const doubleCastBaseline = readPerFileBaseline(doubleCastBaselinePath);
+  const { eslint, results, findings, anyCounts, doubleCastCounts } = await inspectStructure(
+    paths.length ? paths : undefined
+  );
   const { added, removed } = compareBaseline(baseline, findings);
   const { added: anyAdded, removed: anyRemoved } = compareBaseline(anyBaseline, anyCounts);
+  const doubleCast = compareBaseline(doubleCastBaseline, doubleCastCounts);
   const allowed = new Set(Object.keys(baseline).filter((key) => !added.includes(key)));
-  const visible = visibleResults(results, allowed, anyAdded);
+  const visible = visibleResults(results, allowed, anyAdded, doubleCast.added);
   const formatter = await eslint.loadFormatter("stylish");
   process.stdout.write(formatter.format(visible));
   if (added.length) {
@@ -153,14 +179,16 @@ async function main() {
     );
   }
   explainAny(anyAdded, anyBaseline, anyCounts);
-  const outdated = removed.length + anyRemoved.length;
-  if (prune && !added.length && !anyAdded.length) {
+  const outdated = removed.length + anyRemoved.length + doubleCast.removed.length;
+  const newExceptions = added.length + anyAdded.length + doubleCast.added.length;
+  if (prune && !newExceptions) {
     writeFileSync(baselinePath, JSON.stringify({ schema: 2, functions: findings }, null, 2) + "\n");
     writeFileSync(anyBaselinePath, JSON.stringify({ schema: 1, files: anyCounts }, null, 2) + "\n");
+    writeFileSync(doubleCastBaselinePath, JSON.stringify({ schema: 1, files: doubleCastCounts }, null, 2) + "\n");
     console.log(`Structure baseline lowered: ${outdated} maxima or any counts reduced or removed.`);
   } else if (outdated && !paths.length) {
     console.error(
-      `Structure baseline has ${outdated} outdated function maxima or any counts. Run npm run lint:prune after the cleanup and commit the smaller baseline.`
+      `Structure baseline has ${outdated} outdated function maxima or any counts or double casts. Run npm run lint:prune after the cleanup and commit the smaller baseline.`
     );
   }
   const errors = visible.reduce((sum, result) => sum + result.errorCount, 0);
