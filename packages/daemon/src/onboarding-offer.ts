@@ -116,7 +116,9 @@ export async function claimOnboardingOffer(vaultPath: string, size: number, now 
   );
 }
 
-/** A repeated, expired or superseded receipt cannot spend a slot. */
+/** A receipt can arrive on the next user turn, after the reservation's
+ * short exclusivity window. Charge the day of the offer, once, and accept
+ * only the last reservation so an older client cannot override a newer one. */
 export async function recordOnboardingOffer(vaultPath: string, id: string, now = Date.now()): Promise<boolean> {
   const path = statePath(vaultPath);
   return withPathLock(
@@ -124,8 +126,10 @@ export async function recordOnboardingOffer(vaultPath: string, id: string, now =
     async () => {
       if (await isOnboardingDone(vaultPath)) return false;
       const { pending, ...state } = await readState(path);
-      if (pending?.id !== id || pending.until <= now || state.last_day === localDay(now)) return false;
-      await writeState(path, { ...state, offers: state.offers + 1, last_day: localDay(now) });
+      if (pending?.id !== id) return false;
+      const offerDay = localDay(Math.min(now, pending.until - OFFER_CLAIM_MS));
+      if (state.last_day && state.last_day >= offerDay) return false;
+      await writeState(path, { ...state, offers: state.offers + 1, last_day: offerDay });
       return true;
     },
     OFFER_LOCK

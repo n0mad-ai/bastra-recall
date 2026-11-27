@@ -27,7 +27,9 @@ export const onboardingAnswerTools = [
     description:
       "Report the user's answer to onboarding: later (defer), skip (declined), done (interview finished). " +
       "For delivery accounting, use offer_ready immediately before presenting any unsolicited offer if no user task is active. " +
-      "Present only the returned offer. Record it with offer_shown and offer_id after you actually offered it in your reply. Neither step asks the user for approval.",
+      "Present only the returned offer to the user, then record it with offer_shown and offer_id. " +
+      "In hosts that only display final replies, make that the first tool call on the next turn. " +
+      "Do not record an offer you did not present.",
     inputSchema: {
       type: "object" as const,
       properties: {

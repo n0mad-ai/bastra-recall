@@ -20,7 +20,9 @@ export const ONBOARDING_BLOCK_TAG = "vault-onboarding";
 export const ONBOARDING_DELIVERY_TEXT =
   `If no concrete user task is active, first call onboarding_answer(answer:"offer_ready"). ` +
   `If it returns no offer or a different kind, do not present this unsolicited offer. ` +
-  `After you actually present it in your reply, call onboarding_answer(answer:"offer_shown", offer_id:"<returned id>").`;
+  `Present it in a user-visible message, then call onboarding_answer(answer:"offer_shown", offer_id:"<returned id>"). ` +
+  `If your host only displays final replies, record the offer as your first tool call next turn before acting on the answer. ` +
+  `Never record an offer that you did not present.`;
 
 /** #1603: what remains after three interview offers — no question, one line. */
 export const ONBOARDING_LINE_TEXT =

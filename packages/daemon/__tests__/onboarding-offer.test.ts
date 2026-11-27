@@ -110,6 +110,18 @@ test("#1690: a pending offer cannot spend a slot after skip and stale previews c
     });
   }));
 
+test("#1690: an offer in a final reply can be acknowledged on the next user turn", () =>
+  vault(async (path) => {
+    const claim = await claimOnboardingOffer(path, 0, start);
+    assert.ok(claim);
+    // The user has taken longer than the claim window to answer.
+    assert.equal(await recordOnboardingOffer(path, claim.id, start + DAY), true);
+    const saved = JSON.parse(await readFile(join(path, ONBOARDING_OFFER_FILE), "utf8"));
+    assert.deepEqual(saved, { offers: 1, last_day: localDay(start) });
+    assert.equal(await recordOnboardingOffer(path, claim.id, start + DAY), false);
+    assert.equal(await previewOnboardingOffer(path, 0, start + DAY), "interview");
+  }));
+
 test("#1603: later defers every offer, keeps onboarding open and asks again after the deferral", () =>
   vault(async (path) => {
     assert.equal(await displayOffer(path, 0, start), "interview");
