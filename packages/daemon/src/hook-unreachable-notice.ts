@@ -56,7 +56,7 @@ export function unreachableNoticeText(language: string = processLanguage()): str
 }
 
 /** One-time markers, statusline markers and any interrupted statusline writes. */
-const MARKER_NAME = /^(?:(?:offline-)?[0-9a-f]{24}|offline-[0-9a-f-]{36}\.tmp)$/;
+const MARKER_NAME = /^(?:(?:offline-)?[0-9a-f]{24}|offline-local-\d{1,5}-[0-9a-f]{24}|offline-[0-9a-f-]{36}\.tmp)$/;
 
 function markerKey(sessionId: string): string {
   return createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
@@ -119,15 +119,45 @@ export async function sweepUnreachableNotices(maxAgeMs: number, now: number = Da
   }
 }
 
-/** Publish the last confirmed outage for the Claude footer. Recovery never
- * resets the separate one-time notice. */
-export async function recordStatuslineReachability(sessionId: string, reachable: boolean): Promise<void> {
-  const dir = directory();
-  const marker = join(dir, `offline-${markerKey(sessionId)}`);
+/** A daemon binds plain HTTP on IPv4 loopback. A remote address has no local owner. */
+function localServicePort(baseUrl: string): number | undefined {
+  const { protocol, hostname, port } = new URL(baseUrl);
+  if (protocol === "http:" && (hostname === "127.0.0.1" || hostname === "localhost")) return Number(port || 80);
+  return undefined;
+}
+
+/** #1694: only a successfully bound daemon may clear its own offline markers. */
+export async function clearStatuslineOutagesForPort(port: number): Promise<void> {
   try {
+    const dir = directory();
+    if ((await privateDirState(base())) !== "private" || (await privateDirState(dir)) !== "private") return;
+    const prefix = `offline-local-${port}-`;
+    for (const name of await readdir(dir, { withFileTypes: true })) {
+      if (name.isFile() && name.name.startsWith(prefix) && MARKER_NAME.test(name.name))
+        await unlink(join(dir, name.name)).catch(() => {});
+    }
+  } catch {
+    // The running daemon and the next hook can still serve the session.
+  }
+}
+
+/** Publish the last confirmed outage for the Claude footer. Recovery keeps the one-time notice. */
+export async function recordStatuslineReachability(
+  sessionId: string,
+  reachable: boolean,
+  baseUrl: string
+): Promise<void> {
+  try {
+    const dir = directory();
+    const port = localServicePort(baseUrl);
+    const key = markerKey(sessionId);
+    const marker = join(dir, port === undefined ? `offline-${key}` : `offline-local-${port}-${key}`);
     if (reachable) {
-      if ((await privateDirState(base())) === "private" && (await privateDirState(dir)) === "private")
-        await unlink(marker);
+      if ((await privateDirState(base())) === "private" && (await privateDirState(dir)) === "private") {
+        await unlink(marker).catch(() => {});
+        // A successful hook also retires a marker written by an older client.
+        if (port !== undefined) await unlink(join(dir, `offline-${key}`)).catch(() => {});
+      }
       return;
     }
     if (!(await ensureNoticeDir())) return;

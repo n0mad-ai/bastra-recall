@@ -146,9 +146,15 @@ function hasOfflineMarker(sessionId: string): boolean {
     if (!info.isDirectory() || !privateEntry(info)) return false;
   }
   const key = createHash("sha256").update(sessionId).digest("hex").slice(0, 24);
-  const marker = fs.lstatSync(path.join(dir, `offline-${key}`));
-  // Filesystems can report sub-millisecond times; Date.now() cannot.
-  return marker.isFile() && privateEntry(marker) && Math.floor(marker.mtimeMs) <= Date.now();
+  const isCurrentMarker = (name: string): boolean => {
+    const marker = fs.lstatSync(path.join(dir, name), { throwIfNoEntry: false });
+    // Filesystems can report sub-millisecond times; Date.now() cannot.
+    return !!marker && marker.isFile() && privateEntry(marker) && Math.floor(marker.mtimeMs) <= Date.now();
+  };
+  if (isCurrentMarker(`offline-${key}`)) return true;
+  return fs
+    .readdirSync(dir)
+    .some((name) => /^offline-local-\d{1,5}-/.test(name) && name.endsWith(`-${key}`) && isCurrentMarker(name));
 }
 
 /**

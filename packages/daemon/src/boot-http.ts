@@ -9,6 +9,7 @@
 import type { Vault, SearchIndex, EmbeddingIndex } from "@bastra-recall/core";
 import type { Telemetry } from "./telemetry.js";
 import { startHttpServer } from "./http.js";
+import { clearStatuslineOutagesForPort } from "./hook-unreachable-notice.js";
 import type { EmbeddingStatus } from "./embedding-status.js";
 import { resolveGenerationModel } from "./settings.js";
 import type { PowerMonitor } from "./power-source.js";
@@ -102,5 +103,6 @@ export async function startHttp(opts: {
         curator: { vaultRoot: vaultPath, vault, setDemotions: (ids) => search.setDemotions(ids) },
       });
 
+  if (httpHandle.port !== null) void clearStatuslineOutagesForPort(httpHandle.port);
   return { httpHandle };
 }

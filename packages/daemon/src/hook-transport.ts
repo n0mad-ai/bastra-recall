@@ -41,10 +41,10 @@ function statuslineSession(path: string, body: unknown): string | undefined {
   return typeof payload?.session_id === "string" && payload.session_id ? payload.session_id : undefined;
 }
 
-async function updateStatusline(sessionId: string, reachable: boolean): Promise<void> {
+async function updateStatusline(sessionId: string, reachable: boolean, baseUrl: string): Promise<void> {
   try {
     const { recordStatuslineReachability } = await import("./hook-unreachable-notice.js");
-    await recordStatuslineReachability(sessionId, reachable);
+    await recordStatuslineReachability(sessionId, reachable, baseUrl);
   } catch {
     // Statusline state is advisory. Preserve the transport result.
   }
@@ -127,11 +127,11 @@ export function postHookBody(
   if (!sessionId) return result;
   return result.then(
     async (data) => {
-      await updateStatusline(sessionId, true);
+      await updateStatusline(sessionId, true, baseUrl);
       return data;
     },
     async (error: NodeJS.ErrnoException) => {
-      if (classifyTransportError(error) === "daemon-unreachable") await updateStatusline(sessionId, false);
+      if (classifyTransportError(error) === "daemon-unreachable") await updateStatusline(sessionId, false, baseUrl);
       throw error;
     }
   );

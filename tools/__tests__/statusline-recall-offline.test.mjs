@@ -6,6 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { postHookBody } from "../../packages/daemon/src/hook-transport.ts";
+import {
+  clearStatuslineOutagesForPort,
+  recordStatuslineReachability,
+} from "../../packages/daemon/src/hook-unreachable-notice.ts";
 import { DEFAULT_CONFIG } from "../../packages/statusline/src/config/defaults.ts";
 import { PowerlineRenderer } from "../../packages/statusline/src/powerline.ts";
 
@@ -81,11 +85,12 @@ test("the Claude footer shows a confirmed outage for its session and clears on r
   await close(server);
   await assert.rejects(call("prompt", "session"), { code: "ECONNREFUSED" });
   const key = createHash("sha256").update("session").digest("hex").slice(0, 24);
-  const marker = join(dir, "unreachable-notice", `offline-${key}`);
+  const marker = join(dir, "unreachable-notice", `offline-local-${port}-${key}`);
   const now = Date.now();
   const sameMillisecond = (now + 0.5) / 1_000;
   await utimes(marker, sameMillisecond, sameMillisecond);
-  t.mock.method(Date, "now", () => now);
+  let clock = now;
+  t.mock.method(Date, "now", () => clock);
   assert.match(await render("session"), /Recall nicht erreichbar/);
   const future = new Date(now + 2);
   await utimes(marker, future, future);
@@ -93,6 +98,22 @@ test("the Claude footer shows a confirmed outage for its session and clears on r
   const prolongedOutage = new Date(now - 3_600_000);
   await utimes(marker, prolongedOutage, prolongedOutage);
   assert.match(await render("session"), /Recall nicht erreichbar/);
+
+  // The local port is the daemon's identity. An unscoped notice (old hook
+  // or remote tunnel) and a different local port must remain after startup.
+  clock = now + 60_000;
+  const other = "http://127.0.0.1:1";
+  const remote = "https://recall.example";
+  await recordStatuslineReachability("session", false, other);
+  await recordStatuslineReachability("remote", false, remote);
+  await recordStatuslineReachability("only-local", false, url);
+  assert.match(await render("only-local"), /Recall nicht erreichbar/);
+  await clearStatuslineOutagesForPort(port);
+  assert.doesNotMatch(await render("only-local"), /Recall nicht erreichbar/);
+  assert.match(await render("session"), /Recall nicht erreichbar/);
+  assert.match(await render("remote"), /Recall nicht erreichbar/);
+  await recordStatuslineReachability("session", true, other);
+  assert.doesNotMatch(await render("session"), /Recall nicht erreichbar/);
 
   await listen(server, port);
   assert.equal(await call("prompt", "session"), "{}");
