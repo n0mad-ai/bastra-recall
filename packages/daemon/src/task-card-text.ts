@@ -41,9 +41,13 @@ export function localTaskCardText(text: string, language: string | undefined): s
   return (TASK_CARD_TEXT_BY_LANGUAGE[language ?? "en"] ?? english)[key];
 }
 
+const OVERDUE_OVERFLOW_BY_LANGUAGE: Readonly<Record<string, (count: number) => string>> = {
+  en: (count) => (count === 1 ? "One more reminder is overdue." : `${count} more reminders are overdue.`),
+  de: (count) =>
+    count === 1 ? "Eine weitere Erinnerung ist überfällig." : `${count} weitere Erinnerungen sind überfällig.`,
+};
+
 /** Additional overdue reminders omitted from the session-start cards. */
 export function overdueOverflowText(count: number, language?: string): string {
-  if (language === "de")
-    return count === 1 ? "Eine weitere Erinnerung ist überfällig." : `${count} weitere Erinnerungen sind überfällig.`;
-  return count === 1 ? "One more reminder is overdue." : `${count} more reminders are overdue.`;
+  return (OVERDUE_OVERFLOW_BY_LANGUAGE[language ?? "en"] ?? OVERDUE_OVERFLOW_BY_LANGUAGE.en)(count);
 }
