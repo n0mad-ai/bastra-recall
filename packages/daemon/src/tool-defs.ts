@@ -185,3 +185,8 @@ export const TOOL_ARG_EXPECTATIONS: ReadonlyMap<string, { required: readonly str
     },
   ])
 );
+
+/** A fully held edit returns a structured receipt and an MCP tool error. */
+export function heldEditStatus(tool: string, result: unknown): { isError?: true } {
+  return tool === "edit_memory" && (result as { isError?: boolean } | null)?.isError === true ? { isError: true } : {};
+}

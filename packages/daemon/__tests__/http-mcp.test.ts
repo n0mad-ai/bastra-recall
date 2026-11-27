@@ -156,6 +156,40 @@ test("mcp http: lists the write surface without tasks and answers a recall", asy
   });
 });
 
+test("#1660: HTTP MCP flags a fully held edit but returns partial edits as successful", async () => {
+  await withServer(async (port, deps) => {
+    const path = join(deps.vaultPath, "other.md");
+    const trigger = "configure transaction settlement";
+    await writeFile(path, memoryMarkdown("other", trigger), "utf8");
+    await deps.vault.reindexFile(path);
+
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/api/v1/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
+      })
+    );
+    try {
+      const recall_when = ["alpha bravo", trigger];
+      const result = (frontmatter: { recall_when: string[]; tags?: string[] }) =>
+        client.callTool({ name: "edit_memory", arguments: { id: "alpha", frontmatter } });
+      const held = await result({ recall_when });
+      assert.equal(held.isError, true);
+      const details = JSON.parse((held.content as { text: string }[])[0].text);
+      assert.deepEqual(details.held_triggers, [{ trigger, claimed_by: ["other"] }]);
+
+      const partial = await result({ recall_when, tags: ["reviewed"] });
+      assert.notEqual(partial.isError, true);
+      const saved = JSON.parse((partial.content as { text: string }[])[0].text);
+      assert.deepEqual(saved.held_triggers, details.held_triggers);
+      assert.deepEqual(deps.vault.get("alpha")?.fm.tags, ["reviewed"]);
+      assert.deepEqual(deps.vault.get("alpha")?.fm.recall_when, ["alpha bravo"]);
+    } finally {
+      await client.close();
+    }
+  });
+});
+
 test("mcp http: GET is refused — the stateless door has no event stream", async () => {
   await withServer(async (port) => {
     const status = await new Promise<number>((resolve, reject) => {

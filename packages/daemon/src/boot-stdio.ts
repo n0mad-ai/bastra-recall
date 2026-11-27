@@ -28,7 +28,7 @@ import {
   type StageListener,
 } from "@bastra-recall/core";
 import { recoverCallArguments } from "./call-corruption.js";
-import { TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
+import { heldEditStatus, TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
 import {
   recallHandler,
   loadMemoryHandler,
@@ -292,6 +292,7 @@ export async function startStdioServer(opts: {
             args ?? {}
           );
           return {
+            ...heldEditStatus(name, result),
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };
         } catch (err) {

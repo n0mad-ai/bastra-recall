@@ -100,6 +100,55 @@ async function fixture(t: { after: (fn: () => unknown) => void }): Promise<Fixtu
 /** Die Bytes auf der Platte — der einzige Beweis für „nichts geschrieben". */
 const bytes = (path: string): Promise<string> => readFile(path, "utf8");
 
+test("#1660: an edit saves tags and the body while reporting each held trigger", async (t) => {
+  const { deps, seed } = await fixture(t);
+  const path = await seed();
+  const held = ["configuring database failover", "rewriting database migrations"];
+  await seed({ id: "database-owner", recall_when: held });
+
+  const before = await bytes(path);
+  const fullyHeld = await editMemoryHandler(deps, {
+    id: "hooks-lesson",
+    frontmatter: { recall_when: ["writing a claude code hook", ...held] },
+  });
+  assert.ok("isError" in fullyHeld && fullyHeld.isError);
+  assert.deepEqual(
+    fullyHeld.held_triggers,
+    held.map((trigger) => ({ trigger, claimed_by: ["database-owner"] }))
+  );
+  assert.equal(await bytes(path), before);
+
+  const newTrigger = "testing customer invoices";
+  const partial = await editMemoryHandler(deps, {
+    id: "hooks-lesson",
+    append: "Authorized addition.",
+    frontmatter: { tags: ["changed"], recall_when: ["writing a claude code hook", ...held, newTrigger] },
+  });
+  assert.ok("revision" in partial);
+  assert.deepEqual(partial.operations, ["append", "frontmatter"]);
+  assert.deepEqual(partial.held_triggers, fullyHeld.held_triggers);
+  const after = matter(await bytes(path));
+  assert.deepEqual(after.data.tags, ["changed"]);
+  assert.deepEqual(after.data.recall_when, ["writing a claude code hook", newTrigger]);
+  assert.match(after.content, /Authorized addition/);
+});
+
+test("#1660: the trigger check uses a scope changed on disk since indexing", async (t) => {
+  const { deps, seed } = await fixture(t);
+  const path = await seed();
+  const trigger = "configure customer invoice retries";
+  await seed({ id: "invoice-owner", scope: "invoice-project", recall_when: [trigger] });
+
+  const disk = matter(await bytes(path));
+  await writeFile(path, matter.stringify(disk.content, { ...disk.data, scope: "invoice-project" }));
+  assert.equal(deps.vault.get("hooks-lesson")?.fm.scope, "bastra", "target is still stale in the index");
+
+  const held = await editMemoryHandler(deps, { id: "hooks-lesson", frontmatter: { recall_when: [trigger] } });
+  assert.ok("isError" in held && held.isError);
+  assert.deepEqual(held.held_triggers, [{ trigger, claimed_by: ["invoice-owner"] }]);
+  assert.equal(matter(await bytes(path)).data.scope, "invoice-project");
+});
+
 // ── Identität, Metadaten, Sensitivität ──────────────────────────────
 
 test("#519: append ergänzt den Body, ohne Identität, Metadaten oder Sensitivität anzufassen", async (t) => {

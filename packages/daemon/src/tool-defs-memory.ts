@@ -445,6 +445,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "- append: text added at the end of the body, before the auto-related block.\n" +
       "- frontmatter: patch summary, recall_when, tags, issues, related, confidence, valid_until, rulebook, applies_when, rulebook_proposed or validator; agent changes to existing rules apply directly without confirmation (Owner decision #1336). " +
       "id, scope, type, sensitivity and write_origin are rejected here. A list field REPLACES the whole list: send the old entries plus the new one; removed entries come back under `dropped` (#661).\n" +
+      "A newly added trigger already claimed by another memory is held. Other allowed edits are applied together; held_triggers lists each held trigger and the IDs that claim it. If all changes are held, the tool returns an error without writing.\n" +
       "- rulebook_decision: only after an explicit user decision in chat. Load the proposal, then pass {decision: accept|reject, write_origin: user-directed} with expected_revision. " +
       "It attests user direction, not authentication. Never self-confirm; not combinable with other edits. Accept binds the proposal; reject removes only the proposal and keeps an existing rule.\n" +
       "expected_revision (optional): the `revision` from load_memory; the edit is refused if the file changed meanwhile. Never pass the `updated` stamp (day precision, #519). " +

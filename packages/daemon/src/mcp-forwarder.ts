@@ -56,6 +56,7 @@ import {
   documentWriteEnabledFromEnv,
   filterToolDefsForSurface,
   servedToolDefs,
+  heldEditStatus,
   isToolAllowed,
   toolSurfaceDenial,
   toolSurfaceFrom,
@@ -352,6 +353,7 @@ async function main(): Promise<void> {
       flushStatusline();
       const sessionContext = await maybeSessionContextItem();
       return {
+        ...heldEditStatus(name, result),
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }, ...(sessionContext ? [sessionContext] : [])],
       };
     } catch (err) {

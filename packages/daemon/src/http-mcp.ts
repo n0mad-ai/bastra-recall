@@ -26,6 +26,7 @@ import {
   filterToolDefsForSurface,
   isToolAllowed,
   servedToolDefs,
+  heldEditStatus,
   toolSurfaceDenial,
 } from "./tool-defs.js";
 import { dispatchApi, type DispatchCtx } from "./http-api-routes.js";
@@ -61,7 +62,10 @@ function buildServer(ctx: DispatchCtx): Server {
       if (result === undefined) {
         return { isError: true, content: [{ type: "text" as const, text: `unknown tool: ${name}` }] };
       }
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return {
+        ...heldEditStatus(name, result),
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+      };
     } catch (err) {
       return { isError: true, content: [{ type: "text" as const, text: (err as Error).message }] };
     }

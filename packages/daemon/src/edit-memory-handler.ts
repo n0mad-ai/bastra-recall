@@ -69,7 +69,12 @@ import {
 } from "@bastra-recall/core";
 import { auditOrigin, recordAudit, writeOriginEvidence, type AuditOrigin } from "./audit-trail.js";
 import { WriteRedaction, withRedactionReceipt, type RedactionReceipt, type SecretsRedacted } from "./save-redaction.js";
-import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
+import {
+  unansweredClaims,
+  GENERATED_TRIGGER_TYPES,
+  type ClaimGateResult,
+  type ClaimedSituation,
+} from "./claim-gate.js";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
 import { rulebookDelivery } from "./rulebook-status.js";
@@ -180,6 +185,9 @@ function redactUserFields(redaction: WriteRedaction, fields: UserFields | undefi
 
 const userFieldOps = (fields: UserFields | undefined): string[] => (fields ? ["fields"] : []);
 
+type HeldTrigger = { trigger: string; claimed_by: string[] };
+type HeldEdit = ClaimGateResult & { isError: true; held_triggers: HeldTrigger[] };
+
 export interface EditMemoryResult {
   id: string;
   file_path: string;
@@ -193,6 +201,7 @@ export interface EditMemoryResult {
   /** Welche Operationen gelaufen sind — `["str_replace", "frontmatter"]`. */
   operations: string[];
   save_quality: SaveQualityResult;
+  held_triggers?: HeldTrigger[];
   /** #1378: review the complete resulting rule after every successful edit. */
   rule_text_review?: RuleTextReview;
   /** #661: Listeneinträge, die der Frontmatter-Patch ENTFERNT hat. Ein
@@ -330,6 +339,68 @@ function asSaveInput(mem: Memory, body: string, patch: EditMemoryArgs["frontmatt
   } as SaveMemoryInput;
 }
 
+function currentClaimPreview(
+  deps: ToolDeps,
+  input: SaveMemoryInput,
+  quality: SaveQualityResult,
+  current: Record<string, unknown>
+): { input: SaveMemoryInput; quality: SaveQualityResult } {
+  if (current.scope === input.scope && current.type === input.type) return { input, quality };
+  const parsed = FrontmatterSchema.safeParse(current);
+  if (!parsed.success) return { input, quality };
+  const refreshed = { ...input, scope: parsed.data.scope, type: parsed.data.type };
+  return { input: refreshed, quality: scoreSaveQuality(deps, refreshed, parsed.data.id) };
+}
+
+/** Resolve each newly added trigger independently, including two triggers
+ * belonging to the same owner. Existing triggers remain editable. */
+function editTriggerHolds(
+  deps: ToolDeps,
+  input: SaveMemoryInput,
+  quality: SaveQualityResult,
+  current: Record<string, unknown>
+) {
+  const existing = new Set(Array.isArray(current.recall_when) ? current.recall_when : []);
+  const holds: HeldTrigger[] = [];
+  const claimed: ClaimedSituation[] = [];
+  if (GENERATED_TRIGGER_TYPES.has(input.type)) return { holds, claimed };
+  for (const collision of quality.trigger_collisions) {
+    if (existing.has(collision.trigger)) continue;
+    const entries = unansweredClaims(
+      {
+        ...input,
+        replaces: typeof current.replaces === "string" ? current.replaces : undefined,
+        sibling_of: Array.isArray(current.siblings) ? current.siblings : undefined,
+      },
+      { ...quality, trigger_collisions: [collision] },
+      (id) => {
+        const owner = deps.vault.get(id);
+        return owner ? { summary: owner.fm.summary, body: owner.body } : undefined;
+      },
+      (start) => chainBelow(deps, start)
+    );
+    if (entries.length === 0) continue;
+    holds.push({ trigger: collision.trigger, claimed_by: entries.map((entry) => entry.id) });
+    claimed.push(...entries);
+  }
+  return { holds, claimed };
+}
+
+function allowedPatch(patch: NonNullable<EditMemoryArgs["frontmatter"]>, held: HeldTrigger[], previous: unknown) {
+  const { recall_when, ...remaining } = patch;
+  const blocked = new Set(held.map(({ trigger }) => trigger));
+  const allowed = recall_when?.filter((trigger) => !blocked.has(trigger)) ?? [];
+  // If every requested trigger was held, keep the old list intact.
+  if (allowed.length === 0) return remaining;
+  if (Array.isArray(previous) && previous.length === allowed.length && allowed.every((v, i) => previous[i] === v))
+    return remaining;
+  return { ...remaining, recall_when: allowed };
+}
+
+function declaresRule(patch: EditMemoryArgs["frontmatter"]): patch is NonNullable<EditMemoryArgs["frontmatter"]> {
+  return patch?.rulebook !== undefined || patch?.applies_when !== undefined || patch?.rule_categories !== undefined;
+}
+
 export async function editMemoryHandler(
   deps: ToolDeps,
   rawArgs: unknown,
@@ -341,7 +412,7 @@ export async function editMemoryHandler(
   origin?: AuditOrigin,
   /** #1558: fields only the user changes from the web UI's reader (validated there). */
   userFields?: UserFields
-): Promise<EditMemoryResult | ClaimGateResult> {
+): Promise<EditMemoryResult | HeldEdit> {
   // #519: Der alte Feldname wird LAUT abgelehnt statt still verworfen. Wer ihn
   // schickt, will genau die Absicherung, die Zod ihm sonst kommentarlos
   // wegnähme — und bekäme dann die verlorene Änderung, gegen die er sich
@@ -382,29 +453,11 @@ export async function editMemoryHandler(
   // verbindlich ist der zweite Lauf unten, auf den Bytes unter dem Claim.
   const previewBody = applyBodyOps(mem.body, args);
   const preview = asSaveInput(mem, previewBody, args.frontmatter);
-  const saveQuality = scoreSaveQuality(deps, preview, mem.fm.id);
+  let saveQuality = scoreSaveQuality(deps, preview, mem.fm.id);
 
-  // #360: das Claim-Gate — aber nur für NEU hinzukommende Trigger.
-  //
-  // Ein voller `save_memory(overwrite)` läuft gar nicht durch das Gate („ein
-  // overwrite benennt sein Ziel, und das ist selbst eine Antwort"). Ein Edit,
-  // der `recall_when` unverändert lässt, darf deshalb erst recht nicht gehalten
-  // werden. Neue Trigger sind aber eine neue Behauptung über eine Situation,
-  // und genau die ist die Frage, die das Gate stellt.
-  const declaredBefore = new Set(mem.fm.recall_when);
-  const addedTriggers = (args.frontmatter?.recall_when ?? []).filter((t) => !declaredBefore.has(t));
-  if (addedTriggers.length > 0 && !GENERATED_TRIGGER_TYPES.has(mem.fm.type)) {
-    const claimed = unansweredClaims(
-      preview,
-      saveQuality,
-      (id) => {
-        const m = deps.vault.get(id);
-        return m ? { summary: m.fm.summary, body: m.body } : undefined;
-      },
-      (start) => chainBelow(deps, start)
-    ).filter((c) => addedTriggers.includes(c.trigger));
-    if (claimed.length > 0) return claimGateResult(mem.fm.id, claimed, saveQuality);
-  }
+  let patch = args.frontmatter;
+  let heldTriggers: HeldTrigger[] = [];
+  let fullyHeld: HeldEdit | undefined;
 
   // ── Der verbindliche Schreibvorgang ──────────────────────────────
   const today = new Date().toISOString().slice(0, 10);
@@ -424,6 +477,27 @@ export async function editMemoryHandler(
     evidence = writeOriginEvidence();
     if (evidence) next.write_origin_evidence = evidence;
     else delete next.write_origin_evidence;
+  };
+  const isFullyHeld = (fm: Record<string, unknown>): boolean => {
+    if (!patch?.recall_when) return false;
+    const current = currentClaimPreview(deps, preview, saveQuality, fm);
+    saveQuality = current.quality;
+    const { holds, claimed } = editTriggerHolds(deps, current.input, saveQuality, fm);
+    if (!holds.length) return false;
+    heldTriggers = holds;
+    const allowed = allowedPatch(patch, holds, fm.recall_when);
+    patch = Object.keys(allowed).length ? allowed : undefined;
+    if (patch || args.append !== undefined || args.str_replace || fields) return false;
+    fullyHeld = {
+      id: mem.fm.id,
+      created: false,
+      claim_gate: { claimed },
+      save_quality: saveQuality,
+      held_triggers: holds,
+      isError: true,
+      note: "No changes were written; the listed triggers are already claimed by other memories.",
+    };
+    return true;
   };
   const outcome = await mutateMemoryFile(
     mem.filePath,
@@ -457,21 +531,17 @@ export async function editMemoryHandler(
         // `write_origin`, `sensitivity`, Valenz, `created` und alles andere
         // bleiben unangetastet: gepatcht wird über den Bestand, nicht neu
         // gebaut. Das ist der ganze Unterschied zum vollen Save.
-        dropped = droppedListEntries(fm, args.frontmatter);
-        const next: Record<string, unknown> = { ...fm, ...(args.frontmatter ?? {}), ...fields, updated: today };
+        if (isFullyHeld(fm)) return null;
+        dropped = droppedListEntries(fm, patch);
+        const next: Record<string, unknown> = { ...fm, ...patch, ...fields, updated: today };
         // Existing rules may be edited directly (Owner decision #1336).
         // #1385: a note the user directed binds a new declaration directly,
         // the same way save_memory does (Owner decision 2026-11-04). New agent
         // declarations on the agent's own notes remain proposals.
-        const patch = args.frontmatter;
         const previous = FrontmatterSchema.safeParse(fm);
         const legacy = previous.success ? resolveRulebook(previous.data) : undefined;
         const bindsDirectly = bindsRuleDirectly(fm, !!legacy, origin);
-        if (
-          patch?.rulebook !== undefined ||
-          patch?.applies_when !== undefined ||
-          patch?.rule_categories !== undefined
-        ) {
+        if (declaresRule(patch)) {
           const rulebook = patch.rulebook ?? fm.rulebook ?? legacy?.rulebook ?? "on-demand";
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
           const proposal = RulebookProposalSchema.safeParse({
@@ -562,6 +632,7 @@ export async function editMemoryHandler(
     { vaultRoot: deps.vaultPath, op: "save_memory_edit" }
   );
 
+  if (outcome.kind === "noop" && fullyHeld) return fullyHeld;
   if (outcome.kind === "identity-mismatch") {
     throw new Error(
       `edit_memory: ${mem.filePath} does not hold memory '${mem.fm.id}' ` +
@@ -575,8 +646,7 @@ export async function editMemoryHandler(
     );
   }
   if (outcome.kind !== "written") {
-    // Erreichbar nur, wenn der Frontmatter-Callback `null` zurückgäbe — tut er
-    // nie. Ein Beleg wird ausschließlich aus einem WRITTEN gebildet; etwas
+    // Ein Beleg wird ausschließlich aus einem WRITTEN gebildet; etwas
     // anderes zu protokollieren wäre ein Audit-Eintrag über einen
     // Schreibvorgang, den es nicht gab.
     throw new Error(`edit_memory: '${mem.fm.id}' reported '${outcome.kind}' — nothing was modified.`);
@@ -589,7 +659,7 @@ export async function editMemoryHandler(
   const operations = [
     ...(args.str_replace ? ["str_replace"] : []),
     ...(args.append !== undefined ? ["append"] : []),
-    ...(args.frontmatter ? ["frontmatter"] : []),
+    ...(patch ? ["frontmatter"] : []),
     ...(args.rulebook_decision ? [`rulebook_${args.rulebook_decision.decision}`] : []),
     ...userFieldOps(fields),
   ];
@@ -635,7 +705,10 @@ export async function editMemoryHandler(
     // the index may already hold a later writer's state.
     delivery: rulebookDelivery(outcome.after as Memory["fm"]),
     ...evidenceField(evidence),
-    note: "Edit complete — do not repeat this edit_memory call.",
+    ...(heldTriggers.length ? { held_triggers: heldTriggers } : {}),
+    note: heldTriggers.length
+      ? "Allowed changes saved. The listed triggers were held; do not repeat the full edit."
+      : "Edit complete — do not repeat this edit_memory call.",
     ...(warning ? { warning } : {}),
   };
   return withRedactionReceipt(result, redacted);
