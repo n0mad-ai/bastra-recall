@@ -260,13 +260,13 @@ test("GET /ui/onboarding serves the catalog in language.primary; ids and structu
   for (const [i, q] of de.questions.entries()) assert.notEqual(q.ask, en.questions[i]!.ask, `'${q.id}' in German`);
 });
 
-test("the AI interview handed to the model stays English and unchanged", () => {
+test("the AI interview and its delivery instructions stay in English", () => {
   // The session hook's onboarding block takes no language: it is written for
   // the model, whatever language.primary says. Pinned byte for byte.
   const block = buildOnboardingBlock(true);
   assert.equal(
     createHash("sha256").update(block).digest("hex"),
-    "2cc3f5f256d5cda9bf937e66de873224b0b33cc7d356935cefed265710a3507c"
+    "173e0f2791edd2d752dde6cdfd5385263ea830fb65b3b4aed596ecdf4d181f84"
   );
   assert.doesNotMatch(block, /[äöüÄÖÜß]/);
   assert.equal(buildOnboardingBlock(false), "");
