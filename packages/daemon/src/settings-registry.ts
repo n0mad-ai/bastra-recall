@@ -325,6 +325,12 @@ export const SETTINGS_REGISTRY = {
       label: "Öffentliche Adresse der Web-Oberfläche",
       default: null,
     }),
+    // The Android app (WebView shell) on /ui is a Recall Pulse feature, off by default (ui-android-app.ts).
+    android_app: setting(bool, {
+      area: "access",
+      label: "Android-App (Recall Pulse)",
+      default: false,
+    }),
   },
   assistant: {
     // Address name (ASCII DNS label). Optional: a display name that derives no address may stand alone.

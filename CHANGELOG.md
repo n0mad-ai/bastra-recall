@@ -28,6 +28,8 @@ until a new design replaces it; this name is independent of the product version.
   tunnel rule and checks: [Remote access](./docs/REMOTE-ACCESS.md#web-ui-through-your-own-address-sign-in).
   **For existing installations:** without an account nothing changes. Once you
   create one, the web UI asks for the sign-in on your computer too.
+  The Android app on `/ui` is a Recall Pulse feature, off by default
+  (`bastra config set ui.android_app true`); the web UI in a browser stays free.
 
 - Reports view: a status filter in the head, between the project pick list
   and the search field. New, Question, In progress and Handed over are

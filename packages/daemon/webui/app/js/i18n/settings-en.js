@@ -349,6 +349,9 @@ export default {
   "st.k.ui.public_origin": "Public address of the web interface",
   "st.k.ui.public_origin.d":
     "The https address the web interface is reachable at through your tunnel, for example https://recall.example.com. Empty = no access through the tunnel.",
+  "st.k.ui.android_app": "Android app (Recall Pulse)",
+  "st.k.ui.android_app.d":
+    "Lets the Android app open this web interface. The web interface itself stays free in any browser. Default: off.",
   "st.unit.%": "%",
   "st.custom": "Custom value …",
   "st.custom.ph": "custom value",

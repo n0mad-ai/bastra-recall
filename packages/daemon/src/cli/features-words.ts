@@ -75,6 +75,7 @@ const en = {
   documentWrite: "document writing (Recall Pulse)",
   documentWriteOn: "on (this shell's environment; the daemon reads its own)",
   documentWriteHint: "BASTRA_DOCUMENT_WRITE=1 in the daemon's environment",
+  androidApp: "Android app (Recall Pulse)",
   battery: "battery saver (macOS)",
   batterySaving: "on, on battery now: paraphrasing waits for AC, no warm-ups, model unloads after 60 s idle",
   batteryLive: (source: string) => `on (power source: ${source})`,
@@ -148,6 +149,7 @@ const de: FeaturesWords = {
   documentWrite: "Dokumente schreiben (Recall Pulse)",
   documentWriteOn: "an (Umgebung dieser Shell; der Daemon liest seine eigene)",
   documentWriteHint: "BASTRA_DOCUMENT_WRITE=1 in der Umgebung des Daemons",
+  androidApp: "Android-App (Recall Pulse)",
   battery: "Akku-Sparmodus (macOS)",
   batterySaving:
     "an, gerade im Akkubetrieb: die Umschreibung wartet auf Netzstrom, kein Vorwärmen, das Modell wird nach 60 s Leerlauf entladen",

@@ -111,6 +111,7 @@ const FEATURES: FeatureState = {
   archive: "bastra",
   archiveLimits: { cap: 2 ** 30, maxItem: null },
   documentWrite: false,
+  androidApp: false,
   battery: { saver: true, live: { source: "battery", saving: true } },
 };
 

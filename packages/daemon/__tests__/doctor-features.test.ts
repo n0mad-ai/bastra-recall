@@ -50,6 +50,7 @@ function allOff(): FeatureState {
     archive: "off",
     archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
     documentWrite: false,
+    androidApp: false,
     battery: { saver: false },
   };
 }
@@ -73,6 +74,7 @@ function allOn(): FeatureState {
     archive: "bastra",
     archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
     documentWrite: true,
+    androidApp: true,
     battery: { saver: true, live: { source: "ac", saving: false } },
   };
 }
@@ -506,4 +508,29 @@ test("#1474: document writing is shown on and off, read from the injected enviro
   });
   assert.equal((await collectFeatureState([], null, {})).documentWrite, false);
   assert.equal((await collectFeatureState([], null, { BASTRA_DOCUMENT_WRITE: "1" })).documentWrite, true);
+});
+
+test("Recall Pulse: the Android app row is off by default and names the command", async (t) => {
+  assert.match(lineFor(featureLines(allOn()), "Android app (Recall Pulse)"), /✓.*on/);
+  assert.match(
+    lineFor(featureLines(allOff()), "Android app (Recall Pulse)"),
+    /· Android app \(Recall Pulse\): off → bastra config set ui\.android_app true/
+  );
+  assert.match(
+    lineFor(featureLines(allOff(), "de"), "Android-App (Recall Pulse)"),
+    /aus → bastra config set ui\.android_app true/
+  );
+  assert.ok(split(featureLines(allOff())).optional.some((l) => l.includes("Android app (Recall Pulse)")));
+
+  const home = await mkdtemp(join(tmpdir(), "bastra-doctor-android-"));
+  const saved = { HOME: process.env.HOME, URL: process.env.BASTRA_DAEMON_URL };
+  process.env.BASTRA_DAEMON_URL = "http://127.0.0.1:1";
+  process.env.HOME = home;
+  t.after(async () => {
+    process.env.HOME = saved.HOME;
+    if (saved.URL === undefined) delete process.env.BASTRA_DAEMON_URL;
+    else process.env.BASTRA_DAEMON_URL = saved.URL;
+    await rm(home, { recursive: true, force: true });
+  });
+  assert.equal((await collectFeatureState([], null, {})).androidApp, false);
 });

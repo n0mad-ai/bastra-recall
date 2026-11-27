@@ -302,6 +302,11 @@ export async function getUiPublicOrigin(path?: string): Promise<string> {
   return (await stored("ui", "public_origin", path)) ?? "";
 }
 
+/** Recall Pulse: may the Android app (WebView shell) use /ui (`ui.android_app`)? Default off. Read per request. */
+export async function getUiAndroidApp(path?: string): Promise<boolean> {
+  return storedOrDefault("ui", "android_app", path);
+}
+
 export async function setUiEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
   // Keep the other ui.* keys (background image) when the switch flips.
   await store("ui", "enabled", on, path);

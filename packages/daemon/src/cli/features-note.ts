@@ -71,6 +71,8 @@ export interface FeatureState {
   archiveProblem?: string | null;
   /** #1474: Recall Pulse document writing (BASTRA_DOCUMENT_WRITE), as this shell sees it. */
   documentWrite: boolean;
+  /** Recall Pulse: the Android app may use /ui (`ui.android_app`). */
+  androidApp: boolean;
   /** #632: battery mode. `live` = what the running daemon reports, absent when
    *  it is not running or predates the field. */
   battery: { saver: boolean; live?: { source: string; saving: boolean } };
@@ -218,6 +220,7 @@ function optionalLines(s: FeatureState, w: FeaturesWords): string[] {
   lines.push(s.ui ? row(ON, w.vaultMap, w.on) : row(INFO, w.vaultMap, w.off, "bastra config set ui.enabled true"));
   lines.push(archiveLine(s, w));
   lines.push(documentWriteLine(s.documentWrite, w));
+  lines.push(androidAppLine(s.androidApp, w));
   lines.push(batteryLine(s.battery, w));
   return lines;
 }
@@ -250,6 +253,11 @@ function rulebookGateLines(surface: string, gate: ClientFeatures["rulebookGate"]
 /** #1474: Recall Pulse document writing, as this shell's environment sets it. */
 function documentWriteLine(on: boolean, w: FeaturesWords): string {
   return on ? row(ON, w.documentWrite, w.documentWriteOn) : row(INFO, w.documentWrite, w.off, w.documentWriteHint);
+}
+
+/** Recall Pulse: the Android app on /ui; the web UI itself stays free. */
+function androidAppLine(on: boolean, w: FeaturesWords): string {
+  return on ? row(ON, w.androidApp, w.on) : row(INFO, w.androidApp, w.off, "bastra config set ui.android_app true");
 }
 
 /** Same switch and legacy alias as documentWriteEnabledFromEnv, but from the
@@ -287,6 +295,11 @@ function archiveFeature(
 /** Only a stored `false` turns redaction off (user-text-redaction.ts reads it the same way). */
 function redactionOn(settings: CliSettings): boolean {
   return settings.redaction?.enabled !== false;
+}
+
+/** `ui.android_app`, or its registry default (off). */
+function androidAppOn(settings: CliSettings): boolean {
+  return settings.ui?.android_app ?? SETTINGS_REGISTRY.ui.android_app.default;
 }
 
 function reflexState(settings: CliSettings, env: NodeJS.ProcessEnv): FeatureState["reflex"] {
@@ -367,6 +380,7 @@ export async function collectFeatureState(
     commons: settings.commons?.enabled ?? false,
     bridges: settings.sharedRecall?.enabled ?? false,
     ui: settings.ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default,
+    androidApp: androidAppOn(settings),
     // This shell's env; the daemon reads its own (a LaunchAgent may differ).
     ...archiveFeature(settings.archive?.enabled, env),
     documentWrite: documentWriteFrom(env),

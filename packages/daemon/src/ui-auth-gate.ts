@@ -11,8 +11,9 @@
  *    - "local-ui": any other /ui request; the existing gates in http.ts stay.
  *    - "other": everything outside /ui; nothing changes for it.
  * 2. gateUiRequest runs after the host, token, account and local-POST gates:
- *    route policy (ui-route-policy.ts), exact Origin for public writes, the
- *    session, CSRF, and the sign-in routes themselves (ui-auth-routes.ts).
+ *    the Android app switch (ui-android-app.ts), route policy
+ *    (ui-route-policy.ts), exact Origin for public writes, the session, CSRF,
+ *    and the sign-in routes themselves (ui-auth-routes.ts).
  *
  * Without an account the web UI stays usable as before on the Mac (direct
  * local access through the gates above), so an update locks no one out before
@@ -22,6 +23,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { forwardedWithoutToken, isLoopback, isLoopbackHost } from "./http-auth.js";
 import { sendJson } from "./http-util.js";
+import { refuseAndroidAppWithoutPulse } from "./ui-android-app.js";
 import { normalizePublicUiOrigin } from "./settings-registry.js";
 import { getUiPublicOrigin } from "./settings.js";
 import { uiAuthStores } from "./ui-auth-stores.js";
@@ -80,6 +82,8 @@ export async function gateUiRequest(
   pathname: string
 ): Promise<boolean> {
   if (ui.kind === "other" || ui.kind === "reject") return false;
+  // Recall Pulse: the Android app, before anything about the account or the vault.
+  if (await refuseAndroidAppWithoutPulse(req, res, method)) return true;
   const isPublic = ui.kind === "public-ui";
   const policy = uiRoutePolicy(pathname);
   const write = method !== "GET" && method !== "HEAD";

@@ -7,7 +7,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "usage: bastra config get <key> | bastra config set <key> <value>\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "usage: bastra config get <key> | bastra config set <key> <value>\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       },
       {
         "argv": [
@@ -16,7 +16,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'no.such.key'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'no.such.key'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       },
       {
         "argv": [
@@ -24,7 +24,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key ''\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key ''\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       }
     ],
     "stored": null
@@ -1808,6 +1808,66 @@
       }
     }
   },
+  "ui.android_app on/off/invalid/missing": {
+    "results": [
+      {
+        "argv": [
+          "set",
+          "ui.android_app",
+          "on"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.android_app updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "get",
+          "ui.android_app"
+        ],
+        "code": 0,
+        "stdout": "true\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.android_app",
+          "false"
+        ],
+        "code": 0,
+        "stdout": "✓ ui.android_app updated\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "set",
+          "ui.android_app",
+          "maybe"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for ui.android_app\n"
+      },
+      {
+        "argv": [
+          "set",
+          "ui.android_app"
+        ],
+        "code": 2,
+        "stdout": "",
+        "stderr": "error: invalid value for ui.android_app\n"
+      }
+    ],
+    "stored": {
+      "update": {
+        "mode": "notify"
+      },
+      "ui": {
+        "android_app": false
+      }
+    }
+  },
   "tasks.notifications on/off/invalid/missing": {
     "results": [
       {
@@ -2281,7 +2341,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'modelRecommendation.id'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'modelRecommendation.id'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       },
       {
         "argv": [
@@ -2291,7 +2351,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'modelRecommendation.answer'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'modelRecommendation.answer'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       },
       {
         "argv": [
@@ -2300,7 +2360,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'modelRecommendation.answer'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'modelRecommendation.answer'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       }
     ],
     "stored": null
@@ -2394,7 +2454,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'assistant.displayName'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'assistant.displayName'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       },
       {
         "argv": [
@@ -2404,7 +2464,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'assistant.displayName'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'assistant.displayName'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       }
     ],
     "stored": null
@@ -2684,7 +2744,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'tasks.chatConsent'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'tasks.chatConsent'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       },
       {
         "argv": [
@@ -2694,7 +2754,7 @@
         ],
         "code": 2,
         "stdout": "",
-        "stderr": "error: unknown config key 'tasks.chatConsent'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
+        "stderr": "error: unknown config key 'tasks.chatConsent'\nknown keys: update.mode, embedding.provider, ollama.autostart, api.token, cors.origins, commons.enabled, sharedRecall.enabled, sharedRecall.language, sharedRecall.live, evidenceGate.enabled, experiment.name, experiment.arms, experiment.registration, experiment.registration_version, docs.mode, docs.language, generation.model, ui.enabled, ui.backdrop, ui.backdropDim, ui.backdropBlur, ui.public_origin, ui.android_app, assistant.name, soul.direction, soul.text, reflex.enabled, reflex.maxPerTurn, size.guide, size.critical, size.exemptPaths, archive.retain, archive.enabled, archive.cap, archive.max-item, battery.saver, daemon.env, language.primary, code.repos, promptImpact.enabled, coverageMap.enabled, tasks.enabled, tasks.notifications, tasks.chatActiveMinutes, tasks.reportUndo, redaction.enabled, telemetry.enabled, embedding.model, ollama.url, ollama.keepAlive, recall.floor, prompt.hookMode, hint.suppress, hint.suppressAfter, scope.filterLanes, saveNotice, logs.retention, logs.path, training.capture\n"
       }
     ],
     "stored": null

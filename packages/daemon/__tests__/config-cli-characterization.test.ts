@@ -215,6 +215,7 @@ const CASES: Case[] = [
   ...bool("sharedRecall.live"),
   ...bool("evidenceGate.enabled", "BASTRA_EVIDENCE_GATE"),
   ...bool("ui.backdropBlur"),
+  ...bool("ui.android_app"),
   ...bool("tasks.notifications"),
   ...bool("redaction.enabled"),
   ...bool("telemetry.enabled", "BASTRA_TELEMETRY"),

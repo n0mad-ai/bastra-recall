@@ -354,6 +354,9 @@ export default {
   "st.k.ui.public_origin": "Öffentliche Adresse der Web-Oberfläche",
   "st.k.ui.public_origin.d":
     "Die https-Adresse, unter der die Web-Oberfläche über deinen Tunnel erreichbar ist, zum Beispiel https://recall.example.com. Leer = kein Zugriff über den Tunnel.",
+  "st.k.ui.android_app": "Android-App (Recall Pulse)",
+  "st.k.ui.android_app.d":
+    "Erlaubt der Android-App, diese Web-Oberfläche zu öffnen. Die Web-Oberfläche selbst bleibt in jedem Browser frei. Standard: aus.",
   "st.unit.%": "%",
   "st.custom": "Eigener Wert …",
   "st.custom.ph": "eigener Wert",

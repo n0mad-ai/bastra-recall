@@ -203,6 +203,15 @@ const ROWS: Row[] = [
     getter: getters.getUiPublicOrigin,
     unset: "",
   },
+  {
+    key: "ui.android_app",
+    def: false,
+    valid: true,
+    stored: true,
+    invalid: "x",
+    getter: getters.getUiAndroidApp,
+    unset: false,
+  },
   // The address name starts the address setup; the web API refuses it (see below).
   { key: "assistant.name", def: null, valid: " Jarvis ", stored: "jarvis", invalid: "", managed: true },
   { key: "assistant.displayName", def: null, locked: true },
@@ -336,9 +345,9 @@ async function isolated<T>(fn: (dir: string, path: string) => Promise<T>): Promi
 
 const entryOf = (key: string): SettingEntry => settingEntries().find((e) => e.key === key)!;
 
-test("#1510: the table names exactly the 51 registry keys", () => {
+test("#1510: the table names exactly the 52 registry keys", () => {
   const keys = settingEntries().map((e) => e.key);
-  assert.equal(ROWS.length, 51);
+  assert.equal(ROWS.length, 52);
   assert.deepEqual(
     ROWS.map((r) => r.key),
     keys

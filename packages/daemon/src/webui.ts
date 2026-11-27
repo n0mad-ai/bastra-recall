@@ -437,6 +437,11 @@ export async function serveLoginPage(
   res.end(html);
 }
 
+/** A page navigation: a GET or HEAD that accepts text/html (everything else is a data request). */
+export function isPageNavigation(req: IncomingMessage, method: string): boolean {
+  return (method === "GET" || method === "HEAD") && /\btext\/html\b/i.test(String(req.headers.accept ?? ""));
+}
+
 /**
  * #1198: a /ui request without a valid session. A page navigation (GET that
  * accepts text/html) goes to the sign-in page with the path it wanted as
@@ -445,8 +450,7 @@ export async function serveLoginPage(
  */
 export function sendUiAuthRequired(req: IncomingMessage, res: ServerResponse, method: string): void {
   const url = req.url ?? "";
-  const page = (method === "GET" || method === "HEAD") && /\btext\/html\b/i.test(String(req.headers.accept ?? ""));
-  if (page && url.startsWith("/ui") && !url.startsWith("//")) {
+  if (isPageNavigation(req, method) && url.startsWith("/ui") && !url.startsWith("//")) {
     const next = url === "/ui" || url.startsWith("/ui?") ? `/ui/${url.slice(3)}` : url;
     res.writeHead(302, { Location: `/ui/login?next=${encodeURIComponent(next)}`, "Cache-Control": "no-store" });
     res.end();

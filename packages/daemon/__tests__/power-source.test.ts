@@ -170,6 +170,7 @@ test("doctor: off names the command, on battery says what is deferred", () => {
     archive: "off",
     archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
     documentWrite: false,
+    androidApp: false,
     battery: { saver: false },
   } as FeatureState;
   const row = (s: FeatureState) => featureLines(s).find((l) => l.includes("battery saver"))!;

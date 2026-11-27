@@ -574,6 +574,23 @@ phone, through the same tunnel. This is optional and off by default.
 
 5. **Sign in.** Open `https://recall.example.com/ui/` in a browser and sign in.
 
+### The Android app (Recall Pulse)
+
+The web UI stays free in every browser, on your computer and through your own
+address. The Android app (a full-screen shell around the same web UI) is a
+**Recall Pulse** feature and is off by default. While it is off, every `/ui`
+request from the app answers `403`, before the sign-in: pages show a short
+notice with the command below, everything else answers
+`{"error":"pulse-required"}`. Switch it on on the computer that runs Recall:
+
+```sh
+bastra config set ui.android_app true
+```
+
+This takes effect at once; no restart. The app is recognized by
+`BastraRecallShell/<version>` in its user agent. That is a product switch, not
+a security boundary: the sign-in protects `/ui` either way.
+
 ### Verify
 
 From a machine outside your network (replace the hostname):
@@ -697,7 +714,9 @@ setzen und bei Cloudflare „Always Use HTTPS" einschalten. Aus: `bastra ui remo
 off` und Regel entfernen. Von außen nie erreichbar: Einstellungen,
 Ordnerzugriff, Vault-Import, Assistenten-Adresse, Hooks, Health. Private
 Erinnerungen sind nach der Anmeldung auch von außen sichtbar. Sitzungen: 24
-Stunden, 2 Stunden Leerlauf, „auf diesem Gerät angemeldet bleiben" 30 Tage.
+Stunden, 2 Stunden Leerlauf, „auf diesem Gerät angemeldet bleiben" 30 Tage. Die
+Android-App gehört zu Recall Pulse und ist standardmäßig aus (der Browser
+bleibt frei); einschalten mit `bastra config set ui.android_app true`.
 Gegen Passwort-Raten gibt es Sperren (5 Fehlversuche in 15 Minuten sperren die
 Quelle 15 Minuten, 20 in 24 Stunden sperren die Anmeldung von außen 1 Stunde;
 jede weitere Sperre verdoppelt die Zeit bis höchstens 24 Stunden). Bei
