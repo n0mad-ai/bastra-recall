@@ -31,6 +31,8 @@ const OFFER_LOCK = { crossProcess: true, requireLock: true } as const;
 /** What this session start gets: the interview, the one-line mention, or nothing. */
 export type OnboardingOffer = "interview" | "line" | null;
 
+type OfferClaim = { id: string; until: number; day: string };
+
 interface OfferState {
   /** Offers delivered so far, interview and line alike. */
   offers: number;
@@ -38,7 +40,7 @@ interface OfferState {
   last_day?: string;
   /** Epoch ms until which a "later" answer holds every offer back. */
   later_until?: number;
-  pending?: { id: string; until: number };
+  pending?: OfferClaim[];
 }
 
 /** The user's day, not UTC: "once a day" ends at their midnight. */
@@ -51,21 +53,28 @@ function statePath(vaultPath: string): string {
   return join(vaultPath, ONBOARDING_OFFER_FILE);
 }
 
+function readOfferClaims(raw: unknown): OfferClaim[] {
+  const claims: unknown[] = Array.isArray(raw) ? raw : [raw];
+  return claims.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const { id, until, day } = entry as Partial<OfferClaim>;
+    if (typeof id !== "string" || typeof until !== "number" || !Number.isFinite(until)) return [];
+    return [{ id, until, day: typeof day === "string" ? day : localDay(until - OFFER_CLAIM_MS) }];
+  });
+}
+
+const claimStartedAt = (claim: OfferClaim): number => claim.until - OFFER_CLAIM_MS;
+
 /** The file is in the user's vault and may be edited or damaged: anything
  *  unreadable counts as "never offered" rather than blocking the session. */
 async function readState(path: string): Promise<OfferState> {
   try {
     const raw = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
     const offers = Number.isSafeInteger(raw.offers) && (raw.offers as number) > 0 ? (raw.offers as number) : 0;
-    const pending = raw.pending as { id?: unknown; until?: unknown } | undefined;
+    const pending = readOfferClaims(raw.pending);
     return {
       offers,
-      ...(pending &&
-      typeof pending.id === "string" &&
-      typeof pending.until === "number" &&
-      Number.isFinite(pending.until)
-        ? { pending: { id: pending.id, until: pending.until } }
-        : {}),
+      ...(pending.length ? { pending } : {}),
       ...(typeof raw.last_day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.last_day)
         ? { last_day: raw.last_day }
         : {}),
@@ -88,8 +97,7 @@ function eligibleOffer(state: OfferState, now: number): OnboardingOffer {
   if ((state.later_until ?? 0) > now || state.last_day === today) return null;
   // A final-only client may have shown a reserved offer without another turn
   // to report it. Let the same day end without a second invitation or a charge.
-  if (state.pending && (state.pending.until > now || localDay(state.pending.until - OFFER_CLAIM_MS) === today))
-    return null;
+  if (state.pending?.some((claim) => claim.until > now || claim.day === today)) return null;
   return state.offers < ONBOARDING_INTERVIEW_OFFERS ? "interview" : "line";
 }
 
@@ -113,27 +121,37 @@ export async function claimOnboardingOffer(vaultPath: string, size: number, now 
       const offer = eligibleOffer(state, now);
       if (offer === null) return null;
       const id = randomUUID();
-      await writeState(path, { ...state, pending: { id, until: now + OFFER_CLAIM_MS } });
+      await writeState(path, {
+        ...state,
+        pending: [...(state.pending ?? []), { id, until: now + OFFER_CLAIM_MS, day: localDay(now) }],
+      });
       return { offer, id };
     },
     OFFER_LOCK
   );
 }
 
-/** A receipt can arrive on the next user turn, after the reservation's
- * short exclusivity window. Charge the day of the offer, once, and accept
- * only the last reservation so an older client cannot override a newer one. */
+/** A receipt can arrive after another session makes a later offer. Charge
+ * each positively acknowledged offer day once and keep the latest day. */
 export async function recordOnboardingOffer(vaultPath: string, id: string, now = Date.now()): Promise<boolean> {
   const path = statePath(vaultPath);
   return withPathLock(
     path,
     async () => {
       if (await isOnboardingDone(vaultPath)) return false;
-      const { pending, ...state } = await readState(path);
-      if (pending?.id !== id) return false;
-      const offerDay = localDay(Math.min(now, pending.until - OFFER_CLAIM_MS));
-      if (state.last_day && state.last_day >= offerDay) return false;
-      await writeState(path, { ...state, offers: state.offers + 1, last_day: offerDay });
+      const { pending = [], ...state } = await readState(path);
+      const claim = pending.find((entry) => entry.id === id);
+      if (!claim || claimStartedAt(claim) > now) return false;
+      const offerDay = claim.day;
+      if (state.last_day === offerDay) return false;
+      const remaining = pending.filter((entry) => entry.day !== offerDay);
+      const lastDay = state.last_day && state.last_day > offerDay ? state.last_day : offerDay;
+      await writeState(path, {
+        ...state,
+        offers: state.offers + 1,
+        last_day: lastDay,
+        ...(remaining.length ? { pending: remaining } : {}),
+      });
       return true;
     },
     OFFER_LOCK
@@ -155,7 +173,6 @@ export async function deferOnboarding(
     path,
     async () => {
       const state = await readState(path);
-      delete state.pending;
       await writeState(path, { ...state, later_until: until });
     },
     OFFER_LOCK

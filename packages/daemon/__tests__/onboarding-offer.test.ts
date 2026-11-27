@@ -89,8 +89,9 @@ test("#1690: a lost reservation doesn't charge an interview and a later delivery
     assert.equal(await claimOnboardingOffer(path, 0, start + 2 * 60_000), null);
     const next = await claimOnboardingOffer(path, 0, start + DAY);
     assert.ok(next);
-    assert.equal(await recordOnboardingOffer(path, lost.id, start + DAY), false);
     assert.equal(await recordOnboardingOffer(path, next.id, start + DAY), true);
+    const saved = JSON.parse(await readFile(join(path, ONBOARDING_OFFER_FILE), "utf8"));
+    assert.equal(saved.offers, 1);
     assert.equal(JSON.parse(await readFile(join(path, ONBOARDING_OFFER_FILE), "utf8")).offers, 1);
   }));
 
@@ -121,6 +122,19 @@ test("#1690: an offer in a final reply can be acknowledged on the next user turn
     assert.deepEqual(saved, { offers: 1, last_day: localDay(start) });
     assert.equal(await recordOnboardingOffer(path, claim.id, start + DAY), false);
     assert.equal(await previewOnboardingOffer(path, 0, start + DAY), "interview");
+  }));
+
+test("#1690: another day's offer cannot invalidate a legitimate older receipt", () =>
+  vault(async (path) => {
+    const older = await claimOnboardingOffer(path, 0, start);
+    const newer = await claimOnboardingOffer(path, 0, start + DAY);
+    assert.ok(older && newer);
+    assert.equal(await recordOnboardingOffer(path, newer.id, start + DAY), true);
+    assert.equal(await recordOnboardingOffer(path, older.id, start + DAY), true);
+    assert.equal(await recordOnboardingOffer(path, older.id, start + DAY), false);
+    assert.equal(await previewOnboardingOffer(path, 0, start + DAY), null);
+    assert.equal(await displayOffer(path, 0, start + 2 * DAY), "interview");
+    assert.equal(await previewOnboardingOffer(path, 0, start + 3 * DAY), "line");
   }));
 
 test("#1603: later defers every offer, keeps onboarding open and asks again after the deferral", () =>
