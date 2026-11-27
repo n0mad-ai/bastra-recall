@@ -200,9 +200,11 @@ async function cmdConfigGet(key: KnownKey, w: ConfigWords): Promise<number> {
     return 0;
   }
   const entry = settingEntry(key)!;
-  const value = storedSetting(await readSettings(), entry) ?? entry.default;
+  const stored = storedSetting(await readSettings(), entry);
+  // An absent secret object inherits an empty default, which is not a configured value.
+  const value = stored ?? (key === "daemon.env" ? "(unset)" : entry.default);
   out(
-    `${entry.secret && value ? "(configured — masked)" : typeof value === "object" ? JSON.stringify(value) : (value ?? "(unset)")}\n`
+    `${entry.secret && stored ? "(configured — masked)" : typeof value === "object" ? JSON.stringify(value) : (value ?? "(unset)")}\n`
   );
   if (entry.env && process.env[entry.env] !== undefined) out(w.overrides(entry.env));
   return 0;

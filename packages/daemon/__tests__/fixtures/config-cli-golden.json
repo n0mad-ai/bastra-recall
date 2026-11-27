@@ -1438,6 +1438,15 @@
     "results": [
       {
         "argv": [
+          "get",
+          "daemon.env"
+        ],
+        "code": 0,
+        "stdout": "(unset)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
           "set",
           "daemon.env",
           "{\"BASTRA_LOG_RETENTION_DAYS\":\"60\"}"

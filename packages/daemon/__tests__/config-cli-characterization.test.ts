@@ -204,6 +204,7 @@ const CASES: Case[] = [
   {
     name: "daemon.env",
     runs: [
+      ["get", "daemon.env"],
       ["set", "daemon.env", '{"BASTRA_LOG_RETENTION_DAYS":"60"}'],
       ["set", "daemon.env", "{broken"],
       ["get", "daemon.env"],
