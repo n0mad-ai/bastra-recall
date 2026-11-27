@@ -1278,7 +1278,7 @@
       "post": {
         "operationId": "onboarding_answer",
         "summary": "onboarding answer",
-        "description": "Report the user's answer to onboarding: later (defer), skip (declined), done (interview finished). For delivery accounting, use offer_ready immediately before presenting any unsolicited offer if no user task is active. Present only the returned offer. Record it with offer_shown and offe...",
+        "description": "Report the user's answer to onboarding: later (defer), skip (declined), done (interview finished). For delivery accounting, use offer_ready immediately before presenting any unsolicited offer if no user task is active. Present only the returned offer to the user, then record it with off...",
         "requestBody": {
           "required": true,
           "content": {
