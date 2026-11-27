@@ -302,7 +302,7 @@ test("background cache watcher observes external deletion without retrieval I/O"
     }
   }));
 
-test("band delivery telemetry carries only ids, count, tokens and latency", () =>
+test("band delivery and tracking telemetry record counts without draft text", () =>
   isolated(async (dir, row) => {
     const previous = process.env.BASTRA_LOG_PATH;
     process.env.BASTRA_LOG_PATH = join(dir, "logs");
@@ -319,14 +319,21 @@ test("band delivery telemetry carries only ids, count, tokens and latency", () =
       let log = "";
       for (let i = 0; i < 100; i++) {
         log = await readFile(join(dir, "logs", entries[0]), "utf8");
-        if (log.trim()) break;
+        if (log.includes('"kind":"draft_hint"') && log.includes('"kind":"draft_hint_registered"')) break;
         await new Promise((r) => setTimeout(r, 5));
       }
-      const event = JSON.parse(log.trim());
-      assert.deepEqual(event.draft_ids, [row.id]);
-      assert.equal(event.draft_count, 1);
-      assert.ok(event.hint_tokens_est > 0);
-      assert.ok(event.band_latency_ms >= 0);
+      const events = log
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const delivery = events.find((event) => event.kind === "draft_hint");
+      const tracked = events.find((event) => event.kind === "draft_hint_registered");
+      assert.deepEqual(delivery.draft_ids, [row.id]);
+      assert.equal(delivery.draft_count, 1);
+      assert.ok(delivery.hint_tokens_est > 0);
+      assert.ok(delivery.band_latency_ms >= 0);
+      assert.equal(tracked.count, 1);
+      assert.equal(tracked.draft_ids, undefined);
       assert.doesNotMatch(log, /Purpurdrucker|Zyanpatronen/);
     } finally {
       if (previous === undefined) delete process.env.BASTRA_LOG_PATH;
