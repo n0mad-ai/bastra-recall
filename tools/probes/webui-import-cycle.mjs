@@ -5,10 +5,10 @@
 
 // #1516: run the actual module graph and shell. Only chat transport is mocked.
 async function cycleProbe() {
-  const { data } = await import("/ui/js/data.js");
-  const { state, setState } = await import("/ui/js/state.js");
-  const { t } = await import("/ui/js/i18n.js");
-  const { vault } = await import("/ui/js/views/vault-data.js");
+  const { data } = await import(new URL("/ui/js/data.js", location.origin).href);
+  const { state, setState } = await import(new URL("/ui/js/state.js", location.origin).href);
+  const { t } = await import(new URL("/ui/js/i18n.js", location.origin).href);
+  const { vault } = await import(new URL("/ui/js/views/vault-data.js", location.origin).href);
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   async function until(read, label) {
     for (let i = 0; i < 160; i++) {
