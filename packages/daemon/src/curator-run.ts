@@ -33,7 +33,8 @@ import { writePendingSuggestion } from "./pending-suggestions.js";
 import { envInt, envOff } from "./env.js";
 import { collectClaimedTwice } from "./claimed-twice.js";
 import { collectDemandGaps } from "./demand-gaps.js";
-import { isMarkdownFile } from "@bastra-recall/core";
+import { isMarkdownFile, type Memory } from "@bastra-recall/core";
+import { catalogDeclaration } from "./rulebook-catalog.js";
 import {
   claimedTwiceReportLimit,
   writeVaultHealthReport,
@@ -131,12 +132,12 @@ function collectFacts(vault: VaultLike, flooredIds: Set<string>): CuratorMemoryF
       // engagement path (read_document records no usage — they would demote
       // deterministically AND stack with DOC_TYPE_DAMPING to 0.25); taxonomy
       // conventions are injected via <vault-taxonomy>, not load_memory, so
-      // they are equally engagement-blind. user-directed memories (#158) are
-      // untouchable for automated lifecycle passes by definition.
+      // they are equally engagement-blind. Bound rules are protected from
+      // lifecycle passes, regardless of how the source recorded provenance.
       protected:
         mem.fm.type === "doc" ||
         scopeEquals(String(mem.fm.scope ?? ""), "taxonomy") ||
-        mem.fm.write_origin === "user-directed",
+        catalogDeclaration(mem.fm as Memory["fm"]) !== undefined,
     });
   }
   return facts;
@@ -477,7 +478,7 @@ export function collectConsolidationCandidates(
     const fm = mem.fm;
     if (fm.type !== "project-fact") continue;
     if (fm.obsolete === true) continue;
-    if (fm.write_origin === "user-directed") continue;
+    if (catalogDeclaration(fm as Memory["fm"])) continue;
     const id = str(fm.id);
     const scope = str(fm.scope);
     if (!id || !scope) continue;

@@ -54,11 +54,11 @@ function memories(): Array<Record<string, unknown>> {
     { id: "tax", title: "Old unused lesson", created: iso(120), topic_path: ["css", "grid"], related: [] },
     // Floored: same usage profile, must be protected.
     { id: "floored", title: "Floored state", created: iso(120), topic_path: ["ops"], related: [] },
-    // User-directed (#158): same context-tax profile, exempt from lifecycle
-    // passes by provenance — must never show up as candidate or demotion.
+    // A legacy user-directed preference resolves to a rule and stays protected.
     {
       id: "dictated",
       title: "User-dictated preference",
+      type: "user-preference",
       created: iso(120),
       topic_path: ["prefs"],
       related: [],
@@ -145,6 +145,14 @@ test("dry-run: decides + writes REPORT.md but persists nothing and demotes nothi
     // #642: the pass wires the low-signal section; fixtures carry no trigger and no body.
     assert.ok(report.includes("## Low-signal memories"), "low-signal section");
     assert.ok(report.includes("- [[tax]]: no recall_when trigger; body has 0 characters"), "reasons per entry");
+  });
+});
+
+test("a user-directed note without a rule can become a demotion candidate", async () => {
+  await withFixture(async (root, deps) => {
+    deps.vault = fakeVault(memories().map((fm) => (fm.id === "tax" ? { ...fm, write_origin: "user-directed" } : fm)));
+    const result = await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+    assert.deepEqual(result.pendingObservation, ["tax"]);
   });
 });
 
@@ -486,7 +494,8 @@ test("consolidation (#217): ≥3 old same-topic project-facts cluster once, prot
     pf("e2", 50),
     pf("e3", 60),
     pf("young", 5), // zu jung → zählt nicht in den Cluster
-    { ...pf("dict", 40), write_origin: "user-directed" }, // Schutzklasse
+    { ...pf("dict", 40), write_origin: "user-directed" }, // ordinary note, included
+    { ...pf("rule", 40), rulebook: "on-demand", applies_when: "For this invented case" }, // bound rule, excluded
     { ...pf("other", 40), topic_path: ["cli"] }, // anderer Cluster-Key, allein
     { ...pf("lesson", 40), type: "lesson" }, // kein project-fact
   ]);
@@ -497,7 +506,7 @@ test("consolidation (#217): ≥3 old same-topic project-facts cluster once, prot
   // label die menschenlesbare Form; topic_path wird auf 2 Ebenen gekappt.
   assert.equal(clusters[0].key, "bastra\u0000webui\u0000areas");
   assert.equal(clusters[0].label, "bastra / webui / areas");
-  assert.deepEqual(clusters[0].ids, ["e1", "e2", "e3"]);
+  assert.deepEqual(clusters[0].ids, ["dict", "e1", "e2", "e3"]);
 
   const cooled = collectConsolidationCandidates(
     vault,
