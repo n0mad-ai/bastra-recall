@@ -19,8 +19,8 @@ until a new design replaces it; this name is independent of the product version.
   closed list shows how many of them are on. Switched on, read, done and
   outdated reports stand as groups of their own below the open ones. Search
   and project filter narrow first, the counts show what they leave; the open
-  report keeps its row whatever the filter says. The choice holds while the
-  page is open. The head holds project, switches, pick list and search in
+  report keeps its row whatever the filter says. The browser remembers the
+  status selection across reloads. The head holds project, switches, pick list and search in
   one line from a view width of about 850 px (a 1680 px window with the
   chat open); it no longer repeats the title "Reports", the count of unread
   and all reports gives way first below about 1000 px and the search field
@@ -187,7 +187,7 @@ until a new design replaces it; this name is independent of the product version.
   saves a memory through the daemon's normal `save_memory` path,
   with every check an agent's save gets, recorded as your own instruction
   (`write_origin: user-directed`) and attributed to the CLI. Fields left out
-  are filled like *Save as memory* in the web UI. Both need the running daemon
+  are filled with the usual save defaults. Both commands need the running daemon
   (#1492, #1496).
 - **Harvest before compaction (Claude Code).** A `PreCompact` hook, registered
   with the Stop hook (`--no-stop-hook` leaves it out), books the session so the
@@ -440,6 +440,10 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Removed
 
+- Removed the agent window’s **Save as memory** button. The ordinary save tool
+  and terminal command remain available.
+- Session start skips delayed save suggestions, draft review and topic drift
+  notices. Suggestions in the response that generated them remain available.
 - **`GET /ui/skills` is gone.** Nothing called it anymore: the map only
   declares skills (`POST /ui/skills`, unchanged), and `bastra skills` lists
   them. The address now answers like any unknown `/ui` route (#1561).
@@ -449,12 +453,16 @@ until a new design replaces it; this name is independent of the product version.
 
 ### Fixed
 
+- An edit can retain allowed changes when another note already claims a new
+  trigger. The result lists the blocked triggers and their owners (#1660).
+- Regular vault reconciliation stays on every minute by default and can be
+  disabled in Settings. The learning job runs on its daily schedule and
+  holds fewer telemetry records in memory (#1683).
+- A returning local daemon clears its own offline statusline markers (#1694).
 - Session start: a section the context cap (#1336) cuts is no longer booked
-  as delivered. Pending save suggestions stay pending, a trend does not spend
-  one of its starts, and a draft review is neither marked shown nor logged as
-  `draft_review_shown`; they come at a later start that has room. The
-  `session_hook_call` row names the cut sections in `deferred_sections`, and
-  `pending_harvest` counts only delivered harvest blocks (#1743).
+  as delivered. Remaining curator hints can be retried later and undisplayed
+  trends do not spend one of their starts. The `session_hook_call` row names
+  the cut sections in `deferred_sections` (#1743).
 
 - Reports view: an empty list says "Nothing waits for you" only when no new,
   question, in-progress or handed-over report is in the current project and
