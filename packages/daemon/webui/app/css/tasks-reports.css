@@ -372,6 +372,8 @@
   letter-spacing: 0.1em;
 }
 .tk-rv__restore {
+  grid-column: 3;
+  grid-row: 1 / span 2;
   padding: 2px 8px;
 }
 
