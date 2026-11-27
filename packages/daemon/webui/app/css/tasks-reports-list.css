@@ -62,3 +62,12 @@
   margin-top: 3px;
   font: 10.5px var(--mono);
 }
+
+/* Make room for the question badge beside the answer count in the reader. */
+.tk-rep__meta:has(> .tk-rep__state.tk-rv__work:not(.tk-rv__draft)) {
+  column-gap: 4px;
+}
+.tk-rep__meta > .tk-rep__state.tk-rv__work:not(.tk-rv__draft) {
+  padding-inline: 5px;
+  letter-spacing: normal;
+}
