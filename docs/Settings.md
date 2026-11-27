@@ -20,6 +20,8 @@ Invalid JSON edits keep settings unsaved. Save returns to and focuses the invali
 
 ### Environment controls in the web UI
 
+[Advanced environment variables and legacy aliases](quality/maintenance-tools.md#advanced-environment-variables).
+
 The Settings page of the web UI exposes the following existing environment options in Models, Recall behaviour, Writing and Logs. The defaults come from the daemon runtime. All twelve store individual pins in the existing `daemon.env` record. Use **Apply**, inspect old/new values in **Changes**, and restart the daemon to apply these pins. **Standard** removes a pin. A real process environment override carries the ENV chip and is read-only. An applied settings pin stays editable even while its replacement or removal awaits restart.
 
 | Key | Environment variable | Default | Input |
@@ -56,6 +58,8 @@ Settings are stored in namespace `settings` in the local `recall.db`, keyed by t
 To return to the old version, stop all daemon/CLI writers and restore the retained `.pre-db` filename before starting the old binary. To retain newer changes, first use `exportAppRecord("settings", originalAbsolutePath, newDestination)` from the new binary and restore that export instead. Keep the DB, WAL/SHM files and retained originals until the returned version is verified. Never put the database on a sync or network drive. Memories remain Markdown in the vault.
 
 ## Deutsch
+
+[Erweiterte Umgebungsvariablen und alte Namen](quality/maintenance-tools.md#erweiterte-umgebungsvariablen).
 
 Seit 1.2.0 enthält die Weboberfläche eine Einstellungsseite mit Speicherung in der lokalen App-Datenbank. Öffne die lokale Web-UI, wähle **Einstellungen**, ändere die gewünschten Felder und wähle **Speichern**. Die Seite gruppiert Allgemeines/Sprache, Suche und Embeddings, Hooks/Reflex, Code-Index, Archivierung, Aufgaben, Zugang und Updates. Der Assistentenbereich öffnet die vorhandene Einrichtung für Name und Adresse; Änderungen am System behalten ihren bisherigen Zustimmungsweg. Weitere Jarvis-Funktionen gehören nicht zu dieser Änderung.
 
