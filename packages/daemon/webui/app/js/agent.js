@@ -12,7 +12,6 @@ import { TC, INK } from "./views/chrome.js";
 import { assistantName } from "./sections/settings-model.js";
 import { loadingInline, setBusy } from "./sections/loading.js";
 import { showInView, openMemoryBrowser, markdown } from "./views/memory-browser.js";
-import { saveAction } from "./agent-save.js";
 
 const STATE_COLOR = {
   idle: "var(--muted)",
@@ -32,7 +31,6 @@ let panel,
   convBox,
   caption,
   srcBox,
-  actBox,
   msgBox,
   sugBox,
   inBox,
@@ -66,7 +64,6 @@ export function mountAgent(app) {
   qBox = h("div.msg.msg--you");
   caption = h("div.agent__caption.agent__md");
   srcBox = h("div.agent__srcs");
-  actBox = h("div");
   msgBox = h("div");
   convBox = h("div.agent__convs", { hidden: true });
   sugBox = h("div.agent__sugs");
@@ -121,7 +118,7 @@ export function mountAgent(app) {
       )
     ),
     h("div.agent__face", null, faceCanvas),
-    h("div.agent__body", null, convBox, qBox, caption, srcBox, actBox, msgBox, sugBox),
+    h("div.agent__body", null, convBox, qBox, caption, srcBox, msgBox, sugBox),
     h("div.agent__foot", null, inBox)
   );
 
@@ -185,8 +182,6 @@ export function ask(q) {
         role: "recall",
         text: chatState.shown.a,
         sources: chatState.shown.sources,
-        saveable: chatState.shown.saveable,
-        conversationId: chatState.shown.conversationId,
       }
     );
   chatState.shown = null;
@@ -201,20 +196,16 @@ export function ask(q) {
     .then(async ({ ok, status, body }) => {
       if (seq !== chatState.seq) return;
       let answer,
-        conversationId,
         sources = [];
-      // Only a real model answer can be saved as a memory (agent-save.js).
-      const saveable = ok && typeof body.reply === "string";
-      if (saveable) {
+      if (ok && typeof body.reply === "string") {
         answer = body.reply;
         if (typeof body.navigate === "string") {
           if (VAULT_VIEWS.includes(body.navigate)) pickVaultView(body.navigate);
           else if (getArea(body.navigate)?.kind === "view") setState({ view: body.navigate, hover: null });
         }
         if (typeof body.conversation_id === "string") {
-          conversationId = body.conversation_id;
-          chatState.conv = conversationId;
-          storeConv(conversationId);
+          chatState.conv = body.conversation_id;
+          storeConv(chatState.conv);
         }
         sources = Array.isArray(body.hits)
           ? body.hits
@@ -237,10 +228,10 @@ export function ask(q) {
       } else answer = t("agent.error");
       if (seq !== chatState.seq) return;
       chatState.history.push({ role: "user", content: q }, { role: "assistant", content: answer });
-      typeOut({ q, a: answer, sources, saveable, conversationId });
+      typeOut({ q, a: answer, sources });
     })
     .catch(() => {
-      if (seq === chatState.seq) typeOut({ q, a: t("agent.error"), sources: [], saveable: false });
+      if (seq === chatState.seq) typeOut({ q, a: t("agent.error"), sources: [] });
     });
 }
 
@@ -394,7 +385,6 @@ async function openConversation(id, row, quiet) {
           q: String(list[i].text),
           a: String(list[i + 1].text),
           sources: toSources(list[i + 1].sources),
-          conversationId: id,
         });
         i++;
       }
@@ -406,7 +396,7 @@ async function openConversation(id, row, quiet) {
       question: last ? last.q : "",
       msgs: ex.flatMap((e) => [
         { role: "you", text: e.q },
-        { role: "recall", text: e.a, sources: e.sources, conversationId: e.conversationId },
+        { role: "recall", text: e.a, sources: e.sources },
       ]),
       history: [...ex, ...(last ? [last] : [])].flatMap((e) => [
         { role: "user", content: e.q },
@@ -454,7 +444,7 @@ function renderConvs() {
   convBox.hidden = !open;
   histBtn.classList.toggle("is-on", open);
   histBtn.setAttribute("aria-pressed", String(open));
-  for (const el of [qBox, caption, srcBox, actBox, msgBox, sugBox]) el.classList.toggle("is-off", open);
+  for (const el of [qBox, caption, srcBox, msgBox, sugBox]) el.classList.toggle("is-off", open);
   if (!open) {
     clear(convBox);
     return;
@@ -512,12 +502,6 @@ function openSource(id, el) {
   if (m && inWindow(m, timeWindow()) && showInView(id)) return;
   openMemoryBrowser(m?.area || "all", id, el?.getBoundingClientRect());
 }
-
-// A memory saved from an answer opens in the memory browser.
-const openSaved = (id) => openSource(id, null);
-/** "Save as memory" under the answer on screen (js/agent-save.js), also for stored ones. */
-const answerActions = () =>
-  chatState.shown && state.agent === "idle" ? saveAction(chatState.shown, openSaved, render) : [];
 
 function send() {
   const q = input.value.trim();
@@ -578,7 +562,6 @@ export function render(L) {
   clear(srcBox);
   if (chatState.shown && ag === "idle" && chatState.shown.sources.length)
     srcBox.append(h("span.agent__srcs-l", { text: t("agent.sources") }), ...srcButtons(chatState.shown.sources));
-  clear(actBox).append(...answerActions());
   // Earlier exchanges below, newest first, each question above its answer
   // and the answer's sources (clickable as above).
   const pairs = [];
@@ -589,17 +572,6 @@ export function render(L) {
       h("div.msg.msg--you", { text: you.text }),
       h("div.msg.msg--recall.agent__md", null, ...md(rec.text)),
       ...(rec.sources?.length ? [h("div.agent__srcs.agent__srcs--old", null, ...srcButtons(rec.sources))] : []),
-      ...saveAction(
-        {
-          q: you.text,
-          a: rec.text,
-          sources: rec.sources || [],
-          saveable: rec.saveable,
-          conversationId: rec.conversationId,
-        },
-        openSaved,
-        render
-      ),
     ])
   );
   msgBox.className = pairs.length ? "agent__srcs agent__hist" : "";

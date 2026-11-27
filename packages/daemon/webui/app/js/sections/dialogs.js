@@ -40,8 +40,7 @@ async function call(url, body) {
 // ── dialog frame ──────────────────────────────────────────────────────────
 let openDlg = null;
 
-/** Opens a modal pop-over; returns { box, body, close }. onClose runs once.
- *  Also the frame of the agent window's "save as memory" preview (js/agent-save.js). */
+/** Opens a modal pop-over; returns { box, body, close }. onClose runs once. */
 export function dialog({ kicker, title, cls = "", onClose, canClose = () => true }) {
   openDlg?.close();
   const body = h("div.dlg__body");
