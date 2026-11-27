@@ -11,7 +11,7 @@ import { h } from "../dom.js";
 import { t } from "../i18n.js";
 import { emit } from "./tasks-store.js";
 import { FILTER_STATES, ATTENTION } from "./tasks-reports-model.js";
-import { R } from "./tasks-reports-state.js";
+import { R, toggleReportState } from "./tasks-reports-state.js";
 
 /** The label and tooltip of each state: the switches use the rows' words, the pick list's entries the
  *  plain spelling of the project names beside them. */
@@ -28,8 +28,7 @@ const FILTER_LABELS = {
 const FILED = FILTER_STATES.filter((s) => !ATTENTION.includes(s));
 
 function toggleState(state) {
-  if (R.states.has(state)) R.states.delete(state);
-  else R.states.add(state);
+  toggleReportState(state);
   emit("reports");
 }
 

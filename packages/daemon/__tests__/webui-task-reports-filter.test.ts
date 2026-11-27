@@ -47,8 +47,8 @@ const label = (host: Node_) =>
   [one(stateBtn(host), "mb__scopename").textContent, byClass(stateBtn(host), "mb__mut")[0].textContent].join(" ");
 const groupHeads = (host: Node_) => byClass(one(host, "mb__list"), "mb__gh").map((g) => g.textContent);
 
-async function setup() {
-  const ctx = await view();
+async function setup(stored?: Map<string, string>) {
+  const ctx = await view([], stored);
   (ctx.context.data as { reports: unknown }).reports = ctx.v.reportRows({ reports: ONE_EACH });
   await ctx.v.openReports();
   return ctx;
@@ -342,6 +342,30 @@ test("the choice holds when the view is left and opened again", async () => {
   await v.openReports();
   assert.equal(chip(host, "done").attrs["aria-pressed"], "true");
   assert.ok(titles(host).includes("Bericht done"));
+});
+
+test("the browser restores the chosen statuses, including no statuses, after a reload", async () => {
+  const stored = new Map<string, string>();
+  const first = await setup(stored);
+  await chip(first.host, "question").click();
+  await chip(first.host, "read").click();
+
+  const second = await setup(stored);
+  assert.equal(chip(second.host, "question").attrs["aria-pressed"], "false");
+  assert.equal(chip(second.host, "read").attrs["aria-pressed"], "true");
+  for (const state of ["new", "in_progress", "handed", "read"]) await chip(second.host, state).click();
+
+  const third = await setup(stored);
+  assert.equal(third.v.R.states.size, 0);
+  assert.deepEqual(titles(third.host), []);
+});
+
+test("broken or blocked storage leaves the report filter usable", async () => {
+  const { host, knobs } = await setup(new Map([["recall-reports-filter-states", "invalid JSON"]]));
+  assert.equal(chip(host, "handed").attrs["aria-pressed"], "true");
+  knobs.blocked = true;
+  await chip(host, "read").click();
+  assert.equal(chip(host, "read").attrs["aria-pressed"], "true");
 });
 
 test("Escape from a filed status option restores focus to the filter button", async () => {
