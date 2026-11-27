@@ -84,7 +84,11 @@ async function writeState(path: string, state: OfferState): Promise<void> {
 }
 
 function eligibleOffer(state: OfferState, now: number): OnboardingOffer {
-  if ((state.later_until ?? 0) > now || state.last_day === localDay(now) || (state.pending?.until ?? 0) > now)
+  const today = localDay(now);
+  if ((state.later_until ?? 0) > now || state.last_day === today) return null;
+  // A final-only client may have shown a reserved offer without another turn
+  // to report it. Let the same day end without a second invitation or a charge.
+  if (state.pending && (state.pending.until > now || localDay(state.pending.until - OFFER_CLAIM_MS) === today))
     return null;
   return state.offers < ONBOARDING_INTERVIEW_OFFERS ? "interview" : "line";
 }

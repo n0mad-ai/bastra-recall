@@ -86,10 +86,11 @@ test("#1690: a lost reservation doesn't charge an interview and a later delivery
   vault(async (path) => {
     const lost = await claimOnboardingOffer(path, 0, start);
     assert.ok(lost);
-    const next = await claimOnboardingOffer(path, 0, start + 2 * 60_000);
+    assert.equal(await claimOnboardingOffer(path, 0, start + 2 * 60_000), null);
+    const next = await claimOnboardingOffer(path, 0, start + DAY);
     assert.ok(next);
-    assert.equal(await recordOnboardingOffer(path, lost.id, start + 2 * 60_000), false);
-    assert.equal(await recordOnboardingOffer(path, next.id, start + 2 * 60_000), true);
+    assert.equal(await recordOnboardingOffer(path, lost.id, start + DAY), false);
+    assert.equal(await recordOnboardingOffer(path, next.id, start + DAY), true);
     assert.equal(JSON.parse(await readFile(join(path, ONBOARDING_OFFER_FILE), "utf8")).offers, 1);
   }));
 
