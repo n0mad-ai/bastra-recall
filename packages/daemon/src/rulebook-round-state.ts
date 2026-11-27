@@ -63,6 +63,13 @@ export function readCheckState(state: { readonly rulebookCheck?: string }): Chec
     };
   }
 }
+/** An asynchronous check must not be applied after a context or round reset. */
+export function rulebookReceiptScope(state: { readonly rulebookCheck?: string } | undefined): CheckState | null {
+  return state?.rulebookCheck ? readCheckState(state) : null;
+}
+export function sameRulebookRound(a: CheckState | null, b: CheckState | null): boolean {
+  return a?.context === b?.context && a?.round === b?.round;
+}
 /** Indexed null is global scope; undefined retains the legacy caller-project fallback. */
 export function sessionRulebookProject(
   state: { readonly rulebookCheck?: string } | undefined

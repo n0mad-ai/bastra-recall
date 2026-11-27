@@ -17,7 +17,7 @@ import { RULE_KERNEL_TOOL_CALLS } from "../src/rule-kernel.js";
 import { kernelFingerprint } from "../src/rule-kernel.js";
 import { bookPendingMustLoad, loadSessionState, mutateSessionState } from "../src/session-state.js";
 import { cachedRulebookCatalog, type KernelCandidates, type KernelEntry } from "../src/rulebook-catalog.js";
-import { rulebookFingerprint } from "../src/rulebook-round-state.js";
+import { rulebookFingerprint, rulebookReceiptScope } from "../src/rulebook-round-state.js";
 import { Vault, saveMemory } from "@bastra-recall/core";
 
 const rule = (id: string, extra: Partial<KernelEntry> = {}): KernelEntry => ({
@@ -109,6 +109,25 @@ test("a check receipt applies to the catalog it read, even if a newer catalog wa
   // A check can also read the new catalog before the hook does.
   await checks.recordRulebookCheck(sid, { applicable: [] }, withNewRule);
   assert.doesNotMatch(await checks.beginRulebookRound(payload(sid), withNewRule), asksForCheck);
+});
+
+test("#1697: a check started before a context reset cannot bind to the next context", async () => {
+  const sid = "carry-reset-in-flight";
+  await checks.beginRulebookRound(payload(sid), catalog);
+  const beforeReset = rulebookReceiptScope(await loadSessionState(sid));
+  await checks.resetRulebookContext(sid);
+  const result = await checks.recordRulebookCheck(sid, { applicable: ["fixture-rule"] }, catalog, beforeReset);
+  assert.equal(result.ok, false);
+  assert.match(await checks.beginRulebookRound(payload(sid), catalog), asksForCheck);
+});
+
+test("#1697: an older in-flight check cannot replace the newer confirmed catalog", async () => {
+  const sid = "carry-older-finishes-last";
+  await checks.beginRulebookRound(payload(sid), catalog);
+  const bothStarted = rulebookReceiptScope(await loadSessionState(sid));
+  assert.equal((await checks.recordRulebookCheck(sid, { applicable: [] }, edited, bothStarted)).ok, true);
+  assert.equal((await checks.recordRulebookCheck(sid, { applicable: [] }, catalog, bothStarted)).ok, false);
+  assert.doesNotMatch(await checks.beginRulebookRound(payload(sid), edited), asksForCheck);
 });
 
 test("partial declarations do not carry an unconfirmed check", async () => {

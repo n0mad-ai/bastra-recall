@@ -13,6 +13,9 @@ import { Telemetry } from "../src/telemetry.js";
 import { recallHandler, loadMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { TRUSTED_LOCAL_APP } from "../src/private-access.js";
 import { readConventionSource } from "../src/convention-source.js";
+import { resetRulebookContext } from "../src/rulebook-check.js";
+import { rulebookReceiptScope } from "../src/rulebook-round-state.js";
+import { loadSessionState } from "../src/session-state.js";
 
 const ID = "stale-visibility-fixture";
 const memory = (extra = "", body = "Invented fixture body about lantern quarry routes.") =>
@@ -132,6 +135,35 @@ test("#1334: a changed source never pairs its revision with the stale indexed bo
     );
     assert.equal(res.revision, indexed);
   } finally {
+    await close();
+  }
+});
+
+test("#1697: a validated source from before reset cannot check or activate a rule in the new context", async (t) => {
+  const { deps, close } = await staleDeps(memory("rulebook: on-demand\napplies_when: During fixture work"));
+  const sid = "rule-load-reset-fixture";
+  const previousStateDir = process.env.BASTRA_HOOK_STATE_DIR;
+  process.env.BASTRA_HOOK_STATE_DIR = join(deps.vaultPath, "hook-state");
+  try {
+    await resetRulebookContext(sid);
+    const before = rulebookReceiptScope(await loadSessionState(sid));
+    assert.ok(before);
+    let reset: Promise<void> | undefined;
+    t.mock.method(deps.telemetry, "recordLoadedMemory", () => {
+      reset = resetRulebookContext(sid);
+    });
+    const result = await loadMemoryHandler(deps, { id: ID, session_id: sid, verbosity: "full" });
+    assert.equal(result.frontmatter.rulebook, "on-demand");
+    await reset;
+    const after = await loadSessionState(sid);
+    const scope = rulebookReceiptScope(after);
+    assert.ok(scope);
+    assert.notEqual(scope.context, before.context);
+    assert.deepEqual(scope.actors, []);
+    assert.equal(after.loadedConventions, undefined);
+  } finally {
+    if (previousStateDir === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+    else process.env.BASTRA_HOOK_STATE_DIR = previousStateDir;
     await close();
   }
 });

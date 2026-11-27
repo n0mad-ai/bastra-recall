@@ -5,12 +5,13 @@ import { recordRulebookLoad } from "./rulebook-check.js";
  * re-exports everything, so the existing import paths keep working.
  */
 import { z } from "zod";
-import { stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
+import { stripAutoRelatedSection, FUNCTION_WORDS, type Memory } from "@bastra-recall/core";
 import { redactSecrets } from "@bastra-recall/core/scrub";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
-import { indexedConventionSource, readCurrentRulebookSources } from "./convention-source.js";
-import { clearPendingMustLoad, touchLoadedMarker } from "./session-state.js";
+import { indexedConventionSource, readCurrentRulebookSources, type ConventionSource } from "./convention-source.js";
+import { clearPendingMustLoad, loadSessionState, touchLoadedMarker, type SessionState } from "./session-state.js";
+import { rulebookReceiptScope, sameRulebookRound } from "./rulebook-round-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
@@ -105,6 +106,33 @@ export function leanFrontmatter(fm: Record<string, unknown>): Record<string, unk
   return out;
 }
 
+async function loadedRulebookReceipt(
+  deps: ToolDeps,
+  sessionId: string | null | undefined,
+  verbosity: "lean" | "full" | undefined,
+  memory: Memory
+): Promise<((state: SessionState) => boolean) | undefined> {
+  if (verbosity === "lean") return undefined;
+  const observed = sessionId ? rulebookReceiptScope(await loadSessionState(sessionId)) : null;
+  return (state) => {
+    const current = rulebookReceiptScope(state);
+    const indexed = deps.search.loadFull(memory.fm.id) ?? deps.commonsSearch?.loadFull(memory.fm.id);
+    return (
+      sameRulebookRound(observed, current) &&
+      observed?.catalog === current?.catalog &&
+      indexed !== undefined &&
+      indexed.revision === memory.revision
+    );
+  };
+}
+function mustLoadActivation(
+  source: ConventionSource,
+  agentId: string | null | undefined,
+  verbosity: "lean" | "full" | undefined
+) {
+  return verbosity === "lean" || agentId != null || source.matchesIndex !== true ? undefined : source;
+}
+
 export async function loadMemoryHandler(
   deps: ToolDeps,
   rawArgs: unknown,
@@ -165,6 +193,7 @@ export async function loadMemoryHandler(
     throw new Error(`memory not found: ${parsed.data.id}`);
   }
 
+  const canRecord = await loadedRulebookReceipt(deps, sessionId, parsed.data.verbosity, m);
   const source = (await readCurrentRulebookSources({ get: () => m }, [m.fm.id], sessionId)).get(m.fm.id)!;
   if (source.hiddenFromPublic && !ctx?.trustedPrivate) throw new Error(`memory not found: ${parsed.data.id}`);
 
@@ -195,12 +224,13 @@ export async function loadMemoryHandler(
   // must-load puts the rule in force for the rule kernel, with this revision.
   await clearPendingMustLoad(
     parsed.data.id,
-    parsed.data.verbosity === "lean" || agentId != null ? undefined : delivered,
-    source.matchesIndex === true && agentId == null ? sessionId : undefined
+    mustLoadActivation(source, agentId, parsed.data.verbosity),
+    sessionId,
+    canRecord
   );
 
   if (sessionId && parsed.data.verbosity !== "lean" && source.matchesIndex === true) {
-    await recordRulebookLoad(sessionId, parsed.data.id, agentId, source);
+    await recordRulebookLoad(sessionId, parsed.data.id, agentId, source, canRecord);
   }
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den
   // Auto-Related-Block. `verbosity: "full"` liefert alles (Mac-App / Debug).

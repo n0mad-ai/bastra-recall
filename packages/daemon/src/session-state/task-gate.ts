@@ -143,6 +143,16 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
   }
 }
 
+type LoadActivation = { revision: string | null; validator?: ConventionValidator; expired?: true };
+
+function shouldActivateLoad(
+  state: SessionState,
+  memoryId: string,
+  held: boolean,
+  activate?: LoadActivation
+): activate is LoadActivation {
+  return !!activate && (held || state.activeConventions?.some((convention) => convention.id === memoryId) === true);
+}
 /**
  * #1301/#1303: a successful `load_memory(id)` releases `id` in EVERY session
  * state that still holds it — the caller's session is not reliably known on
@@ -155,14 +165,22 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
  */
 export async function clearPendingMustLoad(
   memId: string,
-  activate?: { revision: string | null; validator?: ConventionValidator; expired?: true },
-  loadedSessionId?: string | null
+  activate?: LoadActivation,
+  loadedSessionId?: string | null,
+  canRecord?: (state: SessionState) => boolean
 ): Promise<void> {
+  const scopeMatches = (sessionId: string, state: SessionState): boolean =>
+    loadedSessionId !== sessionId || canRecord?.(state) !== false;
   if (!memId) return;
   if (activate?.expired) activate = undefined;
   try {
     if (activate && loadedSessionId)
       await mutateSessionState(loadedSessionId, (state) => {
+        if (canRecord && !canRecord(state)) {
+          activate = undefined;
+          return;
+        }
+        if (!activate) return;
         state.loadedConventions = [
           ...(state.loadedConventions ?? []).filter((c) => c.id !== memId),
           { id: memId, revision: activate.revision, loadedAt: Date.now() },
@@ -174,6 +192,8 @@ export async function clearPendingMustLoad(
       // Cheap pre-check before the lock: most sessions never held this id.
       if (!raw.includes(needle)) continue;
       await mutateSessionState(sessionId, (state) => {
+        // A different round may have posted its own claim in the meantime.
+        if (!scopeMatches(sessionId, state)) return;
         const pending = state.pendingMustLoad?.some((e) => e.id === memId) ?? false;
         const claimed = state.claimedMustLoad?.includes(memId) ?? false;
         if (pending) {
@@ -186,7 +206,7 @@ export async function clearPendingMustLoad(
           if (rest.length > 0) state.claimedMustLoad = rest;
           else delete state.claimedMustLoad;
         }
-        if ((pending || claimed || state.activeConventions?.some((c) => c.id === memId)) && activate)
+        if (shouldActivateLoad(state, memId, pending || claimed, activate))
           recordActiveConventions(state, [{ id: memId, ...activate }]);
       });
     }

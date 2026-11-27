@@ -9,6 +9,8 @@ import {
   checkHolds,
   readCheckState,
   rulebookFingerprint,
+  rulebookReceiptScope,
+  sameRulebookRound,
   roundActor as actor,
   roundIdentity as identity,
   sessionRulebookProject,
@@ -39,6 +41,7 @@ import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
 import { hasCorrespondenceEvidence, isCorrespondenceTool } from "./stop-evidence.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
+import type { ConventionSource } from "./convention-source.js";
 import { hasReportedTask, isCorrespondenceRule } from "./rulebook-correspondence.js";
 
 // #1532: the correspondence round lives in rulebook-correspondence.ts, the
@@ -273,10 +276,30 @@ function recordCheckReceipt(
   if (canCarry) a.checkedCatalog = reviewedCatalog;
   a.ids = [...new Set(applicable)];
 }
+const receiptActorKey = (agentId?: string | null): string => (agentId ? `agent:${agentId}` : "main");
+const unknownRuleReason = (unknown: string[], overlong: string[]): string =>
+  (unknown.length ? `Unknown rule IDs: ${unknown.slice(0, 20).join(", ")}; read list_rules and retry them. ` : "") +
+  (overlong.length
+    ? `Ignored not_applicable IDs longer than ${RULE_ID_MAX} characters: ${overlong.slice(0, 5).join(", ")}. `
+    : "");
+
+function canRecordCheck(
+  observed: CheckState | null,
+  current: CheckState | null,
+  actorKey: string,
+  reviewedCatalog: string
+): boolean {
+  if (!sameRulebookRound(observed, current)) return false;
+  if (current?.catalog !== observed?.catalog) return current?.catalog === reviewedCatalog;
+  const checked = (state: CheckState | null) => state?.actors.find((a) => a.key === actorKey)?.checkedCatalog;
+  return checked(current) === checked(observed) || checked(current) === reviewedCatalog;
+}
+
 export async function recordRulebookCheck(
   sessionId: string | null | undefined,
   input: z.infer<typeof RulebookCheckArgs>,
-  catalog: KernelCandidates
+  catalog: KernelCandidates,
+  observed?: CheckState | null
 ) {
   if (input.not_applicable?.some((e) => !ExceptionReason.safeParse(e.reason).success))
     return { ok: false, reason: "Non-applicability requires at least 10 characters of substantive explanation." };
@@ -306,11 +329,7 @@ export async function recordRulebookCheck(
     ...(unknown.length ? { unknown_ids: unknown } : {}),
     ...(overlong.length ? { invalid_ids: overlong } : {}),
   };
-  const unknownReason =
-    (unknown.length ? `Unknown rule IDs: ${unknown.slice(0, 20).join(", ")}; read list_rules and retry them. ` : "") +
-    (overlong.length
-      ? `Ignored not_applicable IDs longer than ${RULE_ID_MAX} characters: ${overlong.slice(0, 5).join(", ")}. `
-      : "");
+  const unknownReason = unknownRuleReason(unknown, overlong);
   const reviewedCatalog = rulebookFingerprint(catalog);
   let context = "",
     round = 0,
@@ -319,7 +338,9 @@ export async function recordRulebookCheck(
     actionException = false;
   let acceptedTask: { kind: string; generation: number } | undefined;
   const skippedProtectedIds: string[] = [];
-  const persisted = await mutateSessionState(sessionId, (s) => {
+  const key = receiptActorKey(input.agent_id);
+  let superseded = false;
+  const applyCheckTask = (s: SessionState): void => {
     if (
       task !== undefined &&
       task !== "none" &&
@@ -333,8 +354,16 @@ export async function recordRulebookCheck(
       taskGeneration = s.activeTask?.generation ?? 0;
       acceptedTask = { kind: task, generation: taskGeneration };
     }
-    const state = readCheckState(s),
-      a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
+  };
+  const persisted = await mutateSessionState(sessionId, (s) => {
+    const current = rulebookReceiptScope(s);
+    if (observed !== undefined && !canRecordCheck(observed, current, key, reviewedCatalog)) {
+      superseded = true;
+      return;
+    }
+    applyCheckTask(s);
+    const state = current ?? readCheckState(s),
+      a = actor(state, key);
     const correspondence = catalog.entries.filter(isCorrespondenceRule);
     const protectedIds = new Set(a.roundApplied.map((r) => r.id));
     const requiredIds = new Set(a.required.map((r) => r.id));
@@ -402,6 +431,8 @@ export async function recordRulebookCheck(
     round = state.round;
     put(s, state);
   });
+  if (superseded)
+    return { ok: false, reason: "Rulebook state changed while this check was running. Check the current round again." };
   if (persisted && invalidDismissal) {
     await recordRulebookEvent(sessionId, {
       outcome: "not-applicable",
@@ -494,7 +525,7 @@ export async function rulebookCheckHandler(
       deadline
     ).catch(() => catalog);
   }
-  const result = await recordRulebookCheck(sid, input, catalog);
+  const result = await recordRulebookCheck(sid, input, catalog, rulebookReceiptScope(snapshot));
   const unknown = "unknown_ids" in result ? (result.unknown_ids ?? []) : [];
   if (!unknown.length) return result;
   // Name the reason: scoped to another project than the index, or not a current rulebook entry.
@@ -517,15 +548,25 @@ export async function rulebookCheckHandler(
     })),
   };
 }
+function carriesPublicValidator(source?: ConventionSource): source is ConventionSource {
+  return Boolean(
+    source &&
+    !source.hiddenFromPublic &&
+    (source.validator || source.rulebookMetadata?.rule_categories?.includes("correspondence"))
+  );
+}
+
 /** Only actual current full loads can answer binding/required IDs or retain validator metadata. */
 export async function recordRulebookLoad(
   sessionId: string,
   id: string,
   agentId?: string | null,
-  source?: import("./convention-source.js").ConventionSource
+  source?: ConventionSource,
+  canRecord?: (state: SessionState) => boolean
 ): Promise<void> {
   if (!sessionId || source?.expired) return;
   await mutateSessionState(sessionId, (s) => {
+    if (canRecord && !canRecord(s)) return;
     const state = readCheckState(s),
       a = actor(state, agentId ? `agent:${agentId}` : "main");
     const obligated = a.required.some((r) => r.id === id);
@@ -549,11 +590,7 @@ export async function recordRulebookLoad(
       a.checkedCatalog = state.catalog;
     }
     if (!a.ids.includes(id)) a.ids.push(id);
-    if (
-      source &&
-      (source.validator || source.rulebookMetadata?.rule_categories?.includes("correspondence")) &&
-      !source.hiddenFromPublic
-    ) {
+    if (carriesPublicValidator(source)) {
       a.roundApplied = [
         ...a.roundApplied.filter((r) => r.id !== id),
         { id, revision: source.revision, validator: source.validator },
