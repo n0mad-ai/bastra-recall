@@ -12,7 +12,13 @@ import { mkdtemp, mkdir, readdir, readFile, writeFile, rm } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault } from "@bastra-recall/core";
-import { runInBandMint, readLastMint, LAST_MINT_FILE } from "../src/learned-recall/mint-job.js";
+import {
+  runInBandMint,
+  readLastMint,
+  LAST_MINT_FILE,
+  MINT_INTERVAL_MS,
+  nextMintDelay,
+} from "../src/learned-recall/mint-job.js";
 
 function nearMemory(): string {
   const ts = new Date().toISOString();
@@ -57,6 +63,23 @@ function eventLogLines(reaches = 2, ts = new Date().toISOString()): string {
   }
   return lines.map((e) => JSON.stringify(e)).join("\n") + "\n";
 }
+
+test("#1683: the daily mint stays due across a daemon restart without running at startup", () => {
+  const now = Date.UTC(2026, 10, 27, 12);
+  const prior = {
+    ts: new Date(now - MINT_INTERVAL_MS - 1).toISOString(),
+    host: "fixture",
+    trigger: "daemon-interval" as const,
+    minted: 0,
+    reaches: 0,
+    written: 0,
+    pruned: 0,
+  };
+  assert.equal(nextMintDelay(prior, now), 5 * 60_000);
+  assert.equal(nextMintDelay(null, now), 5 * 60_000);
+  const recent = { ...prior, ts: new Date(now - 23 * 60 * 60_000).toISOString() };
+  assert.equal(nextMintDelay(recent, now), 60 * 60_000);
+});
 
 test("runInBandMint: mints from the log, records last-mint.json, re-run is idempotent", async () => {
   const vaultDir = await mkdtemp(join(tmpdir(), "bastra-mint-vault-"));

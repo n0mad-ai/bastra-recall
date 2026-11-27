@@ -16,7 +16,7 @@ import { envInt } from "./env.js";
 import type { Telemetry } from "./telemetry.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { reapStaleForwarderProcesses } from "./reap-forwarders.js";
-import { runInBandMint } from "./learned-recall/mint-job.js";
+import { MINT_INTERVAL_MS, nextMintDelay, readLastMint, runInBandMint } from "./learned-recall/mint-job.js";
 import { BridgePool } from "./learned-recall/bridges.js";
 import { bridgesPath } from "./learned-recall/pool-path.js";
 import { unloadOllamaModel } from "./ollama-lifecycle.js";
@@ -335,7 +335,13 @@ function startMintSchedule(deps: BackgroundJobDeps): void {
       console.error(`[bastra-recall] in-band mint failed (non-fatal): ${err}`);
     }
   };
-  setInterval(timedJob("in-band mint (daemon-interval)", runScheduledMint), 24 * 60 * 60_000).unref();
+  const tick = timedJob("in-band mint (daemon-interval)", runScheduledMint);
+  void readLastMint(bridgesPath()).then((last) => {
+    setTimeout(() => {
+      void tick();
+      setInterval(tick, MINT_INTERVAL_MS).unref();
+    }, nextMintDelay(last)).unref();
+  });
 }
 
 // Idle watchdog — terminate after BASTRA_DAEMON_IDLE_SHUTDOWN_MS without

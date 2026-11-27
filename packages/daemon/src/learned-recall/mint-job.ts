@@ -60,6 +60,17 @@ export interface LastMintRecord extends MintOutcome {
 
 export const LAST_MINT_FILE = "last-mint.json";
 
+export const MINT_INTERVAL_MS = 24 * 60 * 60_000;
+const MINT_START_GRACE_MS = 5 * 60_000;
+
+/** Waiting from the last run keeps daily learning available across idle
+ * daemon shutdowns. An overdue job still stays outside the startup window. */
+export function nextMintDelay(last: LastMintRecord | null, now = Date.now()): number {
+  const lastAt = Date.parse(last?.ts ?? "");
+  if (!Number.isFinite(lastAt)) return MINT_START_GRACE_MS;
+  return Math.max(MINT_START_GRACE_MS, Math.min(MINT_INTERVAL_MS, lastAt + MINT_INTERVAL_MS - now));
+}
+
 /** A memory's distinctive vocabulary — the near terms mintBridge tests against. */
 export function memoryTermsGetter(vault: Vault): (id: string) => string[] {
   return (id: string): string[] => {
